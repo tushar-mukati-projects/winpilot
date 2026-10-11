@@ -25,6 +25,10 @@ impl Deadline {
         Instant::now() >= self.at
     }
 
+    pub fn remaining(&self) -> Duration {
+        self.at.saturating_duration_since(Instant::now())
+    }
+
     pub const fn death(&self) -> Death {
         Death::Timeout { tool: self.tool, deadline: self.budget }
     }
@@ -47,7 +51,10 @@ mod tests {
     fn deadline_is_fixed_when_created() {
         let deadline = Deadline::from_now("status", Duration::ZERO);
         assert!(deadline.has_passed());
-        assert!(!Deadline::from_now("status", Duration::from_secs(60)).has_passed());
+        assert_eq!(deadline.remaining(), Duration::ZERO);
+        let later = Deadline::from_now("status", Duration::from_secs(60));
+        assert!(!later.has_passed());
+        assert!(later.remaining() > Duration::from_secs(59) && later.remaining() <= Duration::from_secs(60));
     }
 
     #[test]

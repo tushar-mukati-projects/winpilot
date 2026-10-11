@@ -4,13 +4,15 @@ pub use crate::{
     budget::pick_wait,
     observe::{MediaFormat, ObserveArgs, ObserveMode, OcrMode},
     observe_request::{
-        AppsRequest, ElementsRequest, ImageFormat, ObserveRequest, ScreenshotRequest, SearchRequest, TextRequest,
+        AppsRequest, ClipboardRequest, ElementsRequest, ImageFormat, ObserveRequest, ScreenshotRequest, SearchRequest,
+        TextRequest,
     },
     quality::Quality,
     recording::{RecordAction, RecordReport, RecordRequest, RecordState, VideoFormat},
     reports::{
-        ActReport, After, AppInfo, AppKind, ClipboardReport, DiffReport, FindReport, Found, MonitorInfo, Observation,
-        ScreenshotReport, StatusReport, StepOutcome, TextReport, TextSource, Timing, WindowsReport,
+        ActReport, After, AppInfo, AppKind, AppsReport, ClipboardReport, DiffReport, Found, MonitorInfo,
+        MonitorsReport, Observation, ScreenshotReport, SearchReport, StatusReport, StepOutcome, TextReport, TextSource,
+        Timing, WindowsReport,
     },
     steps::{
         ActArgs, AfterMode, ClickHow, Direction, KeyAction, MouseAction, MouseButton, SetChange, Step, TypeHow,
@@ -33,11 +35,13 @@ pub enum Call {
 #[serde(rename_all = "snake_case")]
 pub enum Reply {
     Observation(Observation),
-    Find(FindReport),
+    Search(SearchReport),
     Text(TextReport),
     Screenshot(ScreenshotReport),
     Record(RecordReport),
     Windows(WindowsReport),
+    Monitors(MonitorsReport),
+    Apps(AppsReport),
     Clipboard(ClipboardReport),
     Status(StatusReport),
     Act(ActReport),

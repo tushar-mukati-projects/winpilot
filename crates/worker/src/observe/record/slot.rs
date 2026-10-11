@@ -27,6 +27,7 @@ pub struct Claim {
 pub struct RecordingSlot {
     state: State,
     attempts: u64,
+    closed: bool,
 }
 
 #[derive(Default)]
@@ -43,6 +44,9 @@ enum State {
 
 impl RecordingSlot {
     pub fn claim(&mut self) -> Result<Claim> {
+        if self.closed {
+            return Err(Error::new(ErrorCode::Cancelled, "Deckhand is shutting down, so no new recording can start"));
+        }
         self.settle();
         match &self.state {
             State::Recording(active) => return Err(busy(&format!("already recording to {}", active.path))),
@@ -70,6 +74,10 @@ impl RecordingSlot {
         if matches!(self.state, State::Starting { attempt, .. } if attempt == claim.attempt) {
             self.state = claim.replaced.map_or(State::Idle, State::Finished);
         }
+    }
+
+    pub const fn close(&mut self) {
+        self.closed = true;
     }
 
     pub fn cancel_start(&self) -> bool {
@@ -184,7 +192,7 @@ mod tests {
     const STARTED: Started = Started { width: 1920, height: 1200, fps: 30, clipped: false };
 
     fn finished_slot(report: RecordReport) -> RecordingSlot {
-        RecordingSlot { state: State::Finished(report), attempts: 0 }
+        RecordingSlot { state: State::Finished(report), attempts: 0, closed: false }
     }
 
     fn saved(path: &str) -> RecordReport {
@@ -265,6 +273,16 @@ mod tests {
         assert_eq!(claim.replaced.as_ref(), Some(&report));
         slot.abandon(claim);
         assert_eq!(slot.status(), report);
+    }
+
+    #[test]
+    fn a_closed_slot_refuses_new_recordings_but_still_reports() {
+        let report = saved("C:\\clips\\last.mp4");
+        let mut slot = finished_slot(report.clone());
+        slot.close();
+        assert_eq!(slot.claim().err().map(|error| error.code), Some(ErrorCode::Cancelled));
+        assert_eq!(slot.status(), report);
+        assert_eq!(slot.stop(), report);
     }
 
     #[test]

@@ -88,6 +88,11 @@ impl PillLayer {
         self.layer.hide();
     }
 
+    pub(crate) fn relabel(&mut self, label: &str) {
+        label.clone_into(&mut self.voice.label);
+        self.art = None;
+    }
+
     pub(crate) fn release_memory(&mut self) {
         self.art = None;
         self.fonts.release();

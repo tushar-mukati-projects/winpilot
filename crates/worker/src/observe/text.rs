@@ -1,20 +1,21 @@
-use deckhand_capture::{Frame, ocr};
+use deckhand_capture::ocr;
 use deckhand_core::{
     Element, ElementRef, Error, Rect, Result, Role, Snapshot, Target, WindowInfo,
+    object_marks::readable_lines,
     protocol::{OcrMode, TextReport, TextRequest, TextSource},
+    text_limit::{char_limit, truncated},
 };
 
 use crate::{
     call_scope::CallScope,
     default_window::default_window,
     engine::Engine,
-    frames, overlay,
+    frames::{self, Captured},
+    overlay,
     read_target::{ReadTarget, read_target},
     resolve,
 };
 
-const DEFAULT_MAX_CHARS: usize = 20_000;
-const MAX_CHARS_LIMIT: usize = 200_000;
 const OCR_FALLBACK_BELOW: usize = 40;
 const MAIN_TEXT_SHARE: f64 = 0.2;
 
@@ -22,18 +23,25 @@ const MAIN_TEXT_SHARE: f64 = 0.2;
 struct Reading {
     text: String,
     source: TextSource,
+    note: Option<&'static str>,
+}
+
+impl Reading {
+    const fn uia(text: String) -> Self {
+        Self { text, source: TextSource::Uia, note: None }
+    }
 }
 
 pub fn run(engine: &Engine, request: &TextRequest, call: &CallScope) -> Result<TextReport> {
-    let max = max_chars(request.max_chars);
+    let max = char_limit(request.max_chars);
     let reading = read(engine, request, max, call)?;
-    let (text, truncated) = truncate(reading.text, max);
-    Ok(TextReport { text, source: reading.source, truncated })
+    let (text, truncated) = truncated(readable_lines(&reading.text).into_owned(), max);
+    Ok(TextReport { text, source: reading.source, truncated, note: reading.note.map(str::to_string) })
 }
 
 fn read(engine: &Engine, request: &TextRequest, max: usize, call: &CallScope) -> Result<Reading> {
     if let Some(region) = request.region {
-        return ocr_frame(&frames::region(engine, region)?);
+        return ocr_capture(&frames::region(engine, region)?);
     }
     if let Some(window) = request.window.as_deref() {
         return scanned(engine, &resolve::window(engine, Some(window))?, request.ocr, max);
@@ -54,41 +62,46 @@ fn scanned(engine: &Engine, window: &WindowInfo, method: OcrMode, max: usize) ->
 fn element_text(engine: &Engine, target: &Target, method: OcrMode, max: usize, call: &CallScope) -> Result<Reading> {
     let resolved = resolve::target(engine, target, call)?;
     let element = resolved.element().cloned().ok_or_else(|| Error::invalid("the text target is not an element"))?;
-    let ocr_element = || frames::element(engine, &resolved.window, element.rect).and_then(|frame| ocr_frame(&frame));
+    let ocr_element =
+        || frames::element(engine, &resolved.window, element.rect).and_then(|captured| ocr_capture(&captured));
     if method == OcrMode::Always {
         return ocr_element();
     }
     let text = uia_text(engine, element.id, max)?;
-    if method == OcrMode::Auto && text.trim().is_empty() {
-        return Ok(ocr_element().unwrap_or(Reading { text, source: TextSource::Uia }));
+    if method == OcrMode::Auto && readable_lines(&text).trim().is_empty() {
+        return Ok(ocr_element().unwrap_or(Reading::uia(text)));
     }
-    Ok(Reading { text, source: TextSource::Uia })
+    Ok(Reading::uia(text))
 }
 
 fn window_text(engine: &Engine, window: &WindowInfo, method: OcrMode, max: usize) -> Result<Reading> {
     engine.guard.check_window(window)?;
     if method == OcrMode::Always {
-        return ocr_frame(&frames::window(engine, window)?);
+        return ocr_capture(&frames::window(engine, window)?);
     }
     let text = snapshot_text(engine, &engine.snapshot(window)?, max)?;
-    if method == OcrMode::Auto && text.trim().chars().count() < OCR_FALLBACK_BELOW {
+    if method == OcrMode::Auto && readable_chars(&text) < OCR_FALLBACK_BELOW {
         return Ok(ocr_fallback(engine, window, text));
     }
-    Ok(Reading { text, source: TextSource::Uia })
+    Ok(Reading::uia(text))
+}
+
+fn readable_chars(text: &str) -> usize {
+    readable_lines(text).trim().chars().count()
 }
 
 fn ocr_fallback(engine: &Engine, window: &WindowInfo, uia: String) -> Reading {
-    let longer = |reading: &Reading| reading.text.trim().chars().count() > uia.trim().chars().count();
-    match frames::window(engine, window).and_then(|frame| ocr_frame(&frame)) {
+    let longer = |reading: &Reading| readable_chars(&reading.text) > readable_chars(&uia);
+    match frames::window(engine, window).and_then(|captured| ocr_capture(&captured)) {
         Ok(reading) if longer(&reading) => reading,
-        _ => Reading { text: uia, source: TextSource::Uia },
+        _ => Reading::uia(uia),
     }
 }
 
 fn snapshot_text(engine: &Engine, snapshot: &Snapshot, max: usize) -> Result<String> {
     if let Some(id) = main_text_element(snapshot) {
         let text = uia_text(engine, id, max)?;
-        if !text.trim().is_empty() {
+        if !readable_lines(&text).trim().is_empty() {
             return Ok(text);
         }
     }
@@ -150,24 +163,10 @@ fn uia_text(engine: &Engine, id: ElementRef, max: usize) -> Result<String> {
     engine.uia.run(move |uia| uia.text(id, wanted))
 }
 
-fn ocr_frame(frame: &Frame) -> Result<Reading> {
-    let lines = ocr(frame)?;
+fn ocr_capture(captured: &Captured) -> Result<Reading> {
+    let lines = ocr(&captured.frame)?;
     let text = lines.iter().map(|line| line.text.as_str()).collect::<Vec<_>>().join("\n");
-    Ok(Reading { text, source: TextSource::Ocr })
-}
-
-fn max_chars(requested: Option<u32>) -> usize {
-    requested.map_or(DEFAULT_MAX_CHARS, |max| max as usize).clamp(1, MAX_CHARS_LIMIT)
-}
-
-fn truncate(mut text: String, max: usize) -> (String, bool) {
-    match text.char_indices().nth(max) {
-        Some((cut, _)) => {
-            text.truncate(cut);
-            (text, true)
-        }
-        None => (text, false),
-    }
+    Ok(Reading { text, source: TextSource::Ocr, note: captured.note })
 }
 
 #[cfg(test)]
@@ -244,7 +243,7 @@ mod tests {
         let chosen = main_text_element(&snapshot).expect("a visible Chrome window has a page document");
         let page = snapshot.elements.iter().find(|element| element.id == chosen).unwrap();
         assert_eq!(page.role, Role::Document);
-        let text = snapshot_text(engine(), &snapshot, DEFAULT_MAX_CHARS).unwrap();
+        let text = snapshot_text(engine(), &snapshot, deckhand_core::text_limit::DEFAULT_MAX_CHARS).unwrap();
         let address = page.value.as_deref().unwrap_or_default().trim();
         assert!(
             address.is_empty() || text.trim() != address,
@@ -253,18 +252,13 @@ mod tests {
     }
 
     #[test]
-    fn max_chars_defaults_and_clamps() {
-        assert_eq!(max_chars(None), 20_000);
-        assert_eq!(max_chars(Some(0)), 1);
-        assert_eq!(max_chars(Some(50)), 50);
-        assert_eq!(max_chars(Some(u32::MAX)), 200_000);
-    }
-
-    #[test]
-    fn truncates_on_char_boundaries() {
-        assert_eq!(truncate("héllo".to_string(), 2), ("hé".to_string(), true));
-        assert_eq!(truncate("日本語".to_string(), 3), ("日本語".to_string(), false));
-        assert_eq!(truncate("hi".to_string(), 5), ("hi".to_string(), false));
+    fn a_slack_style_tree_reads_without_object_marks() {
+        let elements = vec![
+            element(1, 0, Role::Text, "general"),
+            element(2, 1, Role::Text, "\u{FFFC}"),
+            element(3, 1, Role::Text, "hi \u{FFFC}there"),
+        ];
+        assert_eq!(readable_lines(&collect_lines(&elements, 1000)), "general\nhi there");
     }
 
     #[test]
@@ -293,7 +287,7 @@ mod tests {
         let elements: Vec<Element> = (1..=50).map(|id| element(id, 1, Role::Text, &format!("line {id}"))).collect();
         let text = collect_lines(&elements, 20);
         assert_eq!(text, "line 1\nline 2\nline 3\nline 4");
-        assert_eq!(truncate(text, 20), ("line 1\nline 2\nline 3".to_string(), true));
+        assert_eq!(truncated(text, 20), ("line 1\nline 2\nline 3".to_string(), true));
         assert_eq!(collect_lines(&elements[..3], 20), "line 1\nline 2\nline 3");
     }
 

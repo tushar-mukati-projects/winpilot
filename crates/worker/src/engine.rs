@@ -75,10 +75,10 @@ impl Engine {
         })
     }
 
-    pub fn handle(&self, call: &Call, cancel: &Cancel) -> Result<Reply> {
+    pub fn handle(&self, call: &Call, cancel: &Cancel, budget: Duration) -> Result<Reply> {
         let started = Instant::now();
         let label = call.label();
-        let scope = CallScope::new(cancel.clone(), working_deadline(started, call.deadline()));
+        let scope = CallScope::new(cancel.clone(), working_deadline(started, budget));
         let result = self.dispatch(call, &scope);
         self.record(label, started.elapsed(), result.is_ok());
         result
@@ -108,6 +108,16 @@ impl Engine {
             include_offscreen: false,
             budget: self.snapshot_budget(),
         }
+    }
+
+    pub fn rename_agent(&self, agent: &str) {
+        if let Some(overlay) = &self.overlay {
+            overlay.relabel(self.config.overlay.display_label(agent));
+        }
+    }
+
+    pub fn begin_shut_down(&self) {
+        self.recording.lock().close();
     }
 
     pub fn shut_down(&self) {

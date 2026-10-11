@@ -11,7 +11,7 @@ use crate::{
     call_scope::CallScope,
     default_window::default_window,
     engine::Engine,
-    frames,
+    frames::{self, Captured},
     images::ImageRecord,
     overlay,
     read_target::{ReadTarget, read_target},
@@ -35,6 +35,7 @@ struct Shot {
     frame: Frame,
     label: String,
     window: Option<WindowInfo>,
+    note: Option<&'static str>,
 }
 
 pub fn run(engine: &Engine, args: &ScreenshotRequest, call: &CallScope) -> Result<ScreenshotReport> {
@@ -67,11 +68,12 @@ fn source(args: &ScreenshotRequest) -> Result<Source> {
 fn take(engine: &Engine, source: Source, call: &CallScope) -> Result<Shot> {
     match source {
         Source::Region(rect) => {
-            Ok(Shot { frame: frames::region(engine, rect)?, label: region_label(rect), window: None })
+            let Captured { frame, note } = frames::region(engine, rect)?;
+            Ok(Shot { frame, label: region_label(rect), window: None, note })
         }
         Source::Monitor(index) => {
-            let frame = frames::monitor(engine, index)?;
-            Ok(Shot { label: monitor_label(index, &frame), frame, window: None })
+            let Captured { frame, note } = frames::monitor(engine, index)?;
+            Ok(Shot { label: monitor_label(index, &frame), frame, window: None, note })
         }
         Source::Target(ReadTarget::DefaultWindow) => window_shot(engine, default_window(engine)?),
         Source::Target(ReadTarget::Window(spec)) => window_shot(engine, resolve::window(engine, Some(&spec))?),
@@ -80,17 +82,17 @@ fn take(engine: &Engine, source: Source, call: &CallScope) -> Result<Shot> {
 }
 
 fn window_shot(engine: &Engine, window: WindowInfo) -> Result<Shot> {
-    let frame = frames::window(engine, &window)?;
+    let Captured { frame, note } = frames::window(engine, &window)?;
     let label = with_source(&window_line(&window), frame.source);
-    Ok(Shot { frame, label, window: Some(window) })
+    Ok(Shot { frame, label, window: Some(window), note })
 }
 
 fn element_shot(engine: &Engine, target: &Target, call: &CallScope) -> Result<Shot> {
     let resolved = resolve::target(engine, target, call)?;
     let element = resolved.element().ok_or_else(|| Error::invalid("the screenshot target is not an element"))?;
-    let frame = frames::element(engine, &resolved.window, element.rect)?;
+    let Captured { frame, note } = frames::element(engine, &resolved.window, element.rect)?;
     let label = with_source(&format!("{} in {}", element.id, window_line(&resolved.window)), frame.source);
-    Ok(Shot { frame, label, window: Some(resolved.window) })
+    Ok(Shot { frame, label, window: Some(resolved.window), note })
 }
 
 pub fn with_source(label: &str, source: FrameSource) -> String {
@@ -131,7 +133,7 @@ fn report(engine: &Engine, shot: &Shot, options: &EncodeOptions, marks: &[Mark])
         window: shot.window.as_ref().map(|window| window.hwnd),
     };
     let image = engine.images.lock().insert(record);
-    overlay::screenshot(engine, shot.frame.rect());
+    overlay::screenshot(engine, shot.frame.rect(), shot.window.as_ref());
     Ok(ScreenshotReport {
         image,
         mime: encoded.mime.to_string(),
@@ -141,6 +143,7 @@ fn report(engine: &Engine, shot: &Shot, options: &EncodeOptions, marks: &[Mark])
         mapping,
         source: shot.label.clone(),
         quality: (options.format == ImageFormat::Jpeg).then_some(options.quality),
+        note: shot.note.map(str::to_string),
     })
 }
 

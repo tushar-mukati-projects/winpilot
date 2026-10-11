@@ -8,11 +8,12 @@ use crate::{
     geometry::Rect,
     observe_fields::check_fields,
     observe_request::{
-        AppsRequest, DEFAULT_APPS, DEFAULT_ELEMENTS, DEFAULT_MATCHES, ElementsRequest, ImageFormat, ObserveRequest,
-        ScreenshotRequest, SearchRequest, TextRequest,
+        AppsRequest, ClipboardRequest, DEFAULT_APPS, DEFAULT_ELEMENTS, DEFAULT_MATCHES, ElementsRequest, ImageFormat,
+        ObserveRequest, ScreenshotRequest, SearchRequest, TextRequest,
     },
     quality::Quality,
     recording::{RecordAction, RecordRequest, VideoFormat},
+    text_limit::char_limit,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -81,7 +82,7 @@ pub struct ObserveArgs {
     pub monitor: Option<u32>,
     #[schemars(description = "text: auto (default: UI Automation text, OCR as fallback), never or always.")]
     pub ocr: Option<OcrMode>,
-    #[schemars(description = "text: maximum characters (default 20000).")]
+    #[schemars(description = "text, clipboard: maximum characters (default 20000, at most 200000).")]
     pub max_chars: Option<u32>,
     #[schemars(
         description = "screenshot: low (960 px, q60), medium (default, 1280 px, q80), high (1600 px, q88) or max (native, up to 8000 px, q95)."
@@ -184,7 +185,9 @@ impl ObserveArgs {
             ObserveMode::Windows => Ok(ObserveRequest::Windows),
             ObserveMode::Monitors => Ok(ObserveRequest::Monitors),
             ObserveMode::Apps => Ok(ObserveRequest::Apps(self.apps())),
-            ObserveMode::Clipboard => Ok(ObserveRequest::Clipboard),
+            ObserveMode::Clipboard => {
+                Ok(ObserveRequest::Clipboard(ClipboardRequest { max_chars: char_limit(self.max_chars) }))
+            }
             ObserveMode::Status => Ok(ObserveRequest::Status),
         }
     }
@@ -193,7 +196,7 @@ impl ObserveArgs {
         ObserveFormat {
             all: self.all.unwrap_or(false),
             coords: self.coords.unwrap_or(false),
-            max: self.max.map_or(DEFAULT_ELEMENTS, |max| max as usize),
+            max: self.max.map_or(DEFAULT_ELEMENTS, |max| max.max(1) as usize),
         }
     }
 
@@ -201,8 +204,7 @@ impl ObserveArgs {
         if self.all_windows != Some(true) {
             return Ok(ObserveRequest::Elements(ElementsRequest {
                 window: self.window.clone(),
-                query: self.query.clone(),
-                view: self.view(),
+                query: non_blank(self.query.as_ref()),
             }));
         }
         self.search().map(ObserveRequest::Search)
@@ -313,21 +315,23 @@ mod tests {
 
     #[test]
     fn an_empty_call_observes_the_default_window() {
-        assert_eq!(
-            request("{}"),
-            ObserveRequest::Elements(ElementsRequest { window: None, query: None, view: ObserveFormat::default() })
-        );
+        assert_eq!(request("{}"), ObserveRequest::Elements(ElementsRequest { window: None, query: None }));
+        assert_eq!(args("{}").view(), ObserveFormat::default());
     }
 
     #[test]
     fn element_options_shape_the_view() {
-        let ObserveRequest::Elements(found) =
-            request(r#"{"window":"w5","query":"role:button","all":true,"coords":true,"max":40}"#)
-        else {
-            panic!("expected elements")
-        };
+        let json = r#"{"window":"w5","query":"role:button","all":true,"coords":true,"max":40}"#;
+        let ObserveRequest::Elements(found) = request(json) else { panic!("expected elements") };
         assert_eq!((found.window.as_deref(), found.query.as_deref()), (Some("w5"), Some("role:button")));
-        assert_eq!(found.view, ObserveFormat { all: true, coords: true, max: 40 });
+        assert_eq!(args(json).view(), ObserveFormat { all: true, coords: true, max: 40 });
+    }
+
+    #[test]
+    fn a_blank_query_means_no_filter_and_max_zero_lists_one() {
+        let ObserveRequest::Elements(found) = request(r#"{"query":"  "}"#) else { panic!("expected elements") };
+        assert_eq!(found.query, None);
+        assert_eq!(args(r#"{"max":0}"#).view().max, 1);
     }
 
     #[test]
@@ -438,11 +442,21 @@ mod tests {
         for (json, expected) in [
             (r#"{"mode":"windows"}"#, ObserveRequest::Windows),
             (r#"{"mode":"monitors"}"#, ObserveRequest::Monitors),
-            (r#"{"mode":"clipboard"}"#, ObserveRequest::Clipboard),
+            (r#"{"mode":"clipboard"}"#, ObserveRequest::Clipboard(ClipboardRequest { max_chars: 20_000 })),
             (r#"{"mode":"status"}"#, ObserveRequest::Status),
         ] {
             assert_eq!(request(json), expected, "{json}");
         }
+    }
+
+    #[test]
+    fn clipboard_text_is_capped_like_text_mode() {
+        let capped = request(r#"{"mode":"clipboard","max_chars":0}"#);
+        assert_eq!(capped, ObserveRequest::Clipboard(ClipboardRequest { max_chars: 1 }));
+        assert_eq!(
+            request(r#"{"mode":"clipboard","max_chars":500}"#),
+            ObserveRequest::Clipboard(ClipboardRequest { max_chars: 500 })
+        );
     }
 
     #[test]

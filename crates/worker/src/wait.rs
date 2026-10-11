@@ -48,6 +48,9 @@ pub fn until(
                 presence::locate(engine, target, scope).map(|found| disappears(&label, found))
             })
         }
+        WaitCondition::WindowOpen { title } => {
+            poll(engine, timeout, &Watch::any(), call, || windows::open(engine, title))
+        }
         WaitCondition::WindowOpens { title } => {
             poll(engine, timeout, &Watch::any(), call, || windows::opens(engine, title, before))
         }

@@ -13,7 +13,7 @@ pub const DEFAULT_WAIT: Duration = Duration::from_secs(5);
 pub const MAX_WAIT: Duration = Duration::from_secs(60);
 pub const DEFAULT_IDLE: Duration = Duration::from_millis(300);
 pub const MAX_PLAIN_WAIT: Duration = Duration::from_secs(5);
-const MAX_WAIT_MS: u64 = 60_000;
+const MAX_PAUSE_MS: u64 = 5_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -22,6 +22,7 @@ pub enum Until {
     Appears,
     Disappears,
     Window,
+    WindowOpens,
     WindowClosed,
     Text,
     Idle,
@@ -32,12 +33,12 @@ pub enum Until {
 pub struct WaitArgs {
     #[serde(default)]
     #[schemars(
-        description = "time (the default when only ms is given), appears/disappears (target), window/window_closed (window title), text (text) or idle."
+        description = "time (the default when only ms is given), appears/disappears (target), window (a window matching the title is open; met at once if one already is), window_opens (a matching window that was not open when this act call began), window_closed (no matching window is open), text (text) or idle."
     )]
     pub until: Option<Until>,
     #[serde(default)]
     #[schemars(
-        description = "time: milliseconds to pause, capped at 5000. idle: how long the UI must stay quiet (default 300)."
+        description = "time: milliseconds to pause, at most 5000. idle: how long the UI must stay quiet (default 300)."
     )]
     pub ms: Option<u64>,
     #[serde(default)]
@@ -47,7 +48,9 @@ pub struct WaitArgs {
     #[schemars(description = "text: the text to wait for.")]
     pub text: Option<String>,
     #[serde(default)]
-    #[schemars(description = "window/window_closed: window title text. appears/disappears/text: the window to watch.")]
+    #[schemars(
+        description = "window, window_opens, window_closed: window title text. appears/disappears/text: the window to watch."
+    )]
     pub window: Option<String>,
     #[serde(default)]
     #[schemars(description = "Give up after this long (default 5000, max 60000).")]
@@ -59,6 +62,7 @@ pub enum WaitCondition {
     Time { wanted: Duration },
     Appears { target: Target, window: Option<String> },
     Disappears { target: Target, window: Option<String> },
+    WindowOpen { title: String },
     WindowOpens { title: String },
     WindowCloses { title: String },
     Text { text: String, window: Option<String> },
@@ -72,6 +76,7 @@ impl Until {
             Self::Appears => "appears",
             Self::Disappears => "disappears",
             Self::Window => "window",
+            Self::WindowOpens => "window_opens",
             Self::WindowClosed => "window_closed",
             Self::Text => "text",
             Self::Idle => "idle",
@@ -82,7 +87,7 @@ impl Until {
         match self {
             Self::Time => &["ms"],
             Self::Appears | Self::Disappears => &["target", "window", "timeout_ms"],
-            Self::Window | Self::WindowClosed => &["window", "timeout_ms"],
+            Self::Window | Self::WindowOpens | Self::WindowClosed => &["window", "timeout_ms"],
             Self::Text => &["text", "window", "timeout_ms"],
             Self::Idle => &["ms", "timeout_ms"],
         }
@@ -107,7 +112,10 @@ impl WaitArgs {
             Until::Disappears => {
                 Ok(WaitCondition::Disappears { target: self.required_target()?, window: self.scope() })
             }
-            Until::Window => Ok(WaitCondition::WindowOpens { title: self.required(self.window.as_ref(), "window")? }),
+            Until::Window => Ok(WaitCondition::WindowOpen { title: self.required(self.window.as_ref(), "window")? }),
+            Until::WindowOpens => {
+                Ok(WaitCondition::WindowOpens { title: self.required(self.window.as_ref(), "window")? })
+            }
             Until::WindowClosed => {
                 Ok(WaitCondition::WindowCloses { title: self.required(self.window.as_ref(), "window")? })
             }
@@ -141,9 +149,9 @@ impl WaitArgs {
 
     fn time(&self) -> Result<WaitCondition> {
         let ms = self.ms.ok_or_else(|| Error::invalid("until=time needs \"ms\""))?;
-        if ms > MAX_WAIT_MS {
+        if ms > MAX_PAUSE_MS {
             return Err(Error::invalid(format!(
-                "wait ms must be at most {MAX_WAIT_MS}, got {ms}; use until to wait for a change"
+                "a plain wait pauses at most {MAX_PAUSE_MS} ms, got {ms}; use until to wait for a change"
             )));
         }
         Ok(WaitCondition::Time { wanted: Duration::from_millis(ms) })
@@ -201,14 +209,14 @@ mod tests {
             WaitCondition::Time { wanted: Duration::from_millis(250) }
         );
         assert_eq!(
-            wait(r#"{"until":"time","ms":60000}"#).validate().unwrap(),
-            WaitCondition::Time { wanted: MAX_WAIT }
+            wait(r#"{"until":"time","ms":5000}"#).validate().unwrap(),
+            WaitCondition::Time { wanted: MAX_PLAIN_WAIT }
         );
         assert_eq!(invalid(r#"{"until":"time"}"#), "until=time needs \"ms\"");
         assert_eq!(invalid("{}"), "wait needs ms (to pause) or until (to wait for a change)");
         assert_eq!(
-            invalid(r#"{"ms":60001}"#),
-            "wait ms must be at most 60000, got 60001; use until to wait for a change"
+            invalid(r#"{"ms":5001}"#),
+            "a plain wait pauses at most 5000 ms, got 5001; use until to wait for a change"
         );
         assert_eq!(invalid(r#"{"ms":10,"timeout_ms":100}"#), "timeout_ms does not apply to wait until=time");
     }
@@ -231,6 +239,23 @@ mod tests {
             "target does not apply to wait until=window"
         );
         assert_eq!(invalid(r#"{"until":"idle","text":"x"}"#), "text does not apply to wait until=idle");
+    }
+
+    #[test]
+    fn window_means_open_now_and_window_opens_means_new() {
+        assert_eq!(
+            wait(r#"{"until":"window","window":"Save As"}"#).validate().unwrap(),
+            WaitCondition::WindowOpen { title: "Save As".to_string() }
+        );
+        assert_eq!(
+            wait(r#"{"until":"window_opens","window":"Save As"}"#).validate().unwrap(),
+            WaitCondition::WindowOpens { title: "Save As".to_string() }
+        );
+        assert_eq!(invalid(r#"{"until":"window_opens"}"#), "until=window_opens needs \"window\"");
+        assert_eq!(
+            invalid(r#"{"until":"window_opens","window":"x","text":"y"}"#),
+            "text does not apply to wait until=window_opens"
+        );
     }
 
     #[test]

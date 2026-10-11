@@ -6,14 +6,14 @@ use std::{
 };
 
 use deckhand_capture::StopCheck;
-use deckhand_core::{Context, Error, ErrorCode, Result, WindowInfo, config::GuardConfig, keys::parse_chord};
+use deckhand_core::{Context, Error, ErrorCode, Result, WindowInfo, config::GuardConfig};
 use deckhand_desktop::{
     overlay::Overlay,
     sync::{NamedEvent, NamedMutex, NamedMutexGuard},
 };
-use deckhand_input::{ActivityMonitor, HotkeyListener};
+use deckhand_input::ActivityMonitor;
 
-use crate::call_scope::CallScope;
+use crate::{call_scope::CallScope, kill_switch::KillSwitch};
 
 const STOP_EVENT: &str = "Local\\deckhand-stopped";
 const ACTOR_MUTEX: &str = "Local\\deckhand-actor";
@@ -26,7 +26,7 @@ pub struct Guard {
     stop: Arc<NamedEvent>,
     actor: NamedMutex,
     activity: Option<ActivityMonitor>,
-    hotkey: Option<HotkeyListener>,
+    kill_switch: KillSwitch,
     elevated: bool,
 }
 
@@ -35,9 +35,9 @@ impl Guard {
         let stop = Arc::new(NamedEvent::create(STOP_EVENT)?);
         let actor = NamedMutex::create(ACTOR_MUTEX)?;
         let activity = ActivityMonitor::spawn().inspect_err(|error| warn("user-activity monitor", error)).ok();
-        let hotkey = spawn_kill_switch(&config.kill_hotkey, &stop, overlay);
+        let kill_switch = KillSwitch::spawn(&config.kill_hotkey, &stop, overlay);
         let elevated = deckhand_desktop::own_process_elevated();
-        Ok(Self { config: config.clone(), stop, actor, activity, hotkey, elevated })
+        Ok(Self { config: config.clone(), stop, actor, activity, kill_switch, elevated })
     }
 
     pub fn is_stopped(&self) -> bool {
@@ -54,7 +54,7 @@ impl Guard {
     }
 
     pub fn hotkey_registered(&self) -> bool {
-        self.hotkey.as_ref().is_some_and(HotkeyListener::is_registered)
+        self.kill_switch.registered()
     }
 
     pub fn user_idle(&self) -> Option<Duration> {
@@ -177,31 +177,6 @@ fn busy(cut_short: bool) -> Error {
         return Error::timeout(format!("{BUSY}, and this call ran out of time waiting for it"));
     }
     Error::new(ErrorCode::Busy, format!("{BUSY}; try again shortly"))
-}
-
-fn spawn_kill_switch(spec: &str, stop: &Arc<NamedEvent>, overlay: Option<Arc<Overlay>>) -> Option<HotkeyListener> {
-    let chord = parse_chord(spec).inspect_err(|error| warn("kill hotkey", error)).ok()?;
-    let stop = Arc::clone(stop);
-    let pressed = move || toggle(&stop, overlay.as_deref());
-    HotkeyListener::spawn(chord, pressed).inspect_err(|error| warn("kill hotkey", error)).ok()
-}
-
-fn toggle(stop: &NamedEvent, overlay: Option<&Overlay>) {
-    let stopping = !stop.is_set();
-    let result = if stopping { stop.set() } else { stop.reset() };
-    match result {
-        Ok(()) => announce(overlay, stopping),
-        Err(error) => warn("kill switch", &error),
-    }
-}
-
-fn announce(overlay: Option<&Overlay>, stopping: bool) {
-    let Some(overlay) = overlay else { return };
-    if stopping {
-        overlay.stopped();
-    } else {
-        overlay.resumed();
-    }
 }
 
 fn warn(what: &str, error: &Error) {

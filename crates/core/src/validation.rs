@@ -3,7 +3,7 @@ use std::{fmt::Display, ops::RangeInclusive};
 use crate::{
     error::{Error, Result},
     geometry::{COORD_LIMIT, Rect},
-    glide::MAX_GLIDE_MS,
+    glide_timing::MAX_GLIDE_MS,
     keys::parse_keys,
     observe::OcrMode,
     observe_request::{ScreenshotRequest, TextRequest},
@@ -326,6 +326,10 @@ mod tests {
             ),
             (r#"{"do":"wait","until":"text"}"#, "until=text needs \"text\""),
             (
+                r#"{"do":"wait","ms":60000}"#,
+                "a plain wait pauses at most 5000 ms, got 60000; use until to wait for a change",
+            ),
+            (
                 r#"{"do":"mouse","action":"move","target":"e1","glide_ms":3001}"#,
                 "glide_ms must be at most 3000, got 3001",
             ),
@@ -339,7 +343,7 @@ mod tests {
             r#"{"do":"key","keys":"tab","repeat":100}"#,
             r#"{"do":"mouse","action":"scroll","direction":"up","amount":50}"#,
             r#"{"do":"mouse","action":"scroll","direction":"up"}"#,
-            r#"{"do":"wait","ms":60000}"#,
+            r#"{"do":"wait","ms":5000}"#,
             r#"{"do":"mouse","action":"move","target":"e1","glide_ms":3000}"#,
             r#"{"do":"mouse","action":"down","target":"e1","button":"right","glide_ms":0}"#,
             r#"{"do":"mouse","action":"up"}"#,

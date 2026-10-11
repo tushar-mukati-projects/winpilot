@@ -89,7 +89,8 @@ impl Supervisor {
     ) -> Result<Reply> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let mut reply = link.register(id)?;
-        if let Err(error) = link.send(ToWorker::Call { id, call }) {
+        let deadline_ms = duration_ms(deadline.remaining());
+        if let Err(error) = link.send(ToWorker::Call { id, call, deadline_ms }) {
             link.forget(id);
             return Err(error);
         }
@@ -122,6 +123,10 @@ impl ShutdownHandle {
     pub fn shut_down(&self) {
         self.0.shut_down();
     }
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 async fn outcome_of(mut attempt: Attempt) -> Result<Arc<Link>> {
@@ -212,7 +217,7 @@ mod tests {
 
     fn clipboard_text(reply: &Result<Reply>) -> Option<String> {
         match reply {
-            Ok(Reply::Clipboard(ClipboardReport { text })) => text.clone(),
+            Ok(Reply::Clipboard(ClipboardReport { text, .. })) => text.clone(),
             _ => None,
         }
     }
@@ -403,17 +408,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn worker_version_mismatch_fails_startup() {
+    async fn a_worker_from_another_build_fails_startup() {
         let (supervisor, _) = supervisor(|_, mut worker| {
-            worker.handshake_as("0.0.0-old");
+            worker.handshake_as("0.1.0+1.feedfacefeedface");
             drain(worker);
         });
         let error = call(&supervisor, Call::status(), LONG).await.unwrap_err();
         assert_eq!(error.code, ErrorCode::TargetNotResponding);
         let expected = format!(
-            "worker version 0.0.0-old does not match server version {}; restart Claude Code to load the new \
-             Deckhand build",
-            crate::VERSION
+            "a newer Deckhand was installed (worker {} build 0.1.0+1.feedfacefeedface, this server {} build {}); \
+             restart Claude Code to load it",
+            crate::VERSION,
+            crate::VERSION,
+            crate::BUILD_ID
         );
         assert!(error.message.contains(&expected), "{}", error.message);
         assert_eq!(supervisor.restarts(), 0);
@@ -581,7 +588,7 @@ mod tests {
             worker.answer(&warm_up);
             let Some(ToWorker::Call { id, .. }) = worker.receive() else { return };
             let _ = worker.receive();
-            worker.reply(id, Ok(Reply::Clipboard(ClipboardReport { text: None })));
+            worker.reply(id, Ok(Reply::Clipboard(ClipboardReport { text: None, truncated: false })));
             echo_after_handshake(worker);
         });
         call(&supervisor, set_clipboard("warm"), LONG).await.unwrap();

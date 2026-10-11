@@ -116,6 +116,7 @@ impl OverlayThread {
                 let _confirmed = confirm.send(());
             }
             OverlayCommand::Unconceal => self.concealed = self.concealed.saturating_sub(1),
+            OverlayCommand::Relabel(label) => self.stage.relabel(&label),
         }
     }
 

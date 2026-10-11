@@ -126,6 +126,7 @@ fn wait_summary(args: &WaitArgs) -> String {
         Until::Appears => format!("wait until {} appears", field(&args.target)),
         Until::Disappears => format!("wait until {} disappears", field(&args.target)),
         Until::Window => format!("wait for window {}", field(&args.window)),
+        Until::WindowOpens => format!("wait for window {} to open", field(&args.window)),
         Until::WindowClosed => format!("wait for window {} to close", field(&args.window)),
         Until::Text => format!("wait for text {}", quoted(args.text.as_deref().unwrap_or_default(), TEXT_LIMIT)),
         Until::Idle => match args.ms {

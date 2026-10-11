@@ -18,6 +18,7 @@ pub(crate) enum OverlayCommand {
     Screenshot(Rect),
     Keystrokes(Rect, ChipText),
     Scan(Rect),
+    Relabel(String),
     Conceal(Sender<()>),
     Unconceal,
 }

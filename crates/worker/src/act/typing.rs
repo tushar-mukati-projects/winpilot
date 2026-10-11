@@ -54,7 +54,7 @@ fn type_for_real(
     if let Some(element) = &focused.element {
         overlay::focus_field(engine, element.rect);
     }
-    overlay::typing(engine, &focused.window, request.text.chars().count());
+    overlay::typing(engine, &focused.window);
     let typing = choose_typing(request.how, request.text.chars().count(), clipboard_holds_only_text);
     let (method, restore_note) = enter_text(engine, &focused, request.text, typing, call)?;
     if request.enter {

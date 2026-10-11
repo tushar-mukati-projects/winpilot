@@ -22,17 +22,28 @@ pub enum ToWorker {
     Call {
         id: u64,
         call: Call,
+        deadline_ms: u64,
     },
     Cancel {
         id: u64,
+    },
+    Agent {
+        name: String,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FromWorker {
-    Ready { version: String },
-    Reply { id: u64, result: Box<Result<Reply, Error>> },
+    Ready {
+        version: String,
+        #[serde(default)]
+        build: String,
+    },
+    Reply {
+        id: u64,
+        result: Box<Result<Reply, Error>>,
+    },
 }
 
 pub fn write_frame<W: Write, T: Serialize>(writer: &mut W, message: &T) -> io::Result<()> {
@@ -87,7 +98,7 @@ mod tests {
     fn frames_round_trip() {
         let mut buffer = Vec::new();
         let clipboard = ObserveArgs { mode: ObserveMode::Clipboard, ..ObserveArgs::default() };
-        let call = ToWorker::Call { id: 7, call: Call::Observe(clipboard) };
+        let call = ToWorker::Call { id: 7, call: Call::Observe(clipboard), deadline_ms: 4000 };
         write_frame(&mut buffer, &call).unwrap();
         write_frame(&mut buffer, &ToWorker::Cancel { id: 7 }).unwrap();
         let mut reader = buffer.as_slice();
@@ -132,5 +143,11 @@ mod tests {
     fn oversized_header_is_rejected() {
         let header = (MAX_FRAME_BYTES as u32 + 1).to_le_bytes();
         assert!(read_frame::<_, ToWorker>(&mut header.as_slice()).is_err());
+    }
+
+    #[test]
+    fn a_ready_without_a_build_id_still_parses_so_the_mismatch_can_be_reported() {
+        let ready: FromWorker = serde_json::from_str(r#"{"ready":{"version":"0.1.0"}}"#).unwrap();
+        assert_eq!(ready, FromWorker::Ready { version: "0.1.0".to_string(), build: String::new() });
     }
 }

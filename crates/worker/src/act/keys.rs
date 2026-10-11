@@ -7,7 +7,7 @@ use deckhand_core::{
 use super::{
     done::{Done, via_focus_click},
     focus::keyboard_target,
-    key_labels::chord_labels,
+    key_labels::key_chips,
     settle,
     target::Prepared,
 };
@@ -30,7 +30,7 @@ pub fn step(engine: &Engine, target: Option<&Prepared>, request: &KeyRequest<'_>
     if let Some(element) = &focused.element {
         overlay::focus_field(engine, element.rect);
     }
-    overlay::keystrokes(engine, &focused.window, chord_labels(&chords));
+    overlay::key_chips(engine, &focused.window, key_chips(&chords));
     let note = match request.action {
         KeyAction::Down => hold(&chords, call).map(|()| Some(HELD.to_string()))?,
         KeyAction::Press | KeyAction::Up => press(engine, &chords, request.repeat, call).map(|()| None)?,

@@ -123,7 +123,7 @@ impl Default for GuardConfig {
             deny_paths: Vec::new(),
             yield_ms: 600,
             yield_timeout_ms: 5000,
-            kill_hotkey: "ctrl+alt+shift+backspace".to_string(),
+            kill_hotkey: "ctrl+alt+escape".to_string(),
         }
     }
 }

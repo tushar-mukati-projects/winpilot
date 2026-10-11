@@ -13,6 +13,8 @@ mod frames;
 mod guard;
 mod host;
 mod images;
+mod in_flight;
+mod kill_switch;
 mod observe;
 mod on_screen;
 mod overlay;

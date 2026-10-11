@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -13,13 +14,15 @@ use crate::{call_scope::CallScope, test_fixture::engine};
 
 const OUTPUT_FOLDER_VARIABLE: &str = "DECKHAND_RECORD_TEST_DIR";
 
+static NEXT_SCRATCH: AtomicUsize = AtomicUsize::new(0);
+
 struct Scratch(PathBuf);
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let root = std::env::var_os(OUTPUT_FOLDER_VARIABLE)
-            .map_or_else(|| std::env::temp_dir().join("deckhand-record-tests"), PathBuf::from);
-        let folder = root.join(name);
+        let root = std::env::var_os(OUTPUT_FOLDER_VARIABLE).map_or_else(std::env::temp_dir, PathBuf::from);
+        let serial = NEXT_SCRATCH.fetch_add(1, Ordering::Relaxed);
+        let folder = root.join(format!("deckhand-record-test-{name}-{}-{serial}", std::process::id()));
         fs::create_dir_all(&folder).unwrap();
         Self(folder)
     }
@@ -105,7 +108,8 @@ fn a_monitor_mp4_stops_itself_at_max_seconds() {
     }
     let finished = action(RecordAction::Status);
     assert_eq!(finished.state, RecordState::Finished);
-    assert_eq!(finished.note.as_deref(), Some("stopped automatically at max_seconds (1 s)"));
+    let note = finished.note.as_deref().unwrap_or_default();
+    assert!(note.starts_with("stopped automatically at max_seconds (1 s)"), "{note}");
     assert_eq!(action(RecordAction::Status), finished);
     assert_eq!(action(RecordAction::Stop), finished);
     assert!(finished.bytes > 0 && starts_with(&path, b"ftyp", 4));

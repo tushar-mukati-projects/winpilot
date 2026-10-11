@@ -17,7 +17,7 @@ pub(crate) struct PillWords {
 }
 
 pub(crate) fn hotkey_label(spec: &str) -> Option<String> {
-    let keys: Vec<String> = spec.split('+').map(str::trim).filter(|key| !key.is_empty()).map(capitalized).collect();
+    let keys: Vec<String> = spec.split('+').map(str::trim).filter(|key| !key.is_empty()).map(key_word).collect();
     (!keys.is_empty()).then(|| keys.join("+"))
 }
 
@@ -47,6 +47,16 @@ pub(crate) fn elapsed_label(seconds: u64) -> String {
     if hours > 0 { format!("{hours}:{minutes:02}:{seconds:02}") } else { format!("{minutes:02}:{seconds:02}") }
 }
 
+fn key_word(key: &str) -> String {
+    match key.to_lowercase().as_str() {
+        "esc" | "escape" => "Esc".to_string(),
+        "control" => "Ctrl".to_string(),
+        "del" | "delete" => "Del".to_string(),
+        "windows" | "meta" => "Win".to_string(),
+        _ => capitalized(key),
+    }
+}
+
 fn capitalized(key: &str) -> String {
     let mut letters = key.chars();
     letters
@@ -59,7 +69,7 @@ fn capitalized(key: &str) -> String {
 mod tests {
     use super::*;
 
-    const HOTKEY: Option<&str> = Some("Ctrl+Alt+Shift+Backspace");
+    const HOTKEY: Option<&str> = Some("Ctrl+Alt+Esc");
 
     fn joined(words: &PillWords) -> String {
         format!("{}{}", words.lead, words.hint.as_deref().unwrap_or_default())
@@ -67,7 +77,10 @@ mod tests {
 
     #[test]
     fn hotkeys_are_title_cased() {
+        assert_eq!(hotkey_label("ctrl+alt+escape").as_deref(), Some("Ctrl+Alt+Esc"));
+        assert_eq!(hotkey_label("Control+ESC").as_deref(), Some("Ctrl+Esc"));
         assert_eq!(hotkey_label("ctrl+alt+shift+backspace").as_deref(), Some("Ctrl+Alt+Shift+Backspace"));
+        assert_eq!(hotkey_label("meta+delete").as_deref(), Some("Win+Del"));
         assert_eq!(hotkey_label(" CTRL + f12 ").as_deref(), Some("Ctrl+F12"));
         assert_eq!(hotkey_label(""), None);
         assert_eq!(hotkey_label("+"), None);
@@ -77,13 +90,13 @@ mod tests {
     fn the_full_label_names_the_agent_and_the_stop_hotkey() {
         let words = pill_words(Tone::Working, Wording::Full, "Codex", HOTKEY);
         assert_eq!(words.lead, "Codex");
-        assert_eq!(joined(&words), "Codex is controlling \u{00B7} Ctrl+Alt+Shift+Backspace to stop");
+        assert_eq!(joined(&words), "Codex is controlling \u{00B7} Ctrl+Alt+Esc to stop");
     }
 
     #[test]
     fn the_stopped_label_names_the_resume_hotkey() {
         let words = pill_words(Tone::Stopped, Wording::Full, "Codex", HOTKEY);
-        assert_eq!(joined(&words), "Stopped \u{00B7} press Ctrl+Alt+Shift+Backspace to resume");
+        assert_eq!(joined(&words), "Stopped \u{00B7} press Ctrl+Alt+Esc to resume");
     }
 
     #[test]

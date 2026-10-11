@@ -35,16 +35,16 @@ target picks an element or window for text, screenshot and record. A field that 
 const ACT: &str = "Do things: up to 50 steps per call, each {\"do\":...}, then a diff of what changed (return: diff, \
 observe, screenshot or none). Steps: click, type, key (press/down/up), mouse (move/down/up/scroll/drag), set \
 (value/option/checked/expanded/selected), focus, window (launch/close/minimize/maximize/restore/move), pick (file \
-dialogs), wait (ms, or until appears/disappears/window/window_closed/text/idle), clipboard, notify. Targets: refs \
-(e12, w123), selectors like role:button name:\"Save\", or {\"x\":..,\"y\":..,\"img\":\"i3\"}. background:true uses UI \
-Automation only, never the real mouse, keyboard or focus.";
+dialogs), wait (ms, or until appears/disappears/window/window_opens/window_closed/text/idle), clipboard, notify. Targets: refs \
+(e12, w123), selectors like role:button name:\"Save\", or {\"x\":..,\"y\":..,\"img\":\"i3\"}. background:true never \
+touches the real mouse, keyboard or focus.";
 
 const INSTRUCTIONS: &str = "Deckhand controls the Windows desktop through UI Automation with two tools, observe and act.\n\
 - observe mode=elements (the default) lists a window as lines with refs (e12); mode=text reads it whole. Other modes: screenshot, record, windows, monitors, apps, clipboard, status.\n\
 - act runs several steps per call by ref (e12) or selector (role:button name:\"Save\") and returns a diff, so observe again only when you need the full list.\n\
 - When you know the app, act by selector without observing first; observe all_windows with a query finds elements in every window.\n\
 - Use the pick step for Open, Save or upload dialogs, window action=launch to open apps, and wait instead of sleeping.\n\
-- Take a screenshot only when text is not enough. Point targets need its img id: {\"x\":640,\"y\":360,\"img\":\"i7\"}.\n\
+- Take a screenshot only when text is not enough. Give a point in it with its img id so it maps back to the screen: {\"x\":640,\"y\":360,\"img\":\"i7\"}; without img, x and y are physical screen pixels.\n\
 - act background:true works through UI Automation alone, without the mouse, keyboard or focus; windows on other virtual desktops always get that.\n\
 - The user can stop all input with the kill hotkey ({hotkey}); act then fails with stopped_by_user. Tell the user instead of retrying.";
 
@@ -208,7 +208,7 @@ mod tests {
     const BAD_CONFIG: &str = "C:\\cfg\\config.toml is invalid (line 3: invalid type)";
 
     fn settings() -> Settings {
-        Settings { log_text: false, config_problem: None, kill_hotkey: "ctrl+alt+shift+backspace".to_string() }
+        Settings { log_text: false, config_problem: None, kill_hotkey: "ctrl+alt+escape".to_string() }
     }
 
     fn server() -> (DeckhandServer, FakeSpawner) {
@@ -338,7 +338,7 @@ mod tests {
         let info = server.get_info();
         let instructions = info.instructions.unwrap();
         assert!(instructions.lines().count() <= 12);
-        assert!(instructions.contains("ctrl+alt+shift+backspace"));
+        assert!(instructions.contains("ctrl+alt+escape"));
         assert_eq!(info.server_info.name, "deckhand");
         assert_eq!(info.server_info.version, crate::VERSION);
         assert!(info.capabilities.tools.is_some());

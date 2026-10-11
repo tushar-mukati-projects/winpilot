@@ -1,6 +1,6 @@
 # Deckhand
 
-A fast Windows desktop-control MCP server for Claude Code, in Rust. `PLAN.md` explains the why and the design. This file holds the rules for working in the code.
+A fast Windows desktop-control MCP server for AI agents, in Rust, with two tools: `observe` and `act`. `README.md` is the user reference and `docs/DESIGN.md` explains the why and the design. This file holds the rules for working in the code.
 
 ## Commands
 
@@ -13,24 +13,56 @@ cargo fmt --all
 
 `scripts/check.ps1` runs fmt check, clippy and tests in one go. All three must be clean before work is called done.
 
+```powershell
+cargo build -p deckhand-fixture
+cargo test -p deckhand --test e2e -- --ignored --test-threads=1
+.\scripts\install.ps1 -Register
+```
+
+The e2e test drives the real mouse and keyboard against the fixture app, so build the fixture first and run it only when the user agrees. The optional benchmark sits outside the workspace: `cargo run --release --manifest-path bench/deskbench/Cargo.toml` (`--skip-uia`, `--skip-capture`, `--skip-startup`, `--deny-title <text>`). `scripts/install.ps1` builds, installs to `%LOCALAPPDATA%\Programs\deckhand`, registers the `Deckhand.Agent` notification identity and, with `-Register`, the Claude Code MCP server. `-Uninstall` undoes it; `-Purge` also removes config and logs.
+
 ## Crates
 
 | Crate | Role | Depends on |
 |---|---|---|
-| `deckhand-core` | Pure logic and the shared protocol: types, errors, geometry, selectors, keys, diff, text formatting, config, IPC framing. No Windows APIs. | serde, schemars |
-| `deckhand-uia` | UI Automation on one dedicated MTA thread: snapshots, element refs, pattern actions | core, windows |
-| `deckhand-capture` | Screen capture (warm DXGI, GDI, PrintWindow), resize, JPEG/PNG encode, marks, OCR | core, windows |
-| `deckhand-input` | SendInput mouse/keyboard/text, physical-input monitor, kill-switch hotkey | core, windows |
-| `deckhand-desktop` | Windows, focus, launch, clipboard, monitors, integrity, change monitor, overlay, named sync objects | core, windows |
-| `deckhand-worker` | The engine: runs each tool call using the platform crates | all of the above |
-| `deckhand` | The binary: `deckhand mcp` (rmcp stdio server and worker supervisor) and `deckhand worker` | core, worker, rmcp |
-| `deckhand-fixture` | A test-only Win32 app with known controls and file dialogs | windows |
+| `deckhand-core` | Pure logic and the shared protocol: tool arguments and validation, errors, geometry, selectors, keys, diff, output formatting, config, themes, agent names, IPC framing. No Windows APIs. | serde, schemars |
+| `deckhand-uia` | UI Automation on one dedicated MTA thread: snapshots, element refs and fingerprints, pattern actions, text | core, windows |
+| `deckhand-capture` | Screen capture (DXGI, GDI, PrintWindow), resize, JPEG/PNG encode, marks, OCR, recording (WGC to Media Foundation MP4 and GIF) | core, windows |
+| `deckhand-input` | SendInput mouse/keyboard/text, cursor glide, physical-input monitor, kill-switch hotkey | core, windows |
+| `deckhand-desktop` | Windows, focus, launch, clipboard, monitors, virtual desktops, integrity, change monitor, overlay, notifications, named sync objects | core, windows |
+| `deckhand-worker` | The engine: runs every observe mode and act step using the platform crates | all of the above |
+| `deckhand` | The binary: `deckhand mcp` (rmcp stdio server, worker supervisor, audit log) and `deckhand worker` | core, worker, rmcp |
+| `deckhand-fixture` | A test-only Win32 app with known controls and file dialogs, and a library (`FixtureProcess`) that tests use to launch it; a dev-dependency only | windows |
 
 Public APIs live in each crate's `lib.rs`, which only declares modules and re-exports. Those signatures are the contract between crates; change them only when every caller is updated in the same change.
 
+## Where things live
+
+| What | Where |
+|---|---|
+| Tool definitions, descriptions, server instructions | `crates/deckhand/src/mcp.rs` |
+| Worker supervision: spawn, Job Object, deadlines, backoff, shutdown | `crates/deckhand/src/` (`supervisor`, `lifecycle`, `link`, `spawn`, `job`) |
+| Audit log and its redaction | `crates/deckhand/src/audit.rs`, `summary.rs` |
+| `observe` arguments and per-mode field rules | `crates/core/src/observe.rs`, `observe_fields.rs`, `observe_request.rs` |
+| `act` steps and `wait` arguments | `crates/core/src/steps.rs`, `wait.rs` |
+| Argument limits and cross-field checks | `crates/core/src/validation.rs` |
+| Output text for every reply | `crates/core/src/format.rs` |
+| Config keys and defaults | `crates/core/src/config.rs` |
+| Selectors, keys, themes, agent names | `crates/core/src/selector.rs`, `keys.rs`, `theme.rs`, `agent.rs` |
+| `observe` modes | `crates/worker/src/observe/`: `elements`, `search` (`all_windows`), `text`, `screenshot`, `record` (with `record/`), `windows`, `monitors`, `apps`, `clipboard`, `status` |
+| `act` steps | `crates/worker/src/act/`: one module per step (`click`, `typing`, `keys`, `mouse`, `set`, `focus_step`, `window`, `launch`, `pick` with `pick/`, `wait_step`, `clipboard`, `notify`) plus shared helpers |
+| Background mode: refusals and the per-window mode | `crates/worker/src/act/refusal.rs`, `mode.rs`, `append.rs` |
+| Kill switch, user yield, deny lists, actor lock | `crates/worker/src/guard.rs` |
+| The agent's own terminal | `crates/worker/src/host.rs` |
+| Recording encoder | `crates/capture/src/recorder/` |
+| Virtual desktops | `crates/desktop/src/virtual_desktops.rs`, `desktop_ids.rs` |
+| Overlay | `crates/desktop/src/overlay/` |
+| Notifications | `crates/desktop/src/notify.rs`, `toast.rs`, `balloon*.rs` |
+| Fixture launcher for tests | `crates/fixture/src/lib.rs` (`FixtureProcess`) |
+
 ## Code rules
 
-- **No comments of any kind**: no `//`, `///`, `//!` or `/* */`. Names carry the meaning. If something needs explaining, rename it or split it; longer reasoning goes in commit messages or `PLAN.md`. Schema descriptions use `#[schemars(description = "...")]`, never doc comments.
+- **No comments of any kind**: no `//`, `///`, `//!` or `/* */`. Names carry the meaning. If something needs explaining, rename it or split it; longer reasoning goes in commit messages or `docs/DESIGN.md`. Schema descriptions use `#[schemars(description = "...")]`, never doc comments.
 - **Readable first.** Small functions with one job (aim under 40 lines), descriptive names, early returns, `let … else`, no nesting deeper than three levels. One concept per file.
 - **No side effects beyond the request.**
   - Never write to stdout outside the MCP transport: it is the protocol stream (`print_stdout` is denied).
@@ -61,8 +93,11 @@ Public APIs live in each crate's `lib.rs`, which only declares modules and re-ex
   - inject input, move the mouse, or change focus;
   - write the clipboard;
   - open or close windows;
+  - show the overlay or a notification;
+  - record the screen or encode video;
   - leave files behind.
-- Tests that touch the desktop beyond reading carry `#[ignore = "moves the mouse"]` (or a similar reason) and are run explicitly with `cargo test -- --ignored`, only when the user has agreed.
+- Tests that do any of that carry `#[ignore = "<reason>"]` with a reason that names the effect, such as `"moves the mouse and keyboard"`, `"opens dialogs / changes focus"`, `"opens the fixture app off-screen"`, `"records the screen"`, `"encodes video files"`, `"shows the overlay"`, `"writes the clipboard"` or `"shows a notification"`. Run them explicitly with `cargo test -- --ignored` (filtered by name, `--test-threads=1`), only when the user has agreed.
+- Recording tests write under `%TEMP%\deckhand-record-tests` or `DECKHAND_RECORD_TEST_DIR`, and delete what they wrote.
 - Never print or save screen contents or window titles in test output.
 
 ## Safety rails for anyone working here

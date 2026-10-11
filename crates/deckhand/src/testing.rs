@@ -31,12 +31,12 @@ impl FakeWorker {
     }
 
     pub fn handshake(&mut self) -> bool {
-        self.handshake_as(crate::VERSION)
+        self.handshake_as(crate::BUILD_ID)
     }
 
-    pub fn handshake_as(&mut self, version: &str) -> bool {
-        matches!(self.receive(), Some(ToWorker::Init { .. }))
-            && write_frame(&mut self.output, &FromWorker::Ready { version: version.to_string() }).is_ok()
+    pub fn handshake_as(&mut self, build: &str) -> bool {
+        let ready = FromWorker::Ready { version: crate::VERSION.to_string(), build: build.to_string() };
+        matches!(self.receive(), Some(ToWorker::Init { .. })) && write_frame(&mut self.output, &ready).is_ok()
     }
 
     pub fn reply(&mut self, id: u64, result: Result<Reply>) -> bool {
@@ -45,7 +45,7 @@ impl FakeWorker {
 
     pub fn answer(&mut self, message: &ToWorker) -> bool {
         match message {
-            ToWorker::Call { id, call } => self.reply(*id, Ok(echo(call))),
+            ToWorker::Call { id, call, .. } => self.reply(*id, Ok(echo(call))),
             _ => true,
         }
     }
@@ -121,7 +121,8 @@ pub fn echo(call: &Call) -> Reply {
     if call.is_status() {
         return Reply::Status(status_report());
     }
-    Reply::Clipboard(ClipboardReport { text: Some(clipboard_text(call).unwrap_or_else(|| call.label().to_string())) })
+    let text = clipboard_text(call).unwrap_or_else(|| call.label().to_string());
+    Reply::Clipboard(ClipboardReport { text: Some(text), truncated: false })
 }
 
 pub fn clipboard_text(call: &Call) -> Option<String> {
@@ -143,7 +144,7 @@ pub fn status_report() -> StatusReport {
         uptime_ms: 5,
         stopped: false,
         user_idle_ms: Some(1000),
-        kill_hotkey: "ctrl+alt+shift+backspace".to_string(),
+        kill_hotkey: "ctrl+alt+escape".to_string(),
         hotkey_registered: true,
         elevated: false,
         secure_desktop: false,

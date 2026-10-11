@@ -43,7 +43,7 @@ mod tests {
         ErrorCode,
         keys::{Key, NamedKey},
     };
-    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_F9};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_F9};
 
     use super::*;
     use crate::test_layout::FakeLayout;
@@ -53,11 +53,11 @@ mod tests {
     }
 
     #[test]
-    fn default_kill_switch_maps_to_ctrl_alt_shift_backspace() {
-        let modifiers = Modifiers { ctrl: true, alt: true, shift: true, win: false };
-        let found = binding(modifiers, Some(Key::Named(NamedKey::Backspace))).unwrap();
-        assert_eq!(found.vk, VK_BACK);
-        assert_eq!(found.modifiers, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT);
+    fn default_kill_switch_maps_to_ctrl_alt_escape() {
+        let modifiers = Modifiers { ctrl: true, alt: true, ..Modifiers::NONE };
+        let found = binding(modifiers, Some(Key::Named(NamedKey::Escape))).unwrap();
+        assert_eq!(found.vk, VK_ESCAPE);
+        assert_eq!(found.modifiers, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT);
     }
 
     #[test]

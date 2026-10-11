@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use deckhand_core::{Point, Result, glide::MAX_GLIDE_MS};
+use deckhand_core::{Point, Result, glide_timing::MAX_GLIDE_MS};
 
 use crate::{engine::Engine, overlay};
 

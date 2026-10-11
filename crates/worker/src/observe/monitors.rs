@@ -1,12 +1,12 @@
 use deckhand_core::{
     Result,
-    protocol::{MonitorInfo, WindowsReport},
+    protocol::{MonitorInfo, MonitorsReport},
 };
 use deckhand_desktop::Monitor;
 
-pub fn list() -> Result<WindowsReport> {
+pub fn list() -> Result<MonitorsReport> {
     let monitors = deckhand_desktop::monitors()?.iter().map(monitor_info).collect();
-    Ok(WindowsReport { monitors, ..WindowsReport::default() })
+    Ok(MonitorsReport { monitors })
 }
 
 fn monitor_info(monitor: &Monitor) -> MonitorInfo {
@@ -58,8 +58,7 @@ mod tests {
         assert!(report.monitors[0].primary);
         assert!(report.monitors.iter().enumerate().all(|(index, monitor)| monitor.index as usize == index));
         assert!(report.monitors.iter().all(|monitor| monitor.rect.intersection(monitor.work_area).is_some()));
-        assert!(report.windows.is_empty() && report.apps.is_empty());
-        let text = format::windows(&report);
+        let text = format::monitors(&report);
         assert_eq!(text.lines().count(), report.monitors.len());
         assert!(text.lines().next().unwrap().starts_with("monitor 0 "));
     }

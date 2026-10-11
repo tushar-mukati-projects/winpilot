@@ -56,6 +56,10 @@ impl LockedGlobal {
         Ok(Self { memory, start, bytes })
     }
 
+    pub(crate) fn bytes(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.start.cast::<u8>(), self.bytes) }
+    }
+
     pub(crate) fn utf16_units(&self) -> &[u16] {
         let units = self.bytes / size_of::<u16>();
         unsafe { std::slice::from_raw_parts(self.start.cast::<u16>(), units) }

@@ -18,7 +18,7 @@ mod testing;
 
 use std::{process::ExitCode, time::Duration};
 
-use deckhand_core::{Context, Result};
+use deckhand_core::{Context, Result, VERSION};
 
 use crate::{
     audit::Audit,
@@ -27,7 +27,7 @@ use crate::{
     supervisor::Supervisor,
 };
 
-use deckhand_core::VERSION;
+const BUILD_ID: &str = env!("DECKHAND_BUILD_ID");
 const USAGE: &str = "usage: deckhand [mcp | worker | --version]
   mcp        run the MCP server on stdio (the default)
   worker     run the desktop worker (the server starts it)
@@ -46,9 +46,9 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse_mode(&args) {
         Mode::Server => exit_with(serve()),
-        Mode::Worker => exit_with(deckhand_worker::run()),
+        Mode::Worker => exit_with(deckhand_worker::run(BUILD_ID)),
         Mode::Version => {
-            eprintln!("deckhand {VERSION}");
+            eprintln!("deckhand {VERSION} (build {BUILD_ID})");
             ExitCode::SUCCESS
         }
         Mode::Usage => {

@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use deckhand_core::{
     Result, Snapshot, WindowInfo,
-    protocol::{FindReport, Found, SearchRequest},
+    protocol::{Found, SearchReport, SearchRequest},
     selector::Selector,
 };
 
@@ -11,13 +11,13 @@ use crate::{app_windows::app_windows_matching, call_scope::CallScope, engine::En
 const PATH_DEPTH: usize = 4;
 const SEARCH_BUDGET: Duration = Duration::from_secs(5);
 
-pub fn run(engine: &Engine, request: &SearchRequest, call: &CallScope) -> Result<FindReport> {
+pub fn run(engine: &Engine, request: &SearchRequest, call: &CallScope) -> Result<SearchReport> {
     let selector: Selector = request.query.parse()?;
     let mut matches = Vec::new();
     let complete = search_every_window(engine, &selector, call, request.max, &mut matches)?;
     let truncated = matches.len() > request.max || !complete;
     matches.truncate(request.max);
-    Ok(FindReport { matches, truncated })
+    Ok(SearchReport { matches, truncated })
 }
 
 fn search_every_window(

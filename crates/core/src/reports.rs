@@ -22,7 +22,7 @@ pub struct Found {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct FindReport {
+pub struct SearchReport {
     pub matches: Vec<Found>,
     pub truncated: bool,
 }
@@ -37,6 +37,8 @@ pub struct ScreenshotReport {
     pub mapping: ImageMapping,
     pub source: String,
     pub quality: Option<u8>,
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -99,11 +101,16 @@ pub struct MonitorInfo {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WindowsReport {
-    #[serde(default)]
     pub windows: Vec<WindowInfo>,
-    #[serde(default)]
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MonitorsReport {
     pub monitors: Vec<MonitorInfo>,
-    #[serde(default)]
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppsReport {
     pub apps: Vec<AppInfo>,
     pub note: Option<String>,
 }
@@ -120,11 +127,15 @@ pub struct TextReport {
     pub text: String,
     pub source: TextSource,
     pub truncated: bool,
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClipboardReport {
     pub text: Option<String>,
+    #[serde(default)]
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,9 +164,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn windows_reports_with_only_some_lists_still_deserialize() {
-        let report: WindowsReport = serde_json::from_str(r#"{"note":"3 installed apps"}"#).unwrap();
-        assert!(report.windows.is_empty() && report.monitors.is_empty() && report.apps.is_empty());
-        assert_eq!(report.note.as_deref(), Some("3 installed apps"));
+    fn notes_and_flags_added_later_default_when_missing() {
+        let text: TextReport = serde_json::from_str(r#"{"text":"hi","source":"uia","truncated":false}"#).unwrap();
+        assert_eq!(text.note, None);
+        let clipboard: ClipboardReport = serde_json::from_str(r#"{"text":"hi"}"#).unwrap();
+        assert!(!clipboard.truncated);
     }
 }

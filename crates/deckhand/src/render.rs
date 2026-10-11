@@ -29,11 +29,13 @@ pub fn failure(error: &Error) -> CallToolResult {
 fn contents(reply: Reply, extras: &Extras) -> Vec<ContentBlock> {
     match reply {
         Reply::Observation(observation) => text(format::observation(&observation, &extras.observe)),
-        Reply::Find(report) => text(format::find(&report)),
+        Reply::Search(report) => text(format::search(&report)),
         Reply::Text(report) => text(format::text(&report)),
         Reply::Screenshot(shot) => captioned(format::screenshot_caption(&shot), shot),
         Reply::Record(report) => text(format::record(&report)),
         Reply::Windows(report) => text(format::windows(&report)),
+        Reply::Monitors(report) => text(format::monitors(&report)),
+        Reply::Apps(report) => text(format::apps(&report)),
         Reply::Clipboard(report) => text(format::clipboard(&report)),
         Reply::Status(report) => text(status(report, extras)),
         Reply::Act(report) => act(report),
@@ -98,6 +100,7 @@ mod tests {
             mapping: ImageMapping { origin: Point::new(0, 0), scale: 1.0 },
             source: "dxgi".to_string(),
             quality: Some(80),
+            note: None,
         };
         let blocks = captioned("img=i7".to_string(), shot);
         assert_eq!(blocks.len(), 2);

@@ -4,10 +4,12 @@ use crate::{
     error::Error,
     geometry::{Point, Rect},
     matching::is_gap,
+    object_marks::without_object_marks,
     recording::{RecordReport, RecordState},
     reports::{
-        ActReport, After, AppInfo, AppKind, ClipboardReport, DiffReport, FindReport, Found, MonitorInfo, Observation,
-        ScreenshotReport, StatusReport, StepOutcome, TextReport, TextSource, Timing, WindowsReport,
+        ActReport, After, AppInfo, AppKind, AppsReport, ClipboardReport, DiffReport, Found, MonitorInfo,
+        MonitorsReport, Observation, ScreenshotReport, SearchReport, StatusReport, StepOutcome, TextReport, TextSource,
+        Timing, WindowsReport,
     },
     role::Role,
 };
@@ -54,7 +56,7 @@ pub fn observation(observation: &Observation, format: &ObserveFormat) -> String 
     lines.join("\n")
 }
 
-pub fn find(report: &FindReport) -> String {
+pub fn search(report: &SearchReport) -> String {
     let mut lines: Vec<String> = report.matches.iter().map(found_line).collect();
     if lines.is_empty() {
         lines.push("no matches".to_string());
@@ -76,13 +78,22 @@ pub fn act(report: &ActReport) -> String {
 }
 
 pub fn windows(report: &WindowsReport) -> String {
-    let mut lines: Vec<String> = Vec::new();
-    lines.extend(report.note.clone());
-    lines.extend(report.windows.iter().map(window_line));
-    lines.extend(report.monitors.iter().map(monitor_line));
+    listed(&report.windows.iter().map(window_line).collect::<Vec<_>>(), "no windows")
+}
+
+pub fn monitors(report: &MonitorsReport) -> String {
+    listed(&report.monitors.iter().map(monitor_line).collect::<Vec<_>>(), "no monitors")
+}
+
+pub fn apps(report: &AppsReport) -> String {
+    let mut lines: Vec<String> = report.note.iter().cloned().collect();
     lines.extend(report.apps.iter().map(app_line));
+    listed(&lines, "no apps")
+}
+
+fn listed(lines: &[String], when_empty: &str) -> String {
     if lines.is_empty() {
-        return "no windows".to_string();
+        return when_empty.to_string();
     }
     lines.join("\n")
 }
@@ -115,12 +126,19 @@ pub fn text(report: &TextReport) -> String {
     if report.truncated {
         lines.push("(truncated)");
     }
+    lines.extend(report.note.as_deref());
     lines.join("\n")
 }
 
 pub fn clipboard(report: &ClipboardReport) -> String {
     let text = report.text.as_deref().unwrap_or_default();
-    if text.is_empty() { "(clipboard has no text)".to_string() } else { text.to_string() }
+    if text.is_empty() {
+        return "(clipboard has no text)".to_string();
+    }
+    if report.truncated {
+        return format!("{text}\n(truncated)");
+    }
+    text.to_string()
 }
 
 pub fn status(report: &StatusReport) -> String {
@@ -143,10 +161,14 @@ pub fn screenshot_caption(report: &ScreenshotReport) -> String {
     let format = report.mime.strip_prefix("image/").unwrap_or(&report.mime);
     let Point { x, y } = report.mapping.origin;
     let quality = report.quality.map(|quality| format!(" · q{quality}")).unwrap_or_default();
-    format!(
+    let caption = format!(
         "{image} {}x{} {format}{quality} · scale {:.2} · origin {x},{y} · {} · click points as {{\"x\":..,\"y\":..,\"img\":\"{image}\"}}",
         report.width, report.height, report.mapping.scale, report.source
-    )
+    );
+    match &report.note {
+        Some(note) => format!("{caption}\n{note}"),
+        None => caption,
+    }
 }
 
 pub fn record(report: &RecordReport) -> String {
@@ -226,7 +248,8 @@ pub fn element_line(element: &Element, coords: bool) -> String {
 }
 
 fn element_label(element: &Element) -> Option<String> {
-    let name = element.name.trim();
+    let name = without_object_marks(&element.name);
+    let name = name.trim();
     if !name.is_empty() {
         return Some(quote(name, NAME_LIMIT));
     }
@@ -235,7 +258,7 @@ fn element_label(element: &Element) -> Option<String> {
 }
 
 fn element_value(element: &Element) -> Option<String> {
-    let value = element.value.as_deref().filter(|value| !value.is_empty())?;
+    let value = element.value.as_deref().filter(|value| !without_object_marks(value).is_empty())?;
     if element.state.password {
         return Some(format!("value={PASSWORD_MASK}"));
     }
@@ -355,11 +378,11 @@ fn is_named_container(element: &Element) -> bool {
 }
 
 fn has_name(element: &Element) -> bool {
-    !element.name.trim().is_empty()
+    !without_object_marks(&element.name).trim().is_empty()
 }
 
 fn has_value(element: &Element) -> bool {
-    element.value.as_deref().is_some_and(|value| !value.is_empty())
+    element.value.as_deref().is_some_and(|value| !without_object_marks(value).is_empty())
 }
 
 fn holds_listed_descendant(elements: &[Element], listed: &[bool]) -> Vec<bool> {
@@ -549,7 +572,7 @@ fn timing(timing: &Timing) -> String {
 }
 
 fn quote(text: &str, limit: usize) -> String {
-    let flat = collapse(text, is_gap);
+    let flat = collapse(&without_object_marks(text), is_gap);
     let (kept, cut) = truncate(&flat, limit);
     let mut quoted = String::with_capacity(kept.len() + 8);
     quoted.push('"');
@@ -567,7 +590,7 @@ fn quote(text: &str, limit: usize) -> String {
 }
 
 fn single_line(text: &str, limit: usize) -> String {
-    let flat = collapse(text, char::is_control);
+    let flat = collapse(&without_object_marks(text), char::is_control);
     let (kept, cut) = truncate(&flat, limit);
     let mut line = kept.to_string();
     if cut {
@@ -706,6 +729,7 @@ mod tests {
             mapping: ImageMapping { origin, scale },
             source: "dxgi".to_string(),
             quality: (mime == "image/jpeg").then_some(80),
+            note: None,
         }
     }
 
@@ -715,7 +739,7 @@ mod tests {
             uptime_ms: 125_400,
             stopped: false,
             user_idle_ms: Some(3_240),
-            kill_hotkey: "ctrl+alt+shift+backspace".to_string(),
+            kill_hotkey: "ctrl+alt+escape".to_string(),
             hotkey_registered: true,
             elevated: false,
             secure_desktop: false,
@@ -824,6 +848,15 @@ mod tests {
         assert_eq!(element_line(&controls, false), "e2 text \"x y z\"");
         let crlf = with_value(element(3, 0, Role::Edit, "Body"), "one\r\ntwo\rthree");
         assert_eq!(element_line(&crlf, false), r#"e3 edit "Body" value="one two three""#);
+    }
+
+    #[test]
+    fn object_replacement_marks_are_left_out_of_names_and_values() {
+        let marked = with_value(element(3, 0, Role::Text, "\u{FFFC}Reply\u{FFFC}"), "a\u{FFFC}b");
+        assert_eq!(element_line(&marked, false), "e3 text \"Reply\" value=\"ab\"");
+        let only_marks = with_value(element(4, 0, Role::Text, "\u{FFFC} \u{FFFC}"), "\u{FFFC}");
+        assert_eq!(element_line(&only_marks, false), "e4 text");
+        assert!(!has_name(&only_marks) && !has_value(&only_marks));
     }
 
     #[test]
@@ -1041,8 +1074,8 @@ mod tests {
     }
 
     #[test]
-    fn find_report_lines() {
-        let report = FindReport {
+    fn search_report_lines() {
+        let report = SearchReport {
             matches: vec![
                 Found {
                     element: element(9, 2, Role::Button, "Save"),
@@ -1058,14 +1091,14 @@ mod tests {
             truncated: true,
         };
         assert_eq!(
-            find(&report),
+            search(&report),
             "e9 button \"Save\" · w16 notepad.exe · Untitled - Notepad > Application\ne4 link \"Help\" · w7 chrome.exe\n… more matches (raise max)"
         );
     }
 
     #[test]
-    fn find_report_without_matches() {
-        assert_eq!(find(&FindReport { matches: Vec::new(), truncated: false }), "no matches");
+    fn search_report_without_matches() {
+        assert_eq!(search(&SearchReport { matches: Vec::new(), truncated: false }), "no matches");
     }
 
     #[test]
@@ -1262,23 +1295,17 @@ mod tests {
 
     #[test]
     fn windows_report_list() {
-        let report = WindowsReport {
-            windows: vec![notepad_window(), app_window(2, "chrome.exe", "Inbox")],
-            ..WindowsReport::default()
-        };
+        let report = WindowsReport { windows: vec![notepad_window(), app_window(2, "chrome.exe", "Inbox")] };
         assert_eq!(windows(&report), "w16 notepad.exe \"Untitled - Notepad\" foreground\nw2 chrome.exe \"Inbox\"");
     }
 
-    fn empty_windows_report() -> WindowsReport {
-        WindowsReport::default()
-    }
-
     #[test]
-    fn windows_report_edge_forms() {
-        let empty = empty_windows_report();
-        assert_eq!(windows(&empty), "no windows");
-        let note_only = WindowsReport { note: Some("3 installed apps".to_string()), ..empty };
-        assert_eq!(windows(&note_only), "3 installed apps");
+    fn empty_lists_say_so() {
+        assert_eq!(windows(&WindowsReport::default()), "no windows");
+        assert_eq!(monitors(&MonitorsReport::default()), "no monitors");
+        assert_eq!(apps(&AppsReport::default()), "no apps");
+        let note_only = AppsReport { note: Some("3 installed apps".to_string()), apps: Vec::new() };
+        assert_eq!(apps(&note_only), "3 installed apps");
     }
 
     fn monitor(index: u32, rect: Rect, work_area: Rect, scale_percent: u32, primary: bool) -> MonitorInfo {
@@ -1289,9 +1316,9 @@ mod tests {
     fn monitors_are_one_line_each() {
         let primary = monitor(0, Rect::new(0, 0, 2560, 1600), Rect::new(0, 0, 2560, 1552), 125, true);
         let left = monitor(1, Rect::new(-1920, 200, 1920, 1080), Rect::new(-1920, 200, 1920, 1040), 100, false);
-        let report = WindowsReport { monitors: vec![primary, left], ..empty_windows_report() };
+        let report = MonitorsReport { monitors: vec![primary, left] };
         assert_eq!(
-            windows(&report),
+            monitors(&report),
             "monitor 0 2560x1600@0,0 125% primary · work area 2560x1552@0,0\n\
              monitor 1 1920x1080@-1920,200 100% · work area 1920x1040@-1920,200"
         );
@@ -1303,16 +1330,15 @@ mod tests {
 
     #[test]
     fn apps_are_one_line_each_after_the_note() {
-        let report = WindowsReport {
+        let report = AppsReport {
             note: Some("showing 2 of 40 apps matching \"note\"".to_string()),
             apps: vec![
                 app("Notepad", "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", AppKind::Packaged),
                 app("Notepad++ \"64\"", "{6D809377}\\Notepad++\\notepad++.exe", AppKind::Desktop),
             ],
-            ..WindowsReport::default()
         };
         assert_eq!(
-            windows(&report),
+            apps(&report),
             "showing 2 of 40 apps matching \"note\"\n\
              \"Notepad\" packaged Microsoft.WindowsNotepad_8wekyb3d8bbwe!App\n\
              \"Notepad++ \\\"64\\\"\" desktop {6D809377}\\Notepad++\\notepad++.exe"
@@ -1328,19 +1354,24 @@ mod tests {
 
     #[test]
     fn text_report_forms() {
-        let uia = TextReport { text: "hello\nworld".to_string(), source: TextSource::Uia, truncated: false };
+        let uia =
+            TextReport { text: "hello\nworld".to_string(), source: TextSource::Uia, truncated: false, note: None };
         assert_eq!(text(&uia), "hello\nworld");
-        let ocr = TextReport { text: "hello".to_string(), source: TextSource::Ocr, truncated: true };
+        let ocr = TextReport { text: "hello".to_string(), source: TextSource::Ocr, truncated: true, note: None };
         assert_eq!(text(&ocr), "[ocr]\nhello\n(truncated)");
-        let empty = TextReport { text: String::new(), source: TextSource::Uia, truncated: false };
+        let empty = TextReport { text: String::new(), source: TextSource::Uia, truncated: false, note: None };
         assert_eq!(text(&empty), "(no text)");
+        let noted = TextReport { note: Some("the overlay may appear".to_string()), ..ocr };
+        assert_eq!(text(&noted), "[ocr]\nhello\n(truncated)\nthe overlay may appear");
     }
 
     #[test]
     fn clipboard_report_forms() {
-        assert_eq!(clipboard(&ClipboardReport { text: Some("copied".to_string()) }), "copied");
-        assert_eq!(clipboard(&ClipboardReport { text: None }), "(clipboard has no text)");
-        assert_eq!(clipboard(&ClipboardReport { text: Some(String::new()) }), "(clipboard has no text)");
+        let report = |text: Option<&str>, truncated| ClipboardReport { text: text.map(str::to_string), truncated };
+        assert_eq!(clipboard(&report(Some("copied"), false)), "copied");
+        assert_eq!(clipboard(&report(Some("cop"), true)), "cop\n(truncated)");
+        assert_eq!(clipboard(&report(None, false)), "(clipboard has no text)");
+        assert_eq!(clipboard(&report(Some(""), false)), "(clipboard has no text)");
     }
 
     #[test]
@@ -1350,7 +1381,7 @@ mod tests {
             "uptime: 125.4 s",
             "stopped: no",
             "user idle: 3.2 s",
-            "kill hotkey: ctrl+alt+shift+backspace",
+            "kill hotkey: ctrl+alt+escape",
             "elevated: no",
             "secure desktop: no",
             "worker restarts: 1",
@@ -1373,9 +1404,9 @@ mod tests {
         let expected = [
             "version: 0.1.0",
             "uptime: 125.4 s",
-            "stopped: yes — press ctrl+alt+shift+backspace again to resume",
+            "stopped: yes — press ctrl+alt+escape again to resume",
             "user idle: unknown",
-            "kill hotkey: ctrl+alt+shift+backspace (not registered)",
+            "kill hotkey: ctrl+alt+escape (not registered)",
             "elevated: yes",
             "secure desktop: yes",
             "worker restarts: 1",
@@ -1410,6 +1441,8 @@ mod tests {
         assert!(screenshot_caption(&odd).starts_with("i1 1280x800 application/octet-stream · scale 1.00 · origin 5,6"));
         let sharp = ScreenshotReport { quality: Some(95), ..shot(2, "image/jpeg", Point::new(0, 0), 1.0) };
         assert!(screenshot_caption(&sharp).starts_with("i2 1280x800 jpeg · q95 · scale 1.00"));
+        let noted = ScreenshotReport { note: Some("the overlay may appear".to_string()), ..sharp };
+        assert!(screenshot_caption(&noted).ends_with("\"i2\"}\nthe overlay may appear"));
     }
 
     fn recording(state: RecordState) -> RecordReport {

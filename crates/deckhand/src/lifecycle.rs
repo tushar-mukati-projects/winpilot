@@ -13,7 +13,7 @@ use tokio::{runtime::Handle, sync::watch};
 use crate::{
     backoff::Failure,
     death::{Death, seconds},
-    link::{DeathHook, Link, WorkerPipes},
+    link::{Announced, DeathHook, Link, WorkerPipes},
 };
 
 const EXITED_DURING_STARTUP: &str = "it exited during startup; its error output is in the MCP server log";
@@ -74,7 +74,17 @@ impl Lifecycle {
     }
 
     pub fn set_agent(&self, name: &str) {
-        name.trim().clone_into(&mut self.agent.lock());
+        let name = name.trim();
+        {
+            let mut agent = self.agent.lock();
+            if *agent == name {
+                return;
+            }
+            name.clone_into(&mut agent);
+        }
+        if let Phase::Running(link) = &self.slot.lock().phase {
+            let _ = link.send(ToWorker::Agent { name: name.to_string() });
+        }
     }
 
     pub fn restarts(&self) -> u32 {
@@ -124,15 +134,19 @@ impl Lifecycle {
         let (link, announced) = Link::start(pipes, self.death_hook(runtime)).map_err(|error| error.message)?;
         let epoch = self.epochs.fetch_add(1, Ordering::SeqCst);
         let agent = self.agent.lock().clone();
-        if link.send(ToWorker::Init { config: Box::new(self.config.clone()), epoch, agent }).is_err() {
+        if link.send(ToWorker::Init { config: Box::new(self.config.clone()), epoch, agent: agent.clone() }).is_err() {
             return Err(EXITED_DURING_STARTUP.to_string());
         }
-        let version = match tokio::time::timeout(self.ready_timeout, announced).await {
-            Ok(Ok(version)) => version,
+        let worker = match tokio::time::timeout(self.ready_timeout, announced).await {
+            Ok(Ok(worker)) => worker,
             Ok(Err(_)) => return Err(EXITED_DURING_STARTUP.to_string()),
             Err(_) => return Err(format!("it did not report ready within {}", seconds(self.ready_timeout))),
         };
-        check_version(&version)?;
+        check_build(&worker)?;
+        let current = self.agent.lock().clone();
+        if current != agent {
+            let _ = link.send(ToWorker::Agent { name: current });
+        }
         Ok(link)
     }
 
@@ -194,12 +208,19 @@ fn still_alive(link: Arc<Link>) -> Result<Arc<Link>, String> {
     if link.is_alive() { Ok(link) } else { Err(EXITED_DURING_STARTUP.to_string()) }
 }
 
-fn check_version(worker: &str) -> Result<(), String> {
-    if worker == crate::VERSION {
+fn check_build(worker: &Announced) -> Result<(), String> {
+    if worker.version == crate::VERSION && worker.build == crate::BUILD_ID {
         return Ok(());
     }
     Err(format!(
-        "worker version {worker} does not match server version {}; restart Claude Code to load the new Deckhand build",
-        crate::VERSION
+        "a newer Deckhand was installed (worker {} build {}, this server {} build {}); restart Claude Code to load it",
+        worker.version,
+        shown(&worker.build),
+        crate::VERSION,
+        crate::BUILD_ID
     ))
+}
+
+fn shown(build: &str) -> &str {
+    if build.is_empty() { "unknown" } else { build }
 }

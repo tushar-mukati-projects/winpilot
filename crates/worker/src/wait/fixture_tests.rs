@@ -60,7 +60,10 @@ fn a_visible_element_appears_at_once() {
 #[ignore = "opens the fixture app off-screen"]
 fn window_conditions_track_the_fixture() {
     let Some(fixture) = FixtureApp::launch() else { return };
-    let opens = condition(Until::Window, &fixture);
+    let open = run(engine(), &condition(Until::Window, &fixture), &CallScope::relaxed()).unwrap();
+    assert!(open.satisfied, "{}", open.detail);
+    assert!(open.elapsed_ms < 300, "an open window took {} ms to count", open.elapsed_ms);
+    let opens = condition(Until::WindowOpens, &fixture);
     let already = run(engine(), &opens, &CallScope::relaxed()).unwrap();
     assert!(!already.satisfied, "a window open before the wait counted as newly opened");
     assert!(already.detail.ends_with("was already open before the wait)"), "{}", already.detail);
@@ -96,7 +99,7 @@ fn a_cancelled_wait_stops() {
 fn a_window_opened_during_the_wait_satisfies_window_opens() {
     let title = unique_title("Opened");
     let opens = WaitArgs {
-        until: Some(Until::Window),
+        until: Some(Until::WindowOpens),
         window: Some(title.clone()),
         timeout_ms: Some(8000),
         ..WaitArgs::default()

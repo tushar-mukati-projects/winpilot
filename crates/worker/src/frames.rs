@@ -1,26 +1,45 @@
 use deckhand_capture::{Frame, FrameSource};
 use deckhand_core::{Error, Rect, Result, WindowInfo, WindowRef, WindowState, format::other_desktop};
+use deckhand_desktop::overlay::CaptureHideGuard;
 
 use crate::{blackout, engine::Engine, overlay, uniform_frame::is_uniform};
 
-pub fn region(engine: &Engine, rect: Rect) -> Result<Frame> {
+pub const OVERLAY_MAY_SHOW: &str =
+    "Deckhand's overlay could not be confirmed hidden in time, so it may appear in this capture";
+
+pub struct Captured {
+    pub frame: Frame,
+    pub note: Option<&'static str>,
+}
+
+impl Captured {
+    const fn clean(frame: Frame) -> Self {
+        Self { frame, note: None }
+    }
+
+    fn map(self, change: impl FnOnce(Frame) -> Result<Frame>) -> Result<Self> {
+        Ok(Self { frame: change(self.frame)?, note: self.note })
+    }
+}
+
+pub fn region(engine: &Engine, rect: Rect) -> Result<Captured> {
     screened(engine, None, || engine.capturer.screen(rect))
 }
 
-pub fn monitor(engine: &Engine, index: usize) -> Result<Frame> {
+pub fn monitor(engine: &Engine, index: usize) -> Result<Captured> {
     screened(engine, None, || engine.capturer.monitor(index))
 }
 
-pub fn window(engine: &Engine, window: &WindowInfo) -> Result<Frame> {
+pub fn window(engine: &Engine, window: &WindowInfo) -> Result<Captured> {
     capture_window(engine, window, None)
 }
 
-pub fn element(engine: &Engine, window: &WindowInfo, rect: Rect) -> Result<Frame> {
+pub fn element(engine: &Engine, window: &WindowInfo, rect: Rect) -> Result<Captured> {
     let area = rect.intersection(window.rect).ok_or_else(outside_window)?;
     capture_window(engine, window, Some(area))
 }
 
-fn capture_window(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> Result<Frame> {
+fn capture_window(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> Result<Captured> {
     engine.guard.check_window(window)?;
     if window.state == WindowState::Minimized {
         return Err(Error::invalid(format!(
@@ -29,24 +48,21 @@ fn capture_window(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> R
         )));
     }
     if !window.on_current_desktop {
-        return elsewhere(engine, window, area);
+        return elsewhere(engine, window, area).map(Captured::clean);
     }
     if window.foreground {
         let rect = area.unwrap_or(window.rect);
         return screened(engine, Some(window.hwnd), || engine.capturer.screen(rect));
     }
-    let frame = {
-        let _hidden = overlay::hidden_for_capture(engine);
-        engine.capturer.window(window.hwnd)?
+    let captured = hidden_from_overlay(engine, || engine.capturer.window(window.hwnd))?;
+    let captured = match area {
+        Some(area) => captured.map(|frame| frame.crop(area).ok_or_else(outside_window))?,
+        None => captured,
     };
-    let frame = match area {
-        Some(area) => frame.crop(area).ok_or_else(outside_window)?,
-        None => frame,
-    };
-    if frame.source == FrameSource::Window {
-        return Ok(frame);
+    if captured.frame.source == FrameSource::Window {
+        return Ok(captured);
     }
-    blacked_out(engine, frame, Some(window.hwnd), Vec::new())
+    captured.map(|frame| blacked_out(engine, frame, Some(window.hwnd), Vec::new()))
 }
 
 fn elsewhere(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> Result<Frame> {
@@ -67,13 +83,20 @@ pub fn not_drawn(window: &WindowInfo) -> Error {
     ))
 }
 
-fn screened(engine: &Engine, above: Option<WindowRef>, capture: impl FnOnce() -> Result<Frame>) -> Result<Frame> {
+fn screened(engine: &Engine, above: Option<WindowRef>, capture: impl FnOnce() -> Result<Frame>) -> Result<Captured> {
     let covered_before = denied_rects(engine, above)?;
-    let frame = {
-        let _hidden = overlay::hidden_for_capture(engine);
-        capture()?
-    };
-    blacked_out(engine, frame, above, covered_before)
+    let captured = hidden_from_overlay(engine, capture)?;
+    captured.map(|frame| blacked_out(engine, frame, above, covered_before))
+}
+
+fn hidden_from_overlay(engine: &Engine, capture: impl FnOnce() -> Result<Frame>) -> Result<Captured> {
+    let hidden = overlay::hidden_for_capture(engine);
+    let frame = capture()?;
+    Ok(Captured { frame, note: hidden.as_ref().and_then(unconfirmed_note) })
+}
+
+fn unconfirmed_note(hidden: &CaptureHideGuard<'_>) -> Option<&'static str> {
+    (hidden.is_hiding() && !hidden.is_confirmed()).then_some(OVERLAY_MAY_SHOW)
 }
 
 fn blacked_out(engine: &Engine, mut frame: Frame, above: Option<WindowRef>, mut covered: Vec<Rect>) -> Result<Frame> {

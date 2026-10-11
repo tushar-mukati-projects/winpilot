@@ -1,4 +1,4 @@
-use crate::{format::ObserveFormat, geometry::Rect, observe::OcrMode, quality::Quality, recording::RecordRequest};
+use crate::{geometry::Rect, observe::OcrMode, quality::Quality, recording::RecordRequest};
 
 pub const DEFAULT_ELEMENTS: usize = 300;
 pub const DEFAULT_MATCHES: usize = 20;
@@ -21,7 +21,7 @@ pub enum ObserveRequest {
     Windows,
     Monitors,
     Apps(AppsRequest),
-    Clipboard,
+    Clipboard(ClipboardRequest),
     Status,
 }
 
@@ -29,7 +29,11 @@ pub enum ObserveRequest {
 pub struct ElementsRequest {
     pub window: Option<String>,
     pub query: Option<String>,
-    pub view: ObserveFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClipboardRequest {
+    pub max_chars: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

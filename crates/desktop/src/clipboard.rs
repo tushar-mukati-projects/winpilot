@@ -5,21 +5,36 @@ use windows::Win32::{
     Foundation::{GetLastError, HANDLE, HGLOBAL, NO_ERROR},
     System::{
         DataExchange::{
-            CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, IsClipboardFormatAvailable,
-            OpenClipboard, SetClipboardData,
+            CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, GetClipboardOwner,
+            IsClipboardFormatAvailable, OpenClipboard, SetClipboardData,
         },
         Ole::{CF_LOCALE, CF_OEMTEXT, CF_TEXT, CF_UNICODETEXT},
     },
 };
 
 use crate::{
-    clipboard_history::history_exclusion_markers,
+    clipboard_history::{PrivacyFormats, history_exclusion_markers},
     global_memory::{LockedGlobal, OwnedGlobal},
+    window_identity::{owning_pid, title},
+    window_label::process_name,
 };
 
 const OPEN_ATTEMPTS: u32 = 20;
 const OPEN_RETRY_GAP: Duration = Duration::from_millis(10);
 const TEXT_FORMATS: [u32; 4] = [CF_UNICODETEXT.0 as u32, CF_TEXT.0 as u32, CF_OEMTEXT.0 as u32, CF_LOCALE.0 as u32];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardOwner {
+    pub process: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClipboardRead {
+    pub text: Option<String>,
+    pub marked_private: bool,
+    pub owner: Option<ClipboardOwner>,
+}
 
 pub(crate) struct ClipboardData {
     pub(crate) format: u32,
@@ -52,12 +67,37 @@ impl Drop for OpenClipboardGuard {
 
 pub fn get_text() -> Result<Option<String>> {
     let _clipboard = OpenClipboardGuard::open()?;
+    unicode_text()
+}
+
+pub fn read() -> Result<ClipboardRead> {
+    let _clipboard = OpenClipboardGuard::open()?;
+    let marked_private = PrivacyFormats::registered()?.marks_private(&clipboard_formats()?, dword_value);
+    let owner = owner();
+    let text = if marked_private { None } else { unicode_text()? };
+    Ok(ClipboardRead { text, marked_private, owner })
+}
+
+fn unicode_text() -> Result<Option<String>> {
     if unsafe { IsClipboardFormatAvailable(u32::from(CF_UNICODETEXT.0)) }.is_err() {
         return Ok(None);
     }
     let data = unsafe { GetClipboardData(u32::from(CF_UNICODETEXT.0)) }.context("reading clipboard text")?;
     let locked = LockedGlobal::lock(HGLOBAL(data.0))?;
     Ok(Some(text_before_nul(locked.utf16_units())))
+}
+
+fn dword_value(format: u32) -> Option<u32> {
+    let data = unsafe { GetClipboardData(format) }.ok()?;
+    let locked = LockedGlobal::lock(HGLOBAL(data.0)).ok()?;
+    let bytes: [u8; 4] = locked.bytes().get(..4)?.try_into().ok()?;
+    Some(u32::from_le_bytes(bytes))
+}
+
+fn owner() -> Option<ClipboardOwner> {
+    let hwnd = unsafe { GetClipboardOwner() }.ok()?;
+    let pid = owning_pid(hwnd);
+    (pid != 0).then(|| ClipboardOwner { process: process_name(pid), title: title(hwnd) })
 }
 
 pub fn set_text(text: &str) -> Result<()> {
@@ -140,6 +180,8 @@ mod tests {
     fn reading_the_clipboard_works() {
         let _text = get_text().unwrap();
         let _only_text = holds_only_text().unwrap();
+        let read = read().unwrap();
+        assert!(!read.marked_private || read.text.is_none());
     }
 
     #[test]
@@ -172,6 +214,8 @@ mod tests {
         set_text_transient("deckhand transient").unwrap();
         assert_eq!(get_text().unwrap().as_deref(), Some("deckhand transient"));
         assert!(!holds_only_text().unwrap());
+        let private = read().unwrap();
+        assert!(private.marked_private && private.text.is_none());
         set_text(saved.as_deref().unwrap_or_default()).unwrap();
     }
 

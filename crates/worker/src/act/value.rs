@@ -18,7 +18,7 @@ pub fn step(engine: &Engine, prepared: &Prepared, value: &str, mode: Mode, call:
     let element = prepared.require_element("set value")?;
     if prepared.window.on_current_desktop {
         overlay::focus_field(engine, element.rect);
-        overlay::typing(engine, &prepared.window, value.chars().count());
+        overlay::typing(engine, &prepared.window);
     }
     if mode == Mode::Background {
         return set_in_background(engine, prepared, element, value, call);

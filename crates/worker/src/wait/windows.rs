@@ -19,12 +19,23 @@ impl WindowsBefore {
     }
 }
 
+pub fn open(engine: &Engine, title: &str) -> Result<Check> {
+    matching(engine, title).map(|found| window_open(title, &found))
+}
+
 pub fn opens(engine: &Engine, title: &str, before: &WindowsBefore) -> Result<Check> {
     matching(engine, title).map(|found| window_opens(title, &found, before))
 }
 
 pub fn closes(engine: &Engine, title: &str) -> Result<Check> {
     matching(engine, title).map(|found| window_closes(title, &found))
+}
+
+pub fn window_open(title: &str, found: &[WindowInfo]) -> Check {
+    match found.first() {
+        Some(window) => Check::met(format!("{} is open", window_line(window))),
+        None => Check::unmet(format!("no window matches \"{title}\"")),
+    }
 }
 
 pub fn window_opens(title: &str, found: &[WindowInfo], before: &WindowsBefore) -> Check {
@@ -92,6 +103,16 @@ mod tests {
         assert!(!old.met);
         assert_eq!(old.detail, "no new window matches \"Save As\" (1 was already open before the wait)");
         assert!(window_opens("Save As", &[dialog(42), dialog(43)], &before(&[42])).met);
+    }
+
+    #[test]
+    fn a_window_already_open_satisfies_open_at_once() {
+        let open = window_open("Save As", &[dialog(42)]);
+        assert!(open.met);
+        assert_eq!(open.detail, "w42 notepad.exe \"Save As\" foreground is open");
+        let missing = window_open("Save As", &[]);
+        assert!(!missing.met);
+        assert_eq!(missing.detail, "no window matches \"Save As\"");
     }
 
     #[test]

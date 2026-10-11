@@ -3,7 +3,7 @@ use crate::{
     observe::{ObserveArgs, ObserveMode},
 };
 
-use ObserveMode::{Apps, Elements, Record, Screenshot, Text};
+use ObserveMode::{Apps, Clipboard, Elements, Record, Screenshot, Text};
 
 const FIELD_MODES: [(&str, &[ObserveMode]); 22] = [
     ("window", &[Elements, Text]),
@@ -16,7 +16,7 @@ const FIELD_MODES: [(&str, &[ObserveMode]); 22] = [
     ("region", &[Text, Screenshot, Record]),
     ("monitor", &[Screenshot, Record]),
     ("ocr", &[Text]),
-    ("max_chars", &[Text]),
+    ("max_chars", &[Text, Clipboard]),
     ("preset", &[Screenshot]),
     ("quality", &[Screenshot]),
     ("video_quality", &[Record]),

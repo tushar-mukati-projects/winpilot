@@ -31,6 +31,12 @@ pub trait WorkerProcess: Send {
     fn terminate(&mut self);
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Announced {
+    pub version: String,
+    pub build: String,
+}
+
 pub struct WorkerPipes {
     pub stdin: Box<dyn Write + Send>,
     pub stdout: Box<dyn Read + Send>,
@@ -47,7 +53,7 @@ pub struct Link {
 }
 
 impl Link {
-    pub fn start(pipes: WorkerPipes, on_death: DeathHook) -> Result<(Arc<Self>, oneshot::Receiver<String>)> {
+    pub fn start(pipes: WorkerPipes, on_death: DeathHook) -> Result<(Arc<Self>, oneshot::Receiver<Announced>)> {
         let (frames, outbox) = mpsc::channel();
         let link = Arc::new(Self {
             frames: Mutex::new(Some(frames)),
@@ -154,12 +160,12 @@ fn write_frames(link: &Weak<Link>, stdin: Box<dyn Write + Send>, outbox: &mpsc::
     }
 }
 
-fn read_frames(link: &Weak<Link>, stdout: Box<dyn Read + Send>, ready: oneshot::Sender<String>) {
+fn read_frames(link: &Weak<Link>, stdout: Box<dyn Read + Send>, ready: oneshot::Sender<Announced>) {
     let mut stdout = BufReader::new(stdout);
     let mut ready = Some(ready);
     let death = loop {
         match read_frame::<_, FromWorker>(&mut stdout) {
-            Ok(Some(FromWorker::Ready { version })) => announce(&mut ready, version),
+            Ok(Some(FromWorker::Ready { version, build })) => announce(&mut ready, Announced { version, build }),
             Ok(Some(FromWorker::Reply { id, result })) => {
                 let Some(link) = link.upgrade() else { return };
                 link.deliver(id, *result);
@@ -171,9 +177,9 @@ fn read_frames(link: &Weak<Link>, stdout: Box<dyn Read + Send>, ready: oneshot::
     stop_link(link, &death);
 }
 
-fn announce(ready: &mut Option<oneshot::Sender<String>>, version: String) {
+fn announce(ready: &mut Option<oneshot::Sender<Announced>>, announced: Announced) {
     if let Some(sender) = ready.take() {
-        let _ = sender.send(version);
+        let _ = sender.send(announced);
     }
 }
 

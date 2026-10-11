@@ -17,7 +17,7 @@ use windows::{
 };
 
 use crate::{
-    message_thread::ThreadMessages, raw_input::record_if_user_input, raw_input_registration::RawInputRegistration,
+    message_thread::ThreadMessages, raw_input::handle_raw_input, raw_input_registration::RawInputRegistration,
 };
 
 const SINK_CLASS: PCWSTR = w!("DeckhandRawInputSink");
@@ -99,7 +99,7 @@ fn register_sink_class(instance: HINSTANCE) -> Result<()> {
 
 unsafe extern "system" fn sink_window_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if message == WM_INPUT {
-        record_if_user_input(HRAWINPUT(lparam.0 as *mut c_void));
+        handle_raw_input(HRAWINPUT(lparam.0 as *mut c_void));
     }
     unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
 }

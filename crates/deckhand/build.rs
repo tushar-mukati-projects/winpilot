@@ -1,10 +1,13 @@
 use std::env;
 use std::error::Error;
 use std::fs;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const ICON: &str = "../../assets/deckhand.ico";
 const PRODUCT: &str = "Deckhand";
+const WORKSPACE_INPUTS: [&str; 3] = ["../../crates", "../../Cargo.lock", "../../Cargo.toml"];
 const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
@@ -30,7 +33,9 @@ struct Version {
 fn main() -> Result<(), Box<dyn Error>> {
     tell_cargo(&format!("cargo:rerun-if-changed={ICON}"));
     tell_cargo("cargo:rerun-if-changed=build.rs");
-    let icon = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).join(ICON);
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
+    tell_cargo(&format!("cargo:rustc-env=DECKHAND_BUILD_ID={}", build_id(&manifest_dir)?));
+    let icon = manifest_dir.join(ICON);
     let out = PathBuf::from(env::var("OUT_DIR")?);
     let manifest = out.join("deckhand.manifest");
     fs::write(&manifest, MANIFEST)?;
@@ -43,6 +48,31 @@ fn main() -> Result<(), Box<dyn Error>> {
 #[allow(clippy::print_stdout)]
 fn tell_cargo(directive: &str) {
     println!("{directive}");
+}
+
+fn build_id(manifest_dir: &Path) -> Result<String, Box<dyn Error>> {
+    let mut hasher = DefaultHasher::new();
+    for input in WORKSPACE_INPUTS {
+        tell_cargo(&format!("cargo:rerun-if-changed={input}"));
+        hash_tree(&manifest_dir.join(input), &mut hasher)?;
+    }
+    let built = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    Ok(format!("{}+{built}.{:016x}", env::var("CARGO_PKG_VERSION")?, hasher.finish()))
+}
+
+fn hash_tree(path: &Path, hasher: &mut DefaultHasher) -> Result<(), Box<dyn Error>> {
+    if path.is_file() {
+        path.file_name().hash(hasher);
+        fs::read(path)?.hash(hasher);
+        return Ok(());
+    }
+    let mut entries: Vec<PathBuf> =
+        fs::read_dir(path)?.map(|entry| entry.map(|found| found.path())).collect::<Result<_, _>>()?;
+    entries.sort();
+    for entry in entries {
+        hash_tree(&entry, hasher)?;
+    }
+    Ok(())
 }
 
 fn version() -> Result<Version, Box<dyn Error>> {

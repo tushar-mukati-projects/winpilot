@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::{
-    glide::MAX_GLIDE_MS,
+    glide_timing::MAX_GLIDE_MS,
     keys::parse_keys,
     observe::{ObserveArgs, ObserveMode},
     protocol::Call,

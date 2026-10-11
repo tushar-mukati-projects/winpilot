@@ -623,8 +623,8 @@ mod tests {
 
     #[test]
     fn default_kill_hotkey_parses() {
-        let all_but_win = Modifiers { ctrl: true, alt: true, shift: true, win: false };
-        assert_eq!(parse_chord("ctrl+alt+shift+backspace").unwrap(), chord(all_but_win, named(NamedKey::Backspace)));
+        let ctrl_alt = Modifiers { ctrl: true, alt: true, shift: false, win: false };
+        assert_eq!(parse_chord("ctrl+alt+escape").unwrap(), chord(ctrl_alt, named(NamedKey::Escape)));
     }
 
     #[test]

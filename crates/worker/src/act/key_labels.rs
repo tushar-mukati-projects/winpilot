@@ -1,9 +1,20 @@
 use deckhand_core::keys::{Chord, Key, NamedKey};
 
+use crate::overlay::KeyChips;
+
 const MAX_CHORDS: usize = 6;
 
-pub fn chord_labels(chords: &[Chord]) -> Vec<Vec<String>> {
-    chords.iter().take(MAX_CHORDS).map(chord_label).collect()
+pub fn key_chips(chords: &[Chord]) -> KeyChips {
+    if chords.iter().all(types_text) {
+        return KeyChips::Typing;
+    }
+    KeyChips::Keys(chords.iter().filter(|chord| !types_text(chord)).take(MAX_CHORDS).map(chord_label).collect())
+}
+
+fn types_text(chord: &Chord) -> bool {
+    let modifiers = chord.modifiers;
+    let only_shift = !(modifiers.ctrl || modifiers.alt || modifiers.win);
+    only_shift && matches!(chord.key, Some(Key::Char(_) | Key::Named(NamedKey::Space)))
 }
 
 pub fn chord_text(chord: &Chord) -> String {
@@ -68,7 +79,14 @@ mod tests {
     use super::*;
 
     fn labels(spec: &str) -> Vec<Vec<String>> {
-        chord_labels(&parse_keys(spec).unwrap())
+        match key_chips(&parse_keys(spec).unwrap()) {
+            KeyChips::Keys(labels) => labels,
+            KeyChips::Typing => panic!("{spec} should show keycaps"),
+        }
+    }
+
+    fn chips(spec: &str) -> KeyChips {
+        key_chips(&parse_keys(spec).unwrap())
     }
 
     #[test]
@@ -87,8 +105,28 @@ mod tests {
     #[test]
     fn sequences_become_separate_chords_and_are_capped() {
         assert_eq!(labels("ctrl+k ctrl+s").len(), 2);
-        assert_eq!(labels("a b c d e f g h").len(), MAX_CHORDS);
+        assert_eq!(labels("f1 f2 f3 f4 f5 f6 f7 f8").len(), MAX_CHORDS);
         assert_eq!(labels("down"), vec![vec!["\u{2193}".to_string()]]);
         assert_eq!(labels("pgdn"), vec![vec!["PgDn".to_string()]]);
+    }
+
+    #[test]
+    fn printable_keys_show_only_as_typing() {
+        assert_eq!(chips("a"), KeyChips::Typing);
+        assert_eq!(chips("shift+a"), KeyChips::Typing);
+        assert_eq!(chips("space"), KeyChips::Typing);
+        assert_eq!(chips("h e l l o"), KeyChips::Typing);
+        assert_eq!(chips("1 plus 2"), KeyChips::Typing);
+    }
+
+    #[test]
+    fn named_keys_and_modifier_chords_keep_their_keycaps_without_the_typed_characters() {
+        assert_eq!(chips("shift+tab"), KeyChips::Keys(vec![vec!["Shift".to_string(), "Tab".to_string()]]));
+        assert_eq!(chips("shift"), KeyChips::Keys(vec![vec!["Shift".to_string()]]));
+        assert_eq!(chips("ctrl+space"), KeyChips::Keys(vec![vec!["Ctrl".to_string(), "Space".to_string()]]));
+        assert_eq!(
+            chips("ctrl+a x y enter"),
+            KeyChips::Keys(vec![vec!["Ctrl".to_string(), "A".to_string()], vec!["Enter".to_string()]])
+        );
     }
 }

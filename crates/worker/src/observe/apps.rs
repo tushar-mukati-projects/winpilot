@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use deckhand_core::{
     Result,
-    protocol::{AppInfo, AppKind, AppsRequest, WindowsReport},
+    protocol::{AppInfo, AppKind, AppsReport, AppsRequest},
 };
 use deckhand_desktop::apps::{self, AppEntry};
 
@@ -14,7 +14,7 @@ use crate::{
 const FRESH_LISTING: Duration = Duration::from_secs(300);
 const RECENT_LISTING: Duration = Duration::from_secs(10);
 
-pub fn list(engine: &Engine, request: &AppsRequest) -> Result<WindowsReport> {
+pub fn list(engine: &Engine, request: &AppsRequest) -> Result<AppsReport> {
     let Some(query) = request.query.as_deref() else {
         return Ok(every_app(&engine.apps.apps(FRESH_LISTING)?, request.max));
     };
@@ -26,7 +26,7 @@ pub fn list(engine: &Engine, request: &AppsRequest) -> Result<WindowsReport> {
     Ok(matching(&catalog, query, request.max))
 }
 
-fn every_app(catalog: &[AppEntry], max: usize) -> WindowsReport {
+fn every_app(catalog: &[AppEntry], max: usize) -> AppsReport {
     let mut apps: Vec<AppInfo> = catalog.iter().map(app_info).collect();
     apps.sort_by_cached_key(|app| app.name.to_lowercase());
     let total = apps.len();
@@ -36,10 +36,10 @@ fn every_app(catalog: &[AppEntry], max: usize) -> WindowsReport {
         format!("{total} installed apps")
     };
     apps.truncate(max);
-    WindowsReport { apps, note: Some(note), ..WindowsReport::default() }
+    AppsReport { apps, note: Some(note) }
 }
 
-fn matching(catalog: &[AppEntry], query: &str, max: usize) -> WindowsReport {
+fn matching(catalog: &[AppEntry], query: &str, max: usize) -> AppsReport {
     let found = app_match::ranked(catalog, query);
     let note = match found.len() {
         0 => Some(format!("no installed app matches \"{query}\"")),
@@ -49,7 +49,7 @@ fn matching(catalog: &[AppEntry], query: &str, max: usize) -> WindowsReport {
         _ => None,
     };
     let apps = found.into_iter().take(max).map(app_info).collect();
-    WindowsReport { apps, note, ..WindowsReport::default() }
+    AppsReport { apps, note }
 }
 
 fn app_info(app: &AppEntry) -> AppInfo {
@@ -73,7 +73,7 @@ mod tests {
         AppEntry { name: name.to_string(), id: id.to_string(), kind }
     }
 
-    fn names(report: &WindowsReport) -> Vec<&str> {
+    fn names(report: &AppsReport) -> Vec<&str> {
         report.apps.iter().map(|app| app.name.as_str()).collect()
     }
 
@@ -113,7 +113,7 @@ mod tests {
         let catalog = vec![entry("Paint", "paint", apps::AppKind::Desktop)];
         let report = matching(&catalog, "qqqq", MAX);
         assert!(report.apps.is_empty());
-        assert_eq!(format::windows(&report), "no installed app matches \"qqqq\"");
+        assert_eq!(format::apps(&report), "no installed app matches \"qqqq\"");
     }
 
     #[test]
@@ -154,7 +154,7 @@ mod tests {
     fn live_apps_list_and_filter() {
         let all = list(engine(), &request(None, 500)).unwrap();
         assert!(!all.apps.is_empty() && all.apps.len() <= 500);
-        assert_eq!(format::windows(&all).lines().count(), all.apps.len() + 1);
+        assert_eq!(format::apps(&all).lines().count(), all.apps.len() + 1);
         let first = all.apps[0].name.clone();
         let filtered = list(engine(), &request(Some(&first), MAX)).unwrap();
         assert!(filtered.apps.len() <= MAX);

@@ -179,7 +179,7 @@ fn animating_costs_little_and_idle_costs_nothing() {
 fn every_effect_runs_and_shuts_down_cleanly() {
     let (probe, rect) = probe_and_window();
     let overlay = Overlay::spawn(OverlayOptions {
-        kill_hotkey: Some("ctrl+alt+shift+backspace".to_string()),
+        kill_hotkey: Some("ctrl+alt+escape".to_string()),
         ..OverlayOptions::default()
     })
     .unwrap();

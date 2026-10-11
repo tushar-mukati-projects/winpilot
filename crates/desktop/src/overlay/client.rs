@@ -83,12 +83,12 @@ impl Overlay {
         }
     }
 
-    pub fn keystrokes(&self, rect: Rect, chords: Vec<Vec<String>>) {
-        self.keys(rect, chords);
+    pub fn typing(&self, rect: Rect) {
+        self.send(OverlayCommand::Keystrokes(rect, ChipText::typing()));
     }
 
-    pub fn typing(&self, rect: Rect, _characters: usize) {
-        self.send(OverlayCommand::Keystrokes(rect, ChipText::typing()));
+    pub fn relabel(&self, label: String) {
+        self.send(OverlayCommand::Relabel(label));
     }
 
     pub fn scan(&self, rect: Rect) {

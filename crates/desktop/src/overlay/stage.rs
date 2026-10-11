@@ -100,6 +100,12 @@ impl Stage {
         Ok(stage)
     }
 
+    pub(crate) fn relabel(&mut self, label: &str) {
+        self.pill.relabel(label);
+        self.recording.relabel(label);
+        self.badge.relabel(label);
+    }
+
     pub(crate) fn every_layer_excluded_from_capture(&self) -> bool {
         self.layers().all(Layer::is_excluded_from_capture) && self.viewfinder.tint().is_excluded_from_capture()
     }

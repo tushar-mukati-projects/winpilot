@@ -37,7 +37,7 @@ use super::{
 };
 use crate::frame::inflate;
 
-const SPEAKER: Speaker<'static> = Speaker { label: "Claude", hotkey: Some("Ctrl+Alt+Shift+Backspace") };
+const SPEAKER: Speaker<'static> = Speaker { label: "Claude", hotkey: Some("Ctrl+Alt+Esc") };
 const GUTTER: usize = 10;
 
 #[derive(Clone, Copy)]

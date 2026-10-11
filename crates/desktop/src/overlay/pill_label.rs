@@ -56,7 +56,7 @@ pub(crate) fn fitting_label(
 mod tests {
     use super::*;
 
-    const SPEAKER: Speaker<'static> = Speaker { label: "Claude", hotkey: Some("Ctrl+Alt+Shift+Backspace") };
+    const SPEAKER: Speaker<'static> = Speaker { label: "Claude", hotkey: Some("Ctrl+Alt+Esc") };
 
     fn label_for(width: i32) -> (PillLabel, Wording) {
         let metrics = PillMetrics::at_scale(1.0);
@@ -66,9 +66,10 @@ mod tests {
 
     #[test]
     fn wide_windows_get_the_full_label() {
-        let (label, wording) = label_for(1200);
+        let (full, wording) = label_for(1200);
         assert_eq!(wording, Wording::Full);
-        assert!(label.width() > 300);
+        let (short, _) = label_for(300);
+        assert!(full.width() > short.width() + 100, "{} vs {}", full.width(), short.width());
     }
 
     #[test]

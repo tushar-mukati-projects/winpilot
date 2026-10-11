@@ -118,7 +118,10 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use deckhand_core::keys::{Key, Modifiers};
+    use deckhand_core::{
+        config::GuardConfig,
+        keys::{Key, Modifiers, parse_chord},
+    };
 
     use super::*;
 
@@ -149,5 +152,15 @@ mod tests {
         assert!(listener.is_registered());
         drop(listener);
         assert_eq!(presses.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    #[ignore = "registers a system-wide hotkey"]
+    fn the_default_kill_hotkey_registers_and_unregisters() {
+        let chord = parse_chord(&GuardConfig::default().kill_hotkey).unwrap();
+        let binding = hotkey_binding(&chord, &SystemLayout::of_foreground_window()).unwrap();
+        let registration = Registration::register(binding);
+        assert!(registration.is_some(), "RegisterHotKey refused the default kill hotkey");
+        drop(registration);
     }
 }

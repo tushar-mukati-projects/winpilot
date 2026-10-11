@@ -5,16 +5,31 @@ use windows::Win32::UI::Input::{
     GetRawInputData, HRAWINPUT, RAWINPUT, RAWINPUTHEADER, RID_INPUT, RIM_TYPEKEYBOARD, RIM_TYPEMOUSE,
 };
 
-use crate::input_clock::record_user_input;
+use crate::{chord_detector::PhysicalKey, input_clock::record_user_input, physical_hotkey};
 
 const READ_FAILED: u32 = u32::MAX;
 const MOUSE: u32 = RIM_TYPEMOUSE.0;
 const KEYBOARD: u32 = RIM_TYPEKEYBOARD.0;
 
-pub fn record_if_user_input(handle: HRAWINPUT) {
-    if read_raw_input(handle).is_some_and(|input| counts_as_user(&input)) {
+pub fn handle_raw_input(handle: HRAWINPUT) {
+    let Some(input) = read_raw_input(handle) else { return };
+    if counts_as_user(&input) {
         record_user_input();
     }
+    if let Some(key) = physical_key(&input) {
+        physical_hotkey::observe(key);
+    }
+}
+
+fn physical_key(input: &RAWINPUT) -> Option<PhysicalKey> {
+    if input.header.dwType != KEYBOARD || input.header.hDevice.0.is_null() {
+        return None;
+    }
+    let keyboard = unsafe { input.data.keyboard };
+    if is_injection_mark(keyboard.ExtraInformation) {
+        return None;
+    }
+    Some(PhysicalKey { make_code: keyboard.MakeCode, flags: keyboard.Flags, vk: keyboard.VKey })
 }
 
 fn read_raw_input(handle: HRAWINPUT) -> Option<RAWINPUT> {
@@ -102,6 +117,16 @@ mod tests {
         let mut input = keyboard_input(SOME_DEVICE, 0);
         input.header.dwType = RIM_TYPEHID.0;
         assert!(!counts_as_user(&input));
+    }
+
+    #[test]
+    fn only_unmarked_keys_from_a_real_keyboard_reach_the_kill_chord() {
+        let mut real = keyboard_input(SOME_DEVICE, 0);
+        real.data.keyboard.VKey = 0x1B;
+        assert_eq!(physical_key(&real).map(|key| key.vk), Some(0x1B));
+        assert_eq!(physical_key(&keyboard_input(HANDLE::default(), 0)), None);
+        assert_eq!(physical_key(&keyboard_input(SOME_DEVICE, MARK)), None);
+        assert_eq!(physical_key(&mouse_input(SOME_DEVICE, 0)), None);
     }
 
     #[test]

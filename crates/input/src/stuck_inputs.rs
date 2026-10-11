@@ -37,7 +37,7 @@ fn stuck_input_releases(is_down: impl Fn(VIRTUAL_KEY) -> bool, layout: &impl Key
     buttons.chain(modifiers).collect()
 }
 
-fn is_logically_down(vk: VIRTUAL_KEY) -> bool {
+pub(crate) fn is_logically_down(vk: VIRTUAL_KEY) -> bool {
     let state = unsafe { GetAsyncKeyState(i32::from(vk.0)) };
     state < 0
 }
