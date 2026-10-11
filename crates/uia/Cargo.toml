@@ -10,7 +10,6 @@ license.workspace = true
 deckhand-core.workspace = true
 windows.workspace = true
 windows-core.workspace = true
-parking_lot.workspace = true
 
 [dev-dependencies]
 deckhand-fixture.workspace = true

@@ -58,7 +58,7 @@ impl Supervisor {
     }
 
     pub async fn call(&self, call: Call, cancelled: impl Future<Output = ()>) -> Result<Reply> {
-        let budget = call.deadline();
+        let budget = call.deadline_with_glide(self.lifecycle.default_glide_ms());
         self.call_within(call, budget, cancelled).await
     }
 
@@ -242,6 +242,27 @@ mod tests {
                 worker.answer(&message);
             }
         }
+    }
+
+    #[tokio::test]
+    async fn the_worker_is_told_the_time_left_after_a_slow_start() {
+        let (sent, seen) = mpsc::channel();
+        let (supervisor, _) = supervisor(move |_, mut worker| {
+            std::thread::sleep(Duration::from_millis(400));
+            if !worker.handshake() {
+                return;
+            }
+            while let Some(message) = worker.receive() {
+                if let ToWorker::Call { deadline_ms, .. } = &message {
+                    let _ = sent.send(*deadline_ms);
+                }
+                worker.answer(&message);
+            }
+        });
+        let reply = call(&supervisor, set_clipboard("late"), Duration::from_secs(5)).await;
+        assert_eq!(clipboard_text(&reply).as_deref(), Some("late"));
+        let deadline_ms = seen.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(deadline_ms <= 4_650 && deadline_ms > 3_000, "{deadline_ms}");
     }
 
     #[tokio::test]

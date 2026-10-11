@@ -2,7 +2,7 @@ use deckhand_capture::{Frame, FrameSource};
 use deckhand_core::{Error, Rect, Result, WindowInfo, WindowRef, WindowState, format::other_desktop};
 use deckhand_desktop::overlay::CaptureHideGuard;
 
-use crate::{blackout, engine::Engine, overlay, uniform_frame::is_uniform};
+use crate::{blackout, engine::Engine, overlay};
 
 pub const OVERLAY_MAY_SHOW: &str =
     "Deckhand's overlay could not be confirmed hidden in time, so it may appear in this capture";
@@ -67,7 +67,7 @@ fn capture_window(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> R
 
 fn elsewhere(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> Result<Frame> {
     let printed = engine.capturer.window(window.hwnd).ok();
-    let drawn = printed.filter(|frame| frame.source == FrameSource::Window && !is_uniform(&frame.bgra));
+    let drawn = printed.filter(|frame| frame.source == FrameSource::Window && !frame.is_uniform());
     let frame = drawn.ok_or_else(|| not_drawn(window))?;
     match area {
         Some(area) => frame.crop(area).ok_or_else(outside_window),

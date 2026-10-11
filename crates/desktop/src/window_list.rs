@@ -42,7 +42,7 @@ pub fn windows() -> Result<Vec<WindowInfo>> {
     let own_pid = std::process::id();
     let mut lookups = Lookups::new();
     let candidates: Vec<Candidate> =
-        top_level_windows()?.into_iter().filter_map(|hwnd| app_window(hwnd, own_pid, &mut lookups.desktops)).collect();
+        top_level_windows()?.into_iter().filter_map(|hwnd| app_window(hwnd, own_pid, &lookups.desktops)).collect();
     Ok(candidates.into_iter().map(|candidate| describe(candidate, &mut lookups)).collect())
 }
 
@@ -101,7 +101,7 @@ unsafe extern "system" fn collect_window(hwnd: HWND, handles: LPARAM) -> BOOL {
     BOOL::from(true)
 }
 
-fn app_window(hwnd: HWND, own_pid: u32, desktops: &mut DesktopLookup) -> Option<Candidate> {
+fn app_window(hwnd: HWND, own_pid: u32, desktops: &DesktopLookup) -> Option<Candidate> {
     if !is_visible(hwnd) {
         return None;
     }
@@ -120,7 +120,7 @@ fn app_window(hwnd: HWND, own_pid: u32, desktops: &mut DesktopLookup) -> Option<
     }
     let rect = visible_rect(hwnd).filter(|rect| !rect.is_empty())?;
     let placement = desktops.placement(hwnd);
-    if placement == Placement::Hidden {
+    if matches!(placement, Placement::Hidden | Placement::Unknown) {
         return None;
     }
     Some(Candidate { hwnd, pid, title, class_name, rect, placement })
@@ -134,6 +134,7 @@ fn describe(candidate: Candidate, lookups: &mut Lookups) -> WindowInfo {
     let facts = lookups.processes.facts(candidate.pid);
     let (desktop, on_current_desktop) = match candidate.placement {
         Placement::Elsewhere(number) => (number, false),
+        Placement::Unknown => (None, false),
         Placement::Current | Placement::Hidden => (lookups.desktops.current_number(), true),
     };
     WindowInfo {
@@ -221,5 +222,6 @@ mod tests {
             .min()
             .unwrap();
         assert!(best < Duration::from_millis(20), "windows() took {best:?}");
+        eprintln!("timing: windows() best of 5 took {:.3} ms", best.as_secs_f64() * 1000.0);
     }
 }

@@ -1,7 +1,7 @@
 use deckhand_core::{Error, Result, TargetSpec, protocol::Step};
 
 use super::{
-    click::{self},
+    click,
     click_choice::ClickOptions,
     clipboard,
     done::Done,
@@ -63,37 +63,14 @@ fn dispatch(
         Step::Key { keys, repeat, action, .. } => {
             keys::step(engine, prepared, &KeyRequest { keys, repeat: *repeat, action: *action }, call)
         }
-        Step::Mouse { action, to, button, direction, amount, glide_ms, .. } => {
-            let request = MouseRequest {
-                action: *action,
-                to: to.as_ref(),
-                button: *button,
-                direction: *direction,
-                amount: *amount,
-                glide_ms: *glide_ms,
-            };
-            mouse::step(engine, &request, prepared, step, mode, call)
-        }
+        Step::Mouse { .. } => mouse::step(engine, &MouseRequest::try_from(step)?, prepared, step, mode, call),
         Step::Set { .. } => set::step(engine, required(prepared, step)?, &step.set_change()?, mode, call),
         Step::Focus { .. } => focus_step::step(engine, required(prepared, step)?, call),
-        Step::Window { action, target, app, args, rect } => {
-            let request = WindowRequest {
-                action: *action,
-                target: target.as_ref(),
-                app: app.as_deref(),
-                args: args.as_deref(),
-                rect: *rect,
-            };
-            window::step(engine, &request, step, context)
-        }
-        Step::Pick { paths, open_with, overwrite, timeout_ms } => {
-            let request =
-                PickRequest { paths, open_with: open_with.as_ref(), overwrite: *overwrite, timeout_ms: *timeout_ms };
-            pick::step(engine, &request, step, call)
-        }
+        Step::Window { .. } => window::step(engine, &WindowRequest::try_from(step)?, step, context),
+        Step::Pick { .. } => pick::step(engine, &PickRequest::try_from(step)?, step, call),
         Step::Wait(args) => wait_step::step(engine, args, call, context.before),
         Step::Clipboard { text } => clipboard::step(engine, text, mode, call),
-        Step::Notify { title, message } => notify::step(engine, title, message, call),
+        Step::Notify { title, message } => notify::step(engine, title, message, context),
     }
 }
 

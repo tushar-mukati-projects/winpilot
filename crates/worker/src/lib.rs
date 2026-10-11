@@ -23,7 +23,6 @@ mod resolve;
 mod server;
 #[cfg(test)]
 mod test_fixture;
-mod uniform_frame;
 mod until;
 mod wait;
 mod watch;

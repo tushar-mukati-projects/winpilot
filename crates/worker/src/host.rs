@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn the_host_ends_at_the_first_windowed_ancestor() {
-        let walk = chain(&[(1, "deckhand.exe"), (2, "claude.exe"), (3, "claude-deck.exe"), (4, "explorer.exe")]);
+        let walk = chain(&[(1, "deckhand.exe"), (2, "claude.exe"), (3, "notes.exe"), (4, "explorer.exe")]);
         assert_eq!(host_set(&walk, &set(&[3, 4])), set(&[1, 2, 3]));
     }
 
@@ -217,9 +217,9 @@ mod tests {
         let mut window = WindowInfo {
             hwnd: WindowRef(42),
             title: "Claude".to_string(),
-            process: "claude-deck.exe".to_string(),
+            process: "notes.exe".to_string(),
             pid: 7,
-            class_name: "Deck".to_string(),
+            class_name: "Notes".to_string(),
             rect: Rect::new(0, 0, 10, 10),
             state: WindowState::Normal,
             foreground: true,

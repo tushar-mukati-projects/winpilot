@@ -1,6 +1,6 @@
 use deckhand_core::Result;
 
-use super::{done::Done, settle, target::Prepared};
+use super::{by_pattern::by_pattern, done::Done, target::Prepared};
 use crate::{call_scope::CallScope, engine::Engine};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,12 +24,13 @@ impl Expansion {
 
 pub fn step(engine: &Engine, prepared: &Prepared, expansion: Expansion, call: &CallScope) -> Result<Done> {
     let id = prepared.require_element("set expanded")?.id;
-    engine.uia.run(move |uia| match expansion {
-        Expansion::Expand => uia.expand(id),
-        Expansion::Collapse => uia.collapse(id),
+    let ((), note) = by_pattern(engine, &prepared.window, call, || {
+        engine.uia.run(move |uia| match expansion {
+            Expansion::Expand => uia.expand(id),
+            Expansion::Collapse => uia.collapse(id),
+        })
     })?;
-    settle(engine, &prepared.window, call);
-    Ok(Done::by(expansion.name()))
+    Ok(Done::by(expansion.name()).with_note(note))
 }
 
 #[cfg(test)]

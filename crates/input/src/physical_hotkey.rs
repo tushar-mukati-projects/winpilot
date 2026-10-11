@@ -29,7 +29,8 @@ struct Watchers {
     detector: ChordDetector,
 }
 
-static WATCHERS: Mutex<Watchers> = Mutex::new(Watchers { next_id: 1, list: Vec::new(), detector: ChordDetector::new() });
+static WATCHERS: Mutex<Watchers> =
+    Mutex::new(Watchers { next_id: 1, list: Vec::new(), detector: ChordDetector::new() });
 
 pub struct PhysicalHotkey {
     id: u64,

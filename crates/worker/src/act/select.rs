@@ -1,12 +1,12 @@
 use deckhand_core::{ElementRef, Error, ErrorCode, Result};
 
 use super::{
+    by_pattern::by_pattern,
     done::Done,
     locate::refreshed,
     mode::Mode,
     mouse_select,
     select_check::{deselected_outcome, item_outcome, pattern_outcome},
-    settle,
     target::Prepared,
 };
 use crate::{call_scope::CallScope, engine::Engine};
@@ -26,11 +26,12 @@ pub fn option(engine: &Engine, prepared: &Prepared, option: &str, mode: Mode, ca
 
 pub fn item(engine: &Engine, prepared: &Prepared, selected: bool, call: &CallScope) -> Result<Done> {
     let id = prepared.require_element("set selected")?.id;
-    let method = if selected { select_or_invoke(engine, id)? } else { deselect(engine, id)? };
-    settle(engine, &prepared.window, call);
+    let (method, handed_back) = by_pattern(engine, &prepared.window, call, || {
+        if selected { select_or_invoke(engine, id) } else { deselect(engine, id) }
+    })?;
     let now = refreshed(engine, id)?;
     let note = if selected { item_outcome(&now)? } else { deselected_outcome(&now)? };
-    Ok(Done::by(method).with_note(note))
+    Ok(Done::by(method).with_note(note).with_note(handed_back))
 }
 
 pub fn select_by_pattern(
@@ -41,10 +42,10 @@ pub fn select_by_pattern(
     call: &CallScope,
 ) -> Result<Done> {
     let wanted = option.to_string();
-    engine.uia.run(move |uia| uia.select_option(id, &wanted))?;
-    settle(engine, &prepared.window, call);
+    let ((), handed_back) =
+        by_pattern(engine, &prepared.window, call, || engine.uia.run(move |uia| uia.select_option(id, &wanted)))?;
     let note = pattern_outcome(&refreshed(engine, id)?, option)?;
-    Ok(Done::by("select").with_note(note))
+    Ok(Done::by("select").with_note(note).with_note(handed_back))
 }
 
 fn select_or_invoke(engine: &Engine, id: ElementRef) -> Result<&'static str> {

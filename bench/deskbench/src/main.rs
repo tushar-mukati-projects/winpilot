@@ -72,6 +72,7 @@ fn main() {
         return;
     }
     let has = |s: &str| args.iter().any(|a| a == s);
+    let webview_process = args.windows(2).find(|pair| pair[0] == "--webview-process").map(|pair| pair[1].clone());
     let privacy = match privacy::PrivacyGuard::load(&args) {
         Ok(guard) => guard,
         Err(problem) => {
@@ -133,7 +134,7 @@ fn main() {
     add("chrome", pick(&wins, |w| w.class == "Chrome_WidgetWin_1" && w.process.eq_ignore_ascii_case("chrome.exe")));
     add("explorer", pick(&wins, |w| w.class == "CabinetWClass" && w.process.eq_ignore_ascii_case("explorer.exe")));
     add("electron", pick(&wins, |w| w.class == "Chrome_WidgetWin_1" && !BROWSERS.iter().any(|b| w.process.eq_ignore_ascii_case(b))));
-    add("webview2/tauri", pick(&wins, |w| w.process.to_lowercase().contains("claude-deck") || w.process.to_lowercase().contains("claude deck")));
+    add("webview2 app (--webview-process)", pick(&wins, |w| webview_process.as_deref().is_some_and(|name| w.process.eq_ignore_ascii_case(name))));
     add("taskbar (explorer.exe stand-in)", wins.iter().find(|w| w.class == "Shell_TrayWnd"));
 
     if !has("--skip-uia") {

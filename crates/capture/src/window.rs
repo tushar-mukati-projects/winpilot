@@ -17,7 +17,7 @@ pub(crate) fn capture_window(window: WindowRef, screen: impl FnOnce(CaptureArea)
     let outer = CaptureArea::new(window_rect(hwnd)?)?;
     let visible = visible_bounds(hwnd, outer)?;
     match printed_window(hwnd, outer.rect()) {
-        Some(printed) if !is_all_black(&printed) => printed
+        Some(printed) if !printed.is_all_black() => printed
             .crop(visible.rect())
             .ok_or_else(|| Error::internal("window image does not cover its visible bounds")),
         _ => fall_back_to_screen(window, hwnd, visible, screen),
@@ -61,13 +61,8 @@ fn fall_back_to_screen(
     Ok(frame)
 }
 
-fn is_all_black(frame: &Frame) -> bool {
-    frame.bgra.as_chunks::<4>().0.iter().all(|pixel| pixel[..3] == [0, 0, 0])
-}
-
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Point;
     use windows::Win32::Foundation::LPARAM;
     use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, IsWindowVisible};
     use windows_core::BOOL;
@@ -90,15 +85,6 @@ mod tests {
     }
 
     #[test]
-    fn black_detection_ignores_alpha() {
-        let mut frame = Frame::black(Point::new(0, 0), 4, 4);
-        frame.bgra.iter_mut().skip(3).step_by(4).for_each(|alpha| *alpha = 255);
-        assert!(is_all_black(&frame));
-        frame.bgra[20] = 1;
-        assert!(!is_all_black(&frame));
-    }
-
-    #[test]
     fn missing_windows_are_not_found() {
         let error = capture_window(WindowRef(0), |_| Err(Error::internal("unused"))).unwrap_err();
         assert_eq!(error.code, ErrorCode::NotFound);
@@ -114,7 +100,7 @@ mod tests {
             match capture_window(window, |_| Err(Error::internal("the screen must not be read"))) {
                 Ok(frame) => {
                     assert_eq!(frame.source, FrameSource::Window);
-                    assert!(!is_all_black(&frame));
+                    assert!(!frame.is_all_black());
                 }
                 Err(error) => assert!(matches!(error.code, ErrorCode::InvalidArgument | ErrorCode::NotFound)),
             }

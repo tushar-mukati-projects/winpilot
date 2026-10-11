@@ -12,7 +12,7 @@ use deckhand_core::{
 };
 use parking_lot::Mutex;
 
-use crate::{com::ComGuard, engine::Engine, in_flight::InFlight};
+use crate::{com::ComApartment, engine::Engine, in_flight::InFlight};
 
 const SHUTDOWN_PATIENCE: Duration = Duration::from_secs(1);
 
@@ -26,7 +26,7 @@ struct Request {
 
 pub fn run(build: &str) -> Result<()> {
     deckhand_desktop::enable_dpi_awareness()?;
-    let _com = ComGuard::multithreaded();
+    let _com = ComApartment::enter_any()?;
     let mut inbox = BufReader::new(io::stdin().lock());
     let outbox: Outbox = Arc::new(Mutex::new(BufWriter::new(io::stdout())));
     let (config, epoch, agent) = match read_frame(&mut inbox).context("reading the init message")? {
@@ -34,6 +34,9 @@ pub fn run(build: &str) -> Result<()> {
         _ => return Err(Error::invalid("the first message to the worker must be init")),
     };
     let engine = Arc::new(Engine::start(config, epoch, &agent)?);
+    if let Err(error) = engine.guard.release_inputs_a_crash_left_held() {
+        eprintln!("deckhand worker: {error}");
+    }
     send(&outbox, &FromWorker::Ready { version: deckhand_core::VERSION.to_string(), build: build.to_string() })?;
     let in_flight = Arc::new(InFlight::default());
     let served = serve(&mut inbox, &engine, &outbox, &in_flight);
@@ -68,8 +71,7 @@ fn start_call(request: Request, engine: &Arc<Engine>, outbox: &Outbox, in_flight
     let thread_outbox = Arc::clone(outbox);
     let thread_in_flight = Arc::clone(in_flight);
     let spawned = thread::Builder::new().name(format!("deckhand-call-{id}")).spawn(move || {
-        let _com = ComGuard::multithreaded();
-        let result = engine.handle(&call, &cancel, budget);
+        let result = ComApartment::enter_any().and_then(|_com| engine.handle(&call, &cancel, budget));
         thread_in_flight.finished(id);
         reply(&thread_outbox, id, result);
     });

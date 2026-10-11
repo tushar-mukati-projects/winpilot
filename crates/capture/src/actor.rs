@@ -45,7 +45,7 @@ pub(crate) fn run(inbox: &Receiver<Request>, ready: &Sender<Result<()>>) {
 }
 
 fn prepare_thread() -> Result<ComApartment> {
-    let apartment = ComApartment::enter_mta()?;
+    let apartment = ComApartment::enter_mta_strict()?;
     make_thread_per_monitor_aware()?;
     Ok(apartment)
 }

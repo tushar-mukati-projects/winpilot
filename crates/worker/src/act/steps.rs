@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use deckhand_core::{
     Error, ErrorCode, Result,
     protocol::{ActArgs, Step, StepOutcome},
@@ -15,6 +17,7 @@ pub struct StepContext<'a> {
     pub call: &'a CallScope,
     pub before: &'a WindowsBefore,
     pub mode: Mode,
+    pub started: Instant,
 }
 
 pub fn run_all(engine: &Engine, args: &ActArgs, context: &StepContext<'_>) -> Vec<StepOutcome> {

@@ -4,6 +4,21 @@ pub const DIALOG: &str = "#32770";
 pub const POPUP_MENU: &str = "#32768";
 pub const COMBO_LIST: &str = "ComboLBox";
 pub const FRAME_HOST_PROCESS: &str = "ApplicationFrameHost.exe";
+const SHELL_CLASSES: [&str; 9] = [
+    "Progman",
+    "WorkerW",
+    "Shell_TrayWnd",
+    "Shell_SecondaryTrayWnd",
+    "NotifyIconOverflowWindow",
+    "TopLevelWindowForOverflowXamlIsland",
+    "XamlExplorerHostIslandWindow",
+    "MultitaskingViewFrame",
+    "DV2ControlHost",
+];
+
+pub fn is_shell(window: &WindowInfo) -> bool {
+    SHELL_CLASSES.contains(&window.class_name.as_str())
+}
 
 pub fn is_popup_class(class_name: &str) -> bool {
     class_name == POPUP_MENU || class_name == COMBO_LIST
@@ -47,5 +62,14 @@ mod tests {
         let frame = WindowInfo { process: "applicationframehost.exe".to_string(), ..of_class("Frame") };
         assert!(is_frame_host(&frame));
         assert!(!is_frame_host(&of_class("Frame")));
+    }
+
+    #[test]
+    fn the_desktop_and_taskbars_are_shell_windows() {
+        for class_name in ["Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"] {
+            assert!(is_shell(&of_class(class_name)), "{class_name}");
+        }
+        assert!(!is_shell(&of_class("Notepad")));
+        assert!(!is_shell(&of_class("#32770")));
     }
 }

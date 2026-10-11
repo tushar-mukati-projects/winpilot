@@ -5,8 +5,8 @@ use super::{
     hit::hit_point,
     locate::{locate, locate_in_front},
     mode::Mode,
-    motion::move_pointer,
-    target::{Prepared, prepare},
+    motion::Motion,
+    target::{Prepared, given_or_else, prepare},
 };
 use crate::{call_scope::CallScope, engine::Engine, overlay};
 
@@ -17,37 +17,23 @@ pub struct Press {
 }
 
 pub fn mouse_down(engine: &Engine, target: Option<&Prepared>, press: Press, call: &CallScope) -> Result<Done> {
-    let at_cursor;
-    let prepared = if let Some(prepared) = target {
-        prepared
-    } else {
-        at_cursor = cursor_target(engine, call)?;
-        &at_cursor
-    };
-    let located = locate_in_front(engine, prepared, call)?;
-    let point = hit_point(engine, prepared, &located)?;
-    overlay::begin(engine, &located.window, call);
-    move_pointer(engine, point, press.glide_ms)?;
+    let prepared = given_or_else(target, || cursor_target(engine, call))?;
+    let located = locate_in_front(engine, &prepared, call)?;
+    let point = Motion::start(engine, call).approach(&prepared, &located, press.glide_ms)?;
     deckhand_input::button_down(point, press.button)?;
-    call.note_held(press.button);
+    call.note_held(press.button, point);
     overlay::click(engine, point, 1);
     Ok(Done::by("mouse"))
 }
 
 pub fn mouse_up(engine: &Engine, target: Option<&Prepared>, press: Press, call: &CallScope) -> Result<Done> {
     let here = deckhand_input::cursor_position()?;
-    let at_cursor;
-    let prepared = if let Some(prepared) = target {
-        prepared
-    } else {
-        at_cursor = cursor_target(engine, call)?;
-        &at_cursor
-    };
+    let prepared = given_or_else(target, || cursor_target(engine, call))?;
     let window = deckhand_desktop::window(prepared.window.hwnd)?;
-    let located = locate(engine, prepared, window, call)?;
-    let point = hit_point(engine, prepared, &located)?;
+    let located = locate(engine, &prepared, window, call)?;
+    let point = hit_point(engine, &prepared, &located)?;
     if point != here {
-        move_pointer(engine, point, press.glide_ms)?;
+        Motion::start(engine, call).glide_to(point, press.glide_ms)?;
     }
     deckhand_input::button_up(point, press.button)?;
     call.note_released(press.button);

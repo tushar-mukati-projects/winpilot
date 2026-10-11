@@ -31,12 +31,12 @@ impl AppKind {
 }
 
 pub fn installed_apps() -> Result<Vec<AppEntry>> {
-    let _com = ComApartment::enter_mta()?;
+    let _com = ComApartment::enter_any()?;
     list_apps_folder()
 }
 
 pub fn launch(app: &AppEntry, args: Option<&str>) -> Result<Option<u32>> {
-    let _com = ComApartment::enter_mta()?;
+    let _com = ComApartment::enter_any()?;
     match app.kind {
         AppKind::Packaged => activate_packaged(&app.id, args).map(Some),
         AppKind::Desktop => shell_execute(&format!("{APPS_FOLDER_PREFIX}{}", app.id), None, args),
@@ -44,7 +44,7 @@ pub fn launch(app: &AppEntry, args: Option<&str>) -> Result<Option<u32>> {
 }
 
 pub fn launch_path(path: &Path, args: Option<&str>) -> Result<Option<u32>> {
-    let _com = ComApartment::enter_mta()?;
+    let _com = ComApartment::enter_any()?;
     shell_execute(&path.to_string_lossy(), Some(OPEN_VERB), args)
 }
 

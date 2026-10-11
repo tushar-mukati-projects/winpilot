@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     agent,
     error::Result,
-    matching::{contains_folded, same_process},
+    matching::{contains_folded, fold, process_stem, same_process},
     path_guard,
     quality::Quality,
     recording::VideoFormat,
@@ -237,11 +237,22 @@ impl DenyRule {
         let title_matches = self.title.as_deref().is_none_or(|wanted| contains_folded(title, wanted));
         process_matches && title_matches
     }
+
+    pub fn mentioned_in(&self, text: &str) -> bool {
+        let title = self.title.as_deref().filter(|title| !fold(title).is_empty());
+        let process = self.process.as_deref().map(process_stem).filter(|stem| !stem.is_empty());
+        title.is_some_and(|title| contains_folded(text, title))
+            || process.is_some_and(|stem| fold(text).contains(&stem))
+    }
 }
 
 impl GuardConfig {
     pub fn denies_window(&self, process: &str, title: &str) -> bool {
         self.deny.iter().any(|rule| rule.matches(process, title))
+    }
+
+    pub fn mentions_denied(&self, text: &str) -> bool {
+        self.deny.iter().any(|rule| rule.mentioned_in(text))
     }
 
     pub fn denies_path(&self, path: &Path) -> bool {
@@ -293,6 +304,17 @@ mod tests {
     fn empty_rule_matches_nothing() {
         let rule = DenyRule { process: None, title: None };
         assert!(!rule.matches("anything.exe", "anything"));
+        assert!(!rule.mentioned_in("anything"));
+    }
+
+    #[test]
+    fn text_that_names_a_denied_title_or_process_is_recognised() {
+        let guard = guard();
+        assert!(guard.mentions_denied("window:\"My  VAULT\" >> role:edit"));
+        assert!(guard.mentions_denied("process:keepassxc"));
+        assert!(guard.mentions_denied("KeePass Database"));
+        assert!(!guard.mentions_denied("window:\"Untitled - Notepad\""));
+        assert!(!DenyRule { process: Some(".exe".to_string()), title: Some("  ".to_string()) }.mentioned_in("x.exe"));
     }
 
     #[test]

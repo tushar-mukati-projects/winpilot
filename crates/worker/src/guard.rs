@@ -20,6 +20,7 @@ const ACTOR_MUTEX: &str = "Local\\deckhand-actor";
 const ACTOR_WAIT: Duration = Duration::from_secs(10);
 const YIELD_POLL: Duration = Duration::from_millis(50);
 const BUSY: &str = "another Deckhand call or Claude session is controlling the desktop";
+const RELEASING_STUCK_INPUTS: &str = "releasing keys and buttons that a crashed Deckhand call left held down";
 
 pub struct Guard {
     config: GuardConfig,
@@ -61,6 +62,11 @@ impl Guard {
         self.activity.as_ref().and_then(ActivityMonitor::idle_for)
     }
 
+    pub fn physical_input_since(&self, since: Instant) -> bool {
+        let last = self.activity.as_ref().and_then(ActivityMonitor::last_physical_input);
+        last.is_some_and(|at| at > since)
+    }
+
     pub fn own_process_elevated(&self) -> bool {
         self.elevated
     }
@@ -87,15 +93,23 @@ impl Guard {
         self.config.checked_path(path)
     }
 
+    pub fn protects_paths(&self) -> bool {
+        !self.config.deny_paths.is_empty()
+    }
+
     pub fn acquire_actor(&self, call: &CallScope) -> Result<NamedMutexGuard<'_>> {
         let wait = call.bounded(ACTOR_WAIT);
         let Some(actor) = self.actor.lock(wait)? else { return Err(busy(wait < ACTOR_WAIT)) };
         call.note_acting();
         if actor.was_abandoned() {
-            deckhand_input::release_stuck_inputs()
-                .context("releasing keys and buttons that a crashed Deckhand call left held down")?;
+            deckhand_input::release_stuck_inputs().context(RELEASING_STUCK_INPUTS)?;
         }
         Ok(actor)
+    }
+
+    pub fn release_inputs_a_crash_left_held(&self) -> Result<()> {
+        let Some(_recovering) = self.actor.try_lock_abandoned()? else { return Ok(()) };
+        deckhand_input::release_stuck_inputs().context(RELEASING_STUCK_INPUTS)
     }
 
     pub fn check_running(&self, call: &CallScope) -> Result<()> {

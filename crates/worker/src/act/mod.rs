@@ -1,6 +1,7 @@
 mod after;
 mod append;
 mod buttons;
+mod by_pattern;
 mod chords;
 mod click;
 mod click_choice;
@@ -8,6 +9,7 @@ mod clip;
 mod clipboard;
 mod done;
 mod expand;
+mod field;
 mod focus;
 mod focus_step;
 mod foreground;
@@ -17,7 +19,9 @@ mod key_labels;
 mod keys;
 mod landing;
 mod launch;
+mod launch_args;
 mod launch_match;
+mod lift;
 mod locate;
 mod mode;
 mod motion;
@@ -25,6 +29,7 @@ mod mouse;
 mod mouse_click;
 mod mouse_select;
 mod notify;
+mod notify_limit;
 mod option_search;
 mod paste;
 mod pattern_click;
@@ -36,6 +41,7 @@ mod scroll;
 mod select;
 mod select_check;
 mod set;
+mod shortcut;
 mod steps;
 mod summary;
 mod target;
@@ -58,6 +64,7 @@ use deckhand_core::{
     protocol::{ActArgs, ActReport, After, AfterMode, Step, StepOutcome},
 };
 
+pub use self::notify_limit::NotifyLimit;
 use self::{after::Baseline, click_choice::ClickOptions, mode::Mode, steps::StepContext};
 use crate::{
     call_scope::CallScope,
@@ -68,7 +75,7 @@ use crate::{
 };
 
 const RESPONSIVE_WAIT: Duration = Duration::from_millis(500);
-const AFTER_SKIPPED: &str = "after-state skipped: the call ran out of time";
+const AFTER_SKIPPED: &str = "after-state skipped: too little of the call's time was left to read the window";
 
 pub fn run(engine: &Engine, args: &ActArgs, call: &CallScope) -> Result<ActReport> {
     let started = Instant::now();
@@ -83,7 +90,6 @@ pub fn click_target(engine: &Engine, target: &TargetSpec, step: &Step, call: &Ca
     let prepared = target::prepare(engine, target, Mode::Foreground, call)?;
     mode::for_window(Mode::Foreground, &prepared.window, step)?;
     click::click_prepared(engine, &prepared, ClickOptions::default(), call)?;
-    settle(engine, &prepared.window, call);
     Ok(prepared.window)
 }
 
@@ -96,12 +102,12 @@ pub fn settle(engine: &Engine, window: &WindowInfo, call: &CallScope) {
 
 fn run_holding_actor(engine: &Engine, args: &ActArgs, call: &CallScope, started: Instant) -> Result<ActReport> {
     args.validate()?;
-    validate::validate(args)?;
+    let mode = Mode::requested(args.background.unwrap_or(engine.config.act.background));
+    validate::validate(args, &engine.guard, mode)?;
     let _actor = if steps::needs_actor(&args.steps) { Some(engine.guard.acquire_actor(call)?) } else { None };
     let before = WindowsBefore::now(engine);
     let baseline = Baseline::capture(engine, args.after);
-    let mode = Mode::requested(args.background.unwrap_or(engine.config.act.background));
-    let mut outcomes = steps::run_all(engine, args, &StepContext { call, before: &before, mode });
+    let mut outcomes = steps::run_all(engine, args, &StepContext { call, before: &before, mode, started });
     held::release_held(call, &mut outcomes);
     let after = after_or_note(engine, args.after, baseline.as_ref(), &mut outcomes, call)?;
     Ok(ActReport { steps: outcomes, total_steps: args.steps.len(), after, elapsed_ms: duration_ms(started.elapsed()) })
@@ -114,7 +120,7 @@ fn after_or_note(
     outcomes: &mut [StepOutcome],
     call: &CallScope,
 ) -> Result<After> {
-    if mode != AfterMode::None && call.expired() {
+    if mode != AfterMode::None && call.remaining() < engine.snapshot_budget() {
         return noted_instead(outcomes, AFTER_SKIPPED.to_string(), Error::timeout(AFTER_SKIPPED));
     }
     match after::report(engine, mode, baseline) {

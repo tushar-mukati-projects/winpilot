@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use deckhand_core::{
     Error, Result,
     format::{self, ObserveFormat},
@@ -10,6 +12,7 @@ use crate::config;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Extras<'a> {
     pub observe: ObserveFormat,
+    pub server_uptime: Duration,
     pub restarts: u32,
     pub config_problem: Option<&'a str>,
     pub worker_problem: Option<&'a str>,
@@ -51,7 +54,7 @@ fn act(report: ActReport) -> Vec<ContentBlock> {
 }
 
 fn status(report: StatusReport, extras: &Extras) -> String {
-    let mut summary = format::status(&with_restarts(report, extras.restarts));
+    let mut summary = format::status(&with_server_facts(report, extras));
     if let Some(problem) = extras.worker_problem {
         summary.push_str(&worker_line(problem));
     }
@@ -61,8 +64,9 @@ fn status(report: StatusReport, extras: &Extras) -> String {
     summary
 }
 
-fn with_restarts(mut report: StatusReport, restarts: u32) -> StatusReport {
-    report.worker_restarts = restarts;
+fn with_server_facts(mut report: StatusReport, extras: &Extras) -> StatusReport {
+    report.worker_restarts = extras.restarts;
+    report.server_uptime_ms = Some(u64::try_from(extras.server_uptime.as_millis()).unwrap_or(u64::MAX));
     report
 }
 
@@ -110,9 +114,16 @@ mod tests {
     }
 
     #[test]
-    fn status_restarts_come_from_the_supervisor() {
-        let report = status_report();
-        assert_eq!(with_restarts(report, 3).worker_restarts, 3);
+    fn restarts_and_server_uptime_come_from_the_server() {
+        let extras = Extras {
+            observe: ObserveFormat::default(),
+            server_uptime: Duration::from_secs(9),
+            restarts: 3,
+            config_problem: None,
+            worker_problem: None,
+        };
+        let report = with_server_facts(status_report(), &extras);
+        assert_eq!((report.worker_restarts, report.server_uptime_ms), (3, Some(9000)));
     }
 
     #[test]
@@ -127,6 +138,7 @@ mod tests {
     fn worker_and_config_problems_follow_the_status_lines() {
         let extras = Extras {
             observe: ObserveFormat::default(),
+            server_uptime: Duration::from_millis(2500),
             restarts: 4,
             config_problem: Some("bad key"),
             worker_problem: Some("it exited"),
@@ -134,6 +146,8 @@ mod tests {
         let text = status(status_report(), &extras);
         let lines: Vec<&str> = text.lines().collect();
         assert!(lines.contains(&"worker restarts: 4"), "{text}");
+        assert_eq!(lines[1], "server uptime: 2.5 s");
+        assert_eq!(lines[2], "worker uptime: 0.0 s");
         assert_eq!(lines[lines.len() - 2], "worker: it exited");
         assert!(lines[lines.len() - 1].starts_with("config: bad key; "), "{text}");
     }

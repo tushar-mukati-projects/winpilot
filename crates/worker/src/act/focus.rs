@@ -27,7 +27,7 @@ pub fn keyboard_target(engine: &Engine, target: Option<&Prepared>, call: &CallSc
 
 pub fn focus_prepared(engine: &Engine, prepared: &Prepared, call: &CallScope) -> Result<Focused> {
     let window = bring_forward(&prepared.window)?;
-    let Some(element) = prepared.element().cloned() else {
+    let Some(element) = prepared.element_or_point_hit().cloned() else {
         return Ok(Focused { window, element: None, clicked: false });
     };
     if set_focus_verified(engine, element.id)? {

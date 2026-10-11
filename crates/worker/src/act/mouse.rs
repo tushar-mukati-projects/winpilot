@@ -23,6 +23,24 @@ pub struct MouseRequest<'a> {
     pub glide_ms: Option<u64>,
 }
 
+impl<'a> TryFrom<&'a Step> for MouseRequest<'a> {
+    type Error = Error;
+
+    fn try_from(step: &'a Step) -> Result<Self> {
+        let Step::Mouse { action, to, button, direction, amount, glide_ms, .. } = step else {
+            return Err(Error::invalid(format!("{} is not a mouse step", step.kind())));
+        };
+        Ok(Self {
+            action: *action,
+            to: to.as_ref(),
+            button: *button,
+            direction: *direction,
+            amount: *amount,
+            glide_ms: *glide_ms,
+        })
+    }
+}
+
 pub fn step(
     engine: &Engine,
     request: &MouseRequest<'_>,
@@ -52,4 +70,22 @@ fn drag(engine: &Engine, request: &MouseRequest<'_>, from: &Prepared, step: &Ste
     for_window(Mode::Foreground, &to.window, step)?;
     let button = request.button.unwrap_or_default();
     pointer::drag(engine, &Drag { from, to: &to, button, glide_ms: request.glide_ms }, call)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn step(json: &str) -> Step {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn only_mouse_steps_become_mouse_requests() {
+        let drag = step(r#"{"do":"mouse","action":"drag","target":"e1","to":"e2","glide_ms":50}"#);
+        let request = MouseRequest::try_from(&drag).unwrap();
+        assert_eq!((request.action, request.glide_ms), (MouseAction::Drag, Some(50)));
+        assert_eq!(request.to, Some(&TargetSpec::Text("e2".to_string())));
+        assert!(MouseRequest::try_from(&step(r#"{"do":"wait","ms":5}"#)).is_err());
+    }
 }

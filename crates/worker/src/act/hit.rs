@@ -1,4 +1,6 @@
-use deckhand_core::{Element, ElementRef, Error, ErrorCode, Point, Rect, Result, WindowInfo, format::element_line};
+use deckhand_core::{
+    Element, ElementRef, Error, ErrorCode, Point, Rect, Result, WindowInfo, WindowRef, format::element_line,
+};
 
 use super::{locate::Located, target::Prepared};
 use crate::{engine::Engine, on_screen::visible_part};
@@ -37,13 +39,47 @@ pub fn candidate_points(first: Point, visible: Rect) -> Vec<Point> {
 }
 
 pub fn hit_point(engine: &Engine, prepared: &Prepared, located: &Located) -> Result<Point> {
-    match (&located.element, prepared.tracked_element()) {
-        (Some(element), Some(_)) => verify_hit(engine, element, located.point, &located.window),
-        _ => Ok(located.point),
+    match tracked_hit(prepared, located) {
+        Some(element) => verify_hit(engine, element, located.point, &located.window),
+        None => require_window_at(engine, located.point, &located.window).map(|()| located.point),
     }
 }
 
-pub fn verify_hit(engine: &Engine, element: &Element, first: Point, window: &WindowInfo) -> Result<Point> {
+pub fn confirm_hit(engine: &Engine, prepared: &Prepared, located: &Located, point: Point) -> Result<()> {
+    match tracked_hit(prepared, located) {
+        Some(element) => confirm_element_at(engine, element.id, point),
+        None => require_window_at(engine, point, &located.window),
+    }
+}
+
+pub fn lands_in(engine: &Engine, point: Point, window: &WindowInfo) -> bool {
+    let landed = engine.uia.run(move |uia| {
+        let hit = uia.element_at(point)?;
+        uia.window_of(hit.id)
+    });
+    landed.is_ok_and(|hwnd| hwnd == window.hwnd)
+}
+
+fn tracked_hit<'a>(prepared: &Prepared, located: &'a Located) -> Option<&'a Element> {
+    located.element.as_ref().filter(|_| prepared.tracked_element().is_some())
+}
+
+fn require_window_at(engine: &Engine, point: Point, window: &WindowInfo) -> Result<()> {
+    if lands_in(engine, point, window) {
+        return Ok(());
+    }
+    Err(window_covered(window.hwnd, point))
+}
+
+fn confirm_element_at(engine: &Engine, id: ElementRef, point: Point) -> Result<()> {
+    let (relation, hit) = probe(engine, id, point)?;
+    if accepts_hit(relation) {
+        return Ok(());
+    }
+    Err(covered(id, Some(&hit)))
+}
+
+fn verify_hit(engine: &Engine, element: &Element, first: Point, window: &WindowInfo) -> Result<Point> {
     let visible = visible_part(element, window).ok_or_else(|| covered(element.id, None))?;
     let mut covering = None;
     for point in candidate_points(first, visible) {
@@ -74,9 +110,41 @@ fn covered(id: ElementRef, hit: Option<&Element>) -> Error {
     Error::new(ErrorCode::Obscured, message)
 }
 
+fn window_covered(hwnd: WindowRef, point: Point) -> Error {
+    Error::new(ErrorCode::Obscured, format!("another window covers {hwnd} at {},{}", point.x, point.y))
+}
+
 #[cfg(test)]
 mod tests {
+    use deckhand_core::Role;
+
     use super::*;
+    use crate::{
+        resolve::Reach,
+        test_fixture::{element, window},
+    };
+
+    fn located(element: Option<Element>) -> Located {
+        Located { window: window(5, "app.exe", "App", Rect::new(0, 0, 100, 100)), element, point: Point::new(50, 50) }
+    }
+
+    #[test]
+    fn only_tracked_elements_are_checked_element_by_element() {
+        let button = element(1, 1, Role::Button, "OK");
+        let tracked = Prepared { window: located(None).window, reach: Reach::Element(button.clone()) };
+        assert!(tracked_hit(&tracked, &located(Some(button.clone()))).is_some());
+        let at_point = Prepared { reach: Reach::Point { point: Point::new(50, 50), under: button.clone() }, ..tracked };
+        assert!(tracked_hit(&at_point, &located(Some(button))).is_none());
+        let whole = Prepared { reach: Reach::Window, ..at_point };
+        assert!(tracked_hit(&whole, &located(None)).is_none());
+    }
+
+    #[test]
+    fn a_covered_window_names_where_it_is_covered() {
+        let error = window_covered(WindowRef(42), Point::new(5, 7));
+        assert_eq!(error.code, ErrorCode::Obscured);
+        assert_eq!(error.message, "another window covers w42 at 5,7");
+    }
 
     #[test]
     fn any_containment_relation_accepts_the_hit() {
@@ -118,7 +186,7 @@ mod tests {
         let hit = Element {
             id: ElementRef(9),
             depth: 0,
-            role: deckhand_core::Role::Button,
+            role: Role::Button,
             name: "OK".to_string(),
             value: None,
             automation_id: String::new(),

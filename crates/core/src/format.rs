@@ -142,16 +142,17 @@ pub fn clipboard(report: &ClipboardReport) -> String {
 }
 
 pub fn status(report: &StatusReport) -> String {
-    let mut lines = vec![
-        format!("version: {}", report.version),
-        format!("uptime: {}", seconds(report.uptime_ms)),
+    let mut lines = vec![format!("version: {}", report.version)];
+    lines.extend(report.server_uptime_ms.map(|ms| format!("server uptime: {}", seconds(ms))));
+    lines.extend(report.worker_uptime_ms.map(|ms| format!("worker uptime: {}", seconds(ms))));
+    lines.extend([
         stopped_line(report),
         format!("user idle: {}", report.user_idle_ms.map_or_else(|| "unknown".to_string(), seconds)),
         hotkey_line(report),
         format!("elevated: {}", yes_no(report.elevated)),
         format!("secure desktop: {}", yes_no(report.secure_desktop)),
         format!("worker restarts: {}", report.worker_restarts),
-    ];
+    ]);
     lines.extend(recent_line(&report.recent));
     lines.join("\n")
 }
@@ -683,7 +684,7 @@ mod tests {
         snap.focused = Some(ElementRef(5));
         Observation {
             snapshot: snap,
-            others: vec![app_window(2, "chrome.exe", "Inbox"), app_window(3, "claude-deck.exe", "Claude Deck")],
+            others: vec![app_window(2, "chrome.exe", "Inbox"), app_window(3, "notes.exe", "Notes")],
         }
     }
 
@@ -736,7 +737,8 @@ mod tests {
     fn status_report() -> StatusReport {
         StatusReport {
             version: "0.1.0".to_string(),
-            uptime_ms: 125_400,
+            server_uptime_ms: Some(130_000),
+            worker_uptime_ms: Some(125_400),
             stopped: false,
             user_idle_ms: Some(3_240),
             kill_hotkey: "ctrl+alt+escape".to_string(),
@@ -952,7 +954,7 @@ mod tests {
             "    e8 checkbox \"Word wrap\" unchecked",
             "  e9 statusbar \"Status\"",
             "    e10 text \"Ln 1, Col 6\"",
-            "other windows: w2 chrome.exe \"Inbox\", w3 claude-deck.exe \"Claude Deck\"",
+            "other windows: w2 chrome.exe \"Inbox\", w3 notes.exe \"Notes\"",
         ];
         assert_eq!(observation(&sample_observation(), &ObserveFormat::default()), expected.join("\n"));
     }
@@ -973,7 +975,7 @@ mod tests {
             "    e10 text \"Ln 1, Col 6\"",
             "  e11 image #logo",
             "  e12 pane \"Empty pane\"",
-            "other windows: w2 chrome.exe \"Inbox\", w3 claude-deck.exe \"Claude Deck\"",
+            "other windows: w2 chrome.exe \"Inbox\", w3 notes.exe \"Notes\"",
         ];
         assert_eq!(observation(&sample_observation(), &format), expected.join("\n"));
     }
@@ -997,7 +999,7 @@ mod tests {
                 "  e2 menubar \"Application\"",
                 "    e3 menuitem \"File\"",
                 "… 6 more elements (narrow with query, or raise max)",
-                "other windows: w2 chrome.exe \"Inbox\", w3 claude-deck.exe \"Claude Deck\"",
+                "other windows: w2 chrome.exe \"Inbox\", w3 notes.exe \"Notes\"",
             ]
         );
     }
@@ -1378,7 +1380,8 @@ mod tests {
     fn status_report_running() {
         let expected = [
             "version: 0.1.0",
-            "uptime: 125.4 s",
+            "server uptime: 130.0 s",
+            "worker uptime: 125.4 s",
             "stopped: no",
             "user idle: 3.2 s",
             "kill hotkey: ctrl+alt+escape",
@@ -1393,6 +1396,7 @@ mod tests {
     #[test]
     fn status_report_stopped() {
         let report = StatusReport {
+            server_uptime_ms: None,
             stopped: true,
             user_idle_ms: None,
             hotkey_registered: false,
@@ -1403,7 +1407,7 @@ mod tests {
         };
         let expected = [
             "version: 0.1.0",
-            "uptime: 125.4 s",
+            "worker uptime: 125.4 s",
             "stopped: yes — press ctrl+alt+escape again to resume",
             "user idle: unknown",
             "kill hotkey: ctrl+alt+escape (not registered)",

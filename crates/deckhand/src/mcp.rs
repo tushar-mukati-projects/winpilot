@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use deckhand_core::{
     Context, ErrorCode, Result,
+    config::GuardConfig,
     format::ObserveFormat,
     protocol::{ActArgs, Call, ObserveArgs, Reply},
 };
@@ -20,7 +21,8 @@ use crate::{
     audit::{Audit, Entry},
     config::{self, LoadedConfig},
     render::{self, Extras},
-    status, summary,
+    status,
+    summary::{self, Redaction},
     supervisor::Supervisor,
 };
 
@@ -53,6 +55,7 @@ pub struct Settings {
     pub log_text: bool,
     pub config_problem: Option<String>,
     pub kill_hotkey: String,
+    pub guard: GuardConfig,
 }
 
 impl Settings {
@@ -61,6 +64,7 @@ impl Settings {
             log_text: loaded.config.log.log_text,
             config_problem: loaded.problem.clone(),
             kill_hotkey: loaded.config.guard.kill_hotkey.clone(),
+            guard: loaded.config.guard.clone(),
         }
     }
 }
@@ -101,7 +105,8 @@ impl DeckhandServer {
     async fn run(&self, call: Call, view: ObserveFormat, context: &RequestContext<RoleServer>) -> CallToolResult {
         let started = Instant::now();
         let tool = call.tool();
-        let summary = summary::describe(&call, self.settings.log_text);
+        let redaction = Redaction { log_text: self.settings.log_text, guard: &self.settings.guard };
+        let summary = summary::describe(&call, redaction);
         let answer = self.answer(call, context).await;
         let failure = answer.outcome.as_ref().err().map(|error| error.code);
         self.audit.record(&Entry { tool, summary: &summary, failure, elapsed: started.elapsed() });
@@ -109,6 +114,9 @@ impl DeckhandServer {
     }
 
     async fn answer(&self, call: Call, context: &RequestContext<RoleServer>) -> Answer {
+        if let Err(error) = checked(&call) {
+            return Answer::plain(Err(error));
+        }
         if let Some(problem) = &self.settings.config_problem {
             return self.refuse(&call, problem);
         }
@@ -137,6 +145,7 @@ impl DeckhandServer {
     fn extras<'a>(&'a self, observe: ObserveFormat, worker_problem: Option<&'a str>) -> Extras<'a> {
         Extras {
             observe,
+            server_uptime: self.started.elapsed(),
             restarts: self.supervisor.restarts(),
             config_problem: self.settings.config_problem.as_deref(),
             worker_problem,
@@ -186,6 +195,13 @@ impl ServerHandler for DeckhandServer {
     }
 }
 
+fn checked(call: &Call) -> Result<()> {
+    match call {
+        Call::Observe(args) => args.request().map(drop),
+        Call::Act(args) => args.validate(),
+    }
+}
+
 fn always_load() -> MetaObject {
     let mut meta = MetaObject::new();
     meta.insert(ALWAYS_LOAD.to_string(), serde_json::Value::Bool(true));
@@ -208,7 +224,12 @@ mod tests {
     const BAD_CONFIG: &str = "C:\\cfg\\config.toml is invalid (line 3: invalid type)";
 
     fn settings() -> Settings {
-        Settings { log_text: false, config_problem: None, kill_hotkey: "ctrl+alt+escape".to_string() }
+        Settings {
+            log_text: false,
+            config_problem: None,
+            kill_hotkey: "ctrl+alt+escape".to_string(),
+            guard: GuardConfig::default(),
+        }
     }
 
     fn server() -> (DeckhandServer, FakeSpawner) {
@@ -431,6 +452,25 @@ mod tests {
         let params = json!({"name": "observe", "arguments": {"windw": "Notepad"}});
         let response = client.request(3, "tools/call", params).await;
         assert_eq!(response["result"]["isError"], true);
+        assert_eq!(spawner.spawned(), 0);
+    }
+
+    #[tokio::test]
+    async fn invalid_requests_are_refused_before_the_worker_starts() {
+        let (server, spawner) = server();
+        let mut client = RawClient::connect(server);
+        client.initialize().await;
+        let cases = [
+            json!({"name": "observe", "arguments": {"mode": "screenshot", "fps": 5}}),
+            json!({"name": "observe", "arguments": {"mode": "status", "window": "Notepad"}}),
+            json!({"name": "act", "arguments": {"steps": [{"do": "click", "target": "e1", "count": 9}]}}),
+        ];
+        for (id, params) in (10..).zip(cases) {
+            let response = client.request(id, "tools/call", params).await;
+            assert_eq!(response["result"]["isError"], true, "{response}");
+            let text = response["result"]["content"][0]["text"].as_str().unwrap_or_default().to_string();
+            assert!(text.starts_with("error[invalid_argument]"), "{text}");
+        }
         assert_eq!(spawner.spawned(), 0);
     }
 

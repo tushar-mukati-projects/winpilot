@@ -1,11 +1,14 @@
 use deckhand_core::{Element, ElementRef, Error, ErrorCode, Result, WindowInfo, keys::NamedKey};
 
 use super::{
+    by_pattern::by_pattern,
     chords::{named, with_ctrl},
     clip::{NOTE_LIMIT, quoted},
     done::{Done, via_focus_click},
+    field::{is_writable, read_value},
     focus::focus_prepared,
     landing::ensure_keys_land,
+    lift::with_held_modifiers_lifted,
     mode::Mode,
     settle,
     target::Prepared,
@@ -45,17 +48,17 @@ fn set_in_background(
         )));
     }
     let (id, text) = (element.id, value.to_string());
-    engine.uia.run(move |uia| uia.set_value(id, &text))?;
-    settle(engine, &prepared.window, call);
-    Ok(Done::by("value").with_note(mismatch_note(read_value(engine, id)?, value)))
+    let ((), handed_back) =
+        by_pattern(engine, &prepared.window, call, || engine.uia.run(move |uia| uia.set_value(id, &text)))?;
+    Ok(Done::by("value").with_note(mismatch_note(read_value(engine, id)?, value)).with_note(handed_back))
 }
 
 pub fn value_matches(now: &str, wanted: &str) -> bool {
     now.trim() == wanted.trim()
 }
 
-fn is_writable(element: &Element) -> bool {
-    element.patterns.value && !element.state.read_only
+pub fn left_unchanged(before: Option<&str>, now: Option<&str>, wanted: &str) -> bool {
+    now.is_some_and(|now| !value_matches(now, wanted) && before == Some(now))
 }
 
 fn set_by_pattern(
@@ -65,18 +68,18 @@ fn set_by_pattern(
     value: &str,
     call: &CallScope,
 ) -> Result<Option<Done>> {
+    let before = read_value(engine, id)?;
     let text = value.to_string();
-    match engine.uia.run(move |uia| uia.set_value(id, &text)) {
-        Ok(()) => {}
+    let handed_back = match by_pattern(engine, window, call, || engine.uia.run(move |uia| uia.set_value(id, &text))) {
+        Ok(((), note)) => note,
         Err(error) if error.code == ErrorCode::Unsupported => return Ok(None),
         Err(error) => return Err(error),
+    };
+    let now = read_value(engine, id)?;
+    if left_unchanged(before.as_deref(), now.as_deref(), value) {
+        return Ok(None);
     }
-    settle(engine, window, call);
-    Ok(match read_value(engine, id)? {
-        None => Some(Done::by("value").with_note(Some(UNREADABLE.to_string()))),
-        Some(now) if value_matches(&now, value) => Some(Done::by("value")),
-        Some(_) => None,
-    })
+    Ok(Some(Done::by("value").with_note(mismatch_note(now, value)).with_note(handed_back)))
 }
 
 fn set_by_keys(engine: &Engine, prepared: &Prepared, id: ElementRef, value: &str, call: &CallScope) -> Result<Done> {
@@ -85,19 +88,18 @@ fn set_by_keys(engine: &Engine, prepared: &Prepared, id: ElementRef, value: &str
         overlay::focus_field(engine, element.rect);
     }
     ensure_keys_land(engine, &focused)?;
-    deckhand_input::press_chord(&with_ctrl('a'))?;
-    if value.is_empty() {
-        deckhand_input::press_chord(&named(NamedKey::Delete))?;
-    } else {
-        deckhand_input::type_text(value)?;
-    }
+    with_held_modifiers_lifted(call, || replace_text(value))?;
     settle(engine, &focused.window, call);
     let done = Done::by(via_focus_click("keys", focused.clicked));
     Ok(done.with_note(mismatch_note(read_value(engine, id)?, value)))
 }
 
-fn read_value(engine: &Engine, id: ElementRef) -> Result<Option<String>> {
-    engine.uia.run(move |uia| uia.value(id))
+fn replace_text(value: &str) -> Result<()> {
+    deckhand_input::press_chord(&with_ctrl('a'))?;
+    if value.is_empty() {
+        return deckhand_input::press_chord(&named(NamedKey::Delete));
+    }
+    deckhand_input::type_text(value)
 }
 
 pub fn mismatch_note(now: Option<String>, wanted: &str) -> Option<String> {
@@ -125,5 +127,14 @@ mod tests {
         assert_eq!(mismatch_note(Some("1,000".to_string()), "1000").as_deref(), Some("value is now \"1,000\""));
         assert_eq!(mismatch_note(Some("1000 ".to_string()), "1000"), None);
         assert_eq!(mismatch_note(None, "secret").as_deref(), Some(UNREADABLE));
+    }
+
+    #[test]
+    fn only_a_write_that_changed_nothing_is_retyped() {
+        assert!(left_unchanged(Some("old"), Some("old"), "new"));
+        assert!(!left_unchanged(Some(""), Some("1,000"), "1000"));
+        assert!(!left_unchanged(Some("1000"), Some("1000"), "1000"));
+        assert!(!left_unchanged(None, Some("old"), "new"));
+        assert!(!left_unchanged(Some("old"), None, "new"));
     }
 }

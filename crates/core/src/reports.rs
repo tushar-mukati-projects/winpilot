@@ -148,7 +148,10 @@ pub struct Timing {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatusReport {
     pub version: String,
-    pub uptime_ms: u64,
+    #[serde(default)]
+    pub server_uptime_ms: Option<u64>,
+    #[serde(default)]
+    pub worker_uptime_ms: Option<u64>,
     pub stopped: bool,
     pub user_idle_ms: Option<u64>,
     pub kill_hotkey: String,

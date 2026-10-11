@@ -57,13 +57,12 @@ fn click_summary(target: &TargetSpec, button: MouseButton, count: u8, modifiers:
 
 fn click_verb(button: MouseButton, count: u8) -> String {
     let clicks = match count {
-        1 => "click".to_string(),
-        2 => "double-click".to_string(),
-        3 => "triple-click".to_string(),
-        other => format!("click ×{other}"),
+        ..=1 => "click",
+        2 => "double-click",
+        _ => "triple-click",
     };
     match button {
-        MouseButton::Left => clicks,
+        MouseButton::Left => clicks.to_string(),
         MouseButton::Right => format!("right-{clicks}"),
         MouseButton::Middle => format!("middle-{clicks}"),
     }

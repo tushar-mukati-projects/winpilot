@@ -63,8 +63,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        chord::chord_batch, foreground_unlock::foreground_unlock_batch, mouse::click_batch, mouse::scroll_events,
-        physical_button::PhysicalButton, test_layout::FakeLayout, text::text_events, virtual_desktop::VirtualDesktop,
+        chord::chord_batch, mouse::click_batch, mouse::scroll_events, physical_button::PhysicalButton,
+        test_layout::FakeLayout, text::text_events, virtual_desktop::VirtualDesktop,
     };
 
     fn extra_info(input: &INPUT) -> usize {
@@ -85,7 +85,6 @@ mod tests {
         events.extend(scroll_events(desktop, Point::new(5, 5), Direction::Left, 3).unwrap());
         events.extend(chord_batch(&chord, &layout).unwrap().events);
         events.extend(text_events("a\nb\t😀", &layout));
-        events.extend(foreground_unlock_batch(&layout).events);
         events
     }
 

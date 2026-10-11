@@ -102,10 +102,6 @@ impl ActivityBoard {
         *self.activity.lock() = Activity::default();
     }
 
-    pub(crate) fn last_change(&self, pid: u32) -> Option<Instant> {
-        self.activity.lock().last_change(Some(pid))
-    }
-
     pub(crate) fn opened_since(&self, since: Instant) -> Vec<WindowRef> {
         self.activity.lock().opened_since(since)
     }
@@ -158,8 +154,6 @@ mod tests {
         let before = Instant::now();
         thread::sleep(Duration::from_millis(1));
         board.record(event(Instant::now(), Some(42), None));
-        assert!(board.last_change(42).is_some_and(|at| at >= before));
-        assert!(board.last_change(7).is_none());
         assert!(board.wait_change(None, before, Duration::ZERO));
         assert!(board.wait_change(Some(42), before, Duration::ZERO));
         assert!(!board.wait_change(Some(7), before, Duration::ZERO));

@@ -6,7 +6,7 @@ use windows::Win32::{
     System::{
         DataExchange::{
             CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, GetClipboardOwner,
-            IsClipboardFormatAvailable, OpenClipboard, SetClipboardData,
+            GetClipboardSequenceNumber, IsClipboardFormatAvailable, OpenClipboard, SetClipboardData,
         },
         Ole::{CF_LOCALE, CF_OEMTEXT, CF_TEXT, CF_UNICODETEXT},
     },
@@ -115,6 +115,11 @@ pub fn clear() -> Result<()> {
     unsafe { EmptyClipboard() }.context("emptying the clipboard")
 }
 
+pub fn sequence_number() -> Option<u32> {
+    let sequence = unsafe { GetClipboardSequenceNumber() };
+    (sequence != 0).then_some(sequence)
+}
+
 pub fn holds_only_text() -> Result<bool> {
     let _clipboard = OpenClipboardGuard::open()?;
     let formats = clipboard_formats()?;
@@ -182,6 +187,7 @@ mod tests {
         let _only_text = holds_only_text().unwrap();
         let read = read().unwrap();
         assert!(!read.marked_private || read.text.is_none());
+        let _sequence = sequence_number();
     }
 
     #[test]

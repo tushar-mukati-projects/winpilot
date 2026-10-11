@@ -49,7 +49,7 @@ The script:
 3. Registers the notification identity `Deckhand.Agent` (name and icon) under `HKCU\Software\Classes\AppUserModelId`, so notifications show as "Deckhand".
 4. With `-Register`, registers the server with Claude Code at user scope: `claude mcp add -s user deckhand -- <exe> mcp`.
 
-Restart open Claude Code sessions to load it.
+Restart open Claude Code sessions to load it. A session still running the previous build says so: its next call fails with "a newer Deckhand was installed …; restart Claude Code to load it".
 
 **Updating.** Pull and run the script again. It works even while sessions are using the old build: the running copy is renamed to `deckhand.old-<time>.exe` and deleted on a later run.
 
@@ -87,7 +87,7 @@ Other clients, such as Codex, take the same command and `args` in their own conf
 | `windows` | The open app windows | none |
 | `monitors` | Displays with position, scale and work area | none |
 | `apps` | Installed apps that `launch` can start | `query`, `max` |
-| `clipboard` | The clipboard text | none |
+| `clipboard` | The clipboard text | `max_chars` |
 | `status` | Health, kill switch, user activity, restarts, recent timings | none |
 
 | Field | Meaning |
@@ -102,9 +102,9 @@ Other clients, such as Codex, take the same command and `args` in their own conf
 | `region` | A screen rectangle `{"x","y","width","height"}` in physical pixels. A region can only be read as text with OCR, so `ocr: "never"` with a region is an error. |
 | `monitor` | A monitor index: primary first, then by x, then by y, as `mode=monitors` lists them. |
 | `ocr` | `auto` (UI Automation text first, OCR as fallback; default), `never` or `always`. |
-| `max_chars` | Text limit, default 20000, clamped to 1–200000. |
+| `max_chars` | Text and clipboard limit, default 20000, clamped to 1–200000. A cut reply ends with `(truncated)`. |
 | `preset` | Screenshot size and detail, see below. Default `medium`. |
-| `quality` | Screenshot JPEG quality 1–100; overrides the preset. |
+| `quality` | Screenshot JPEG quality 1–100; overrides the preset. PNG is lossless, so it takes no `quality`. |
 | `video_quality` | Recording quality `low`, `medium`, `high` (default) or `max`. |
 | `max_width` | Output width limit. Screenshots 64–2576; recordings 160–3840 (default 1920, GIF 960). |
 | `format` | Screenshot `jpeg` (default) or `png`. Recording `mp4` (default) or `gif`. |
@@ -137,18 +137,18 @@ Arguments are checked per mode before anything runs. A field from another mode i
 | `do` | Fields | Notes |
 |---|---|---|
 | `click` | `target`, `button?`, `count?` (1–3), `modifiers?`, `how?` (`auto`, `invoke`, `mouse`), `glide_ms?` | `auto` uses a UI Automation pattern on background windows and the real mouse otherwise. |
-| `type` | `target?`, `text`, `enter?`, `how?` (`auto`, `keys`, `paste`) | Without a target it types into the focused app, never the agent's terminal. `auto` pastes text longer than 200 characters when the clipboard holds only text, and restores it. |
-| `key` | `keys`, `target?`, `repeat?` (1–100), `action?` (`press`, `down`, `up`) | `down` and `up` hold and release one chord, such as shift while clicking, and take no `repeat`. |
+| `type` | `target?`, `text`, `enter?`, `how?` (`auto`, `keys`, `paste`) | Without a target it types into the focused app, never the agent's terminal. `auto` pastes text longer than 200 characters when the clipboard holds only text and the field's value can be read back to confirm the paste, then restores the clipboard unless something else changed it meanwhile. |
+| `key` | `keys`, `target?`, `repeat?` (1–100), `action?` (`press`, `down`, `up`) | `keys` holds at most 200 chords. `down` and `up` hold and release one chord, such as shift while clicking, and take no `repeat`. |
 | `mouse` | `action` (`move`, `down`, `up`, `scroll`, `drag`), `target?`, `to?`, `button?`, `direction?`, `amount?`, `glide_ms?` | `move` needs `target`. `down` and `up` default to the cursor position. `scroll` needs `direction`, defaults to the window centre and takes `amount` 1–50 (default 3). `drag` needs `target` (from) and `to`. `button` applies to `down`, `up` and `drag`. |
 | `set` | `target` plus exactly one of `value`, `option`, `checked`, `expanded`, `selected` | Sets a text value, picks a combobox or list item, or sets a checkbox, expander or selection state; `selected: false` deselects. To flip a checkbox without naming the state, use `click`. |
 | `focus` | `target` | An element gets keyboard focus; a window comes to the front. |
-| `window` | `action` (`launch`, `close`, `minimize`, `maximize`, `restore`, `move`), `target?`, `app?`, `args?`, `rect?` | `launch` needs `app` (a Start-menu name like `Notepad`, an app id or an exe path) and waits for the window. `move` needs `target` and `rect`; the others need `target`. A text `target` is a window spec, so titles containing colons work. |
+| `window` | `action` (`launch`, `close`, `minimize`, `maximize`, `restore`, `move`), `target?`, `app?`, `args?`, `rect?` | `launch` needs `app` (a Start-menu name like `Notepad`, an app id or an exe path) and waits for the window; shortcut paths (`.lnk`, `.url`) are refused, and with `deny_paths` set, so are absolute paths in `args` inside them. `move` needs `target` and `rect`; the others need `target`, which must be an app window, never the desktop or taskbar. A text `target` is a window spec, so titles containing colons work. |
 | `pick` | `paths`, `open_with?`, `overwrite?`, `timeout_ms?` | Fills a native Open or Save dialog, optionally clicking `open_with` (such as an Upload button) first and waiting up to `timeout_ms` (15000, at most 60000) for the dialog. Several paths must share one folder. |
-| `wait` | `until?` (`time`, `appears`, `disappears`, `window`, `window_opens`, `window_closed`, `text`, `idle`), `ms?`, `target?`, `text?`, `window?`, `timeout_ms?` | `until` defaults to `time`, a plain pause of `ms` (at most 5000). `window` is met as soon as a window matching `window` (title text or a `window:`/`process:` selector) is open, at once if one already is; `window_opens` counts only a matching window that wasn't open when the call began, such as a second Notepad; `window_closed` waits until none is open. Conditions are event-driven, with `timeout_ms` 5000 by default and at most 60000. `idle` waits for `ms` of quiet (300 by default), which must be shorter than the timeout. |
+| `wait` | `until?` (`time`, `appears`, `disappears`, `window`, `window_opens`, `window_closed`, `text`, `idle`), `ms?`, `target?`, `text?`, `window?`, `timeout_ms?` | `until` defaults to `time`, a plain pause of `ms` (at most 5000). `window` is met as soon as a window matching `window` (title text or a `window:`/`process:` selector) is open, at once if one already is; `window_opens` counts only a matching window that wasn't open when the call began, such as a second Notepad; `window_closed` waits until none is open. Conditions are event-driven, with `timeout_ms` 5000 by default and at most 60000. `idle` waits for `ms` of quiet (300 by default), which must be shorter than the timeout. While keys or buttons are held down, a wait that could last over 1 s is refused. |
 | `clipboard` | `text` | Sets the clipboard text. |
-| `notify` | `title` (1–63), `message` (1–255) | Shows you a Windows notification. Lengths are in UTF-16 units, so an emoji counts as two. |
+| `notify` | `title` (1–63), `message` (1–255) | Shows you a Windows notification. Lengths are in UTF-16 units, so an emoji counts as two. At most 3 per call, and notifications from separate calls must be 5 s apart (`busy` otherwise). |
 
-Mouse steps glide the real cursor to the target first (`[cursor] glide_ms`, 120 ms by default; `glide_ms: 0` jumps; at most 3000). Keys and buttons still held when the call ends are released, with a note such as `released Shift left held by key down`. Each step line reports the method that actually ran, such as `(invoke)`, `(mouse)`, `(keys)`, `(paste)` or `(value)`. A notification that Windows suppresses still counts as a successful step, with a note that starts `not shown:`.
+Mouse steps glide the real cursor to the target first (`[cursor] glide_ms`, 120 ms by default; `glide_ms: 0` jumps; at most 3000). A glide or drag stops at once on the kill switch or when you touch the mouse or keyboard (`user_active`), and the spot is hit-checked again right before each press, so a window that moved over it is never clicked. Keys and buttons still held when the call ends are released, buttons first, with a note such as `released Shift left held by key down`; after a failed step a held button is released back where it was pressed. A pattern click or toggle that pulls its window to the front hands the foreground straight back, with a note. Each step line reports the method that actually ran, such as `(invoke)`, `(mouse)`, `(keys)`, `(paste)` or `(value)`. A notification that Windows suppresses still counts as a successful step, with a note that starts `not shown:`.
 
 After the steps, `return: "diff"` compares the default window with how it was before: added (`+`), removed (`-`) and changed (`~`) elements, the focus, and windows that opened or closed. If the default window itself changed, for example because a dialog or a newly launched app took over, you get its full element list instead.
 
@@ -282,7 +282,7 @@ Every `target`, `to` and `open_with` takes one of four forms:
 |---|---|---|
 | Element ref | `e12` | From `observe`. Stays valid while the element exists. A stale ref is re-found by its fingerprint (window, role, name, AutomationId, tree path); if that's ambiguous you get the candidates, never a guess. |
 | Window ref | `w2032546` | From window lines. |
-| Point | `{"x":640,"y":360,"img":"i3"}` | Pixels in screenshot `i3`, mapped back through its scale and origin. Omit `img` for physical screen pixels. |
+| Point | `{"x":640,"y":360,"img":"i3"}` | Pixels in screenshot `i3`, mapped back through its scale and origin. Omit `img` for physical screen pixels. `set` and `type` act on the element under the point. |
 | Selector | `role:button name:"Save"` | Lets the agent act without observing first when it already knows the app. |
 
 Selector terms:
@@ -303,6 +303,7 @@ Selector terms:
 - Quote values that contain spaces or colons: `name:"File name:"`. Inside quotes, escape `"` and `\` with a backslash.
 - `>>` chains steps: each step searches inside the matches of the one before, for example `window:"Notepad" >> role:menuitem name:File`.
 - When several elements match, an exact name beats a prefix, which beats a contains match; then visible beats hidden, enabled beats disabled, and actionable beats inert. A tie is an `ambiguous` error that lists up to five candidates; add `nth:`, a `role:`, or use a ref.
+- A selector with `window:` or `process:` terms that matches in several windows prefers the one on the current virtual desktop, then the foreground one; if that still leaves several, the step fails with `ambiguous` and lists them, topmost first.
 - A selector that matches nothing yet is waited for briefly (`[act] auto_wait_ms`, 2 s), so a step can target a button that is still appearing.
 
 **The default window.** When a call names no window, Deckhand uses the foreground app window. If that's the terminal hosting the agent, it uses the frontmost other app window that isn't minimized. The default window is always on the current virtual desktop.
@@ -327,9 +328,9 @@ Normally Deckhand acts like a careful person at the keyboard: it brings the wind
 | `key`, `focus`, `pick`, `mouse` move/down/up/drag | Always refused with `needs_user`. |
 | `wait`, `clipboard`, `notify` | Unchanged. |
 
-Background steps don't wait for you to stop using the mouse and keyboard, because they never touch them. They still take the actor lock and still respect the kill switch, the deny lists and the elevation check.
+Background steps don't wait for you to stop using the mouse and keyboard, because they never touch them. They still take the actor lock and still respect the kill switch, the deny lists and the elevation check, and they refuse a window that has a modal dialog open, just like real clicks do.
 
-**Virtual desktops.** Window lines show `desktop N`, or `another desktop` when Windows doesn't say which, for windows on other virtual desktops. The default window is always on the current desktop, and Deckhand never switches your desktop. Real input only reaches the current desktop, so steps aimed at a window on another desktop always get background behaviour; a step that can't be done that way fails with an error that names the desktop. A screenshot of such a window is printed from the window itself and fails, suggesting `mode=text`, when Windows hasn't drawn it. Recording a window on another desktop is refused, and the overlay draws nothing for those windows.
+**Virtual desktops.** Window lines show `desktop N`, or `another desktop` when Windows doesn't say which, for windows on other virtual desktops; a hidden window whose desktop can't be looked up counts as on another desktop. The default window is always on the current desktop, and Deckhand never switches your desktop. Real input only reaches the current desktop, so steps aimed at a window on another desktop always get background behaviour; a step that can't be done that way fails with an error that names the desktop. A screenshot of such a window is printed from the window itself and fails, suggesting `mode=text`, when Windows hasn't drawn it. Recording a window on another desktop is refused, and the overlay draws nothing for those windows.
 
 **Honest limits.**
 
@@ -350,7 +351,7 @@ When you press the kill switch everything turns crimson and the pill says "Stopp
 
 The agent name comes from the MCP client: Claude, Codex, Cursor, Copilot, Windsurf and Gemini are recognised, other clients are shown by their own name, and `[overlay] label` overrides it.
 
-The overlay never takes focus or receives clicks. It is hidden from Deckhand's own screenshots and OCR, and it uses no CPU when idle (under 2% of one core while animating).
+The overlay never takes focus or receives clicks. It is hidden from Deckhand's own screenshots and OCR (in demo mode, if it can't be confirmed hidden in time, the screenshot caption or OCR text says it may appear), and it uses no CPU when idle (under 2% of one core while animating). It draws nothing for minimized windows or windows on other virtual desktops, and it doesn't replace the crimson "Stopped" state while the kill switch is on.
 
 | Setting | Effect |
 |---|---|
@@ -387,12 +388,12 @@ Toasts need the app identity `Deckhand.Agent` that the install script registers.
 - **You keep priority.** If you used the mouse or keyboard in the last 600 ms, input steps wait until you stop, for up to 5 s, then fail with `user_active`. Reads and background steps never wait. Deckhand marks its own input so it never mistakes it for yours.
 - **One actor at a time.** A system-wide lock stops two sessions from driving the mouse at once; the second gets `busy`.
 - **The agent's own terminal is off limits.** Deckhand finds the terminal window that hosts it and refuses to act on it; typing without a target never lands there.
-- **Deny lists.** The only built-in rules are password managers: KeePass, KeePassXC, 1Password, Bitwarden, Dashlane and Enpass. Add your own by process, window title or both; they extend the built-ins. Denied windows are never read, captured or acted on. Process rules are reliable. Title rules are partial protection: they match only what the title bar says, and titles change.
+- **Deny lists.** The only built-in rules are password managers: KeePass, KeePassXC, 1Password, Bitwarden, Dashlane and Enpass. Add your own by process, window title or both; they extend the built-ins. Denied windows are never read, captured or acted on, and `observe mode=clipboard` refuses clipboard content that a denied app put there or that its app marked private, as password managers do. Process rules are reliable. Title rules are partial protection: they match only what the title bar says, and titles change.
 - **Blackout.** Screenshots and recordings paint denied windows black. Recordings check on every frame, and if the window list can't be read the whole frame is blacked out. A denied window can't be recorded, and a recorded window that becomes denied is blacked out while it stays denied.
-- **Paths.** `pick` and recording paths are refused under any folder in `deny_paths`.
+- **Paths.** `pick` paths, recording paths, `launch` exe paths and absolute paths in `launch` arguments are refused under any folder in `deny_paths`, after resolving junctions and symbolic links.
 - **Elevation and the secure desktop.** Windows running as administrator are refused with `elevated_target`. A UAC prompt or the lock screen returns `needs_user`.
-- **It restores what it borrows.** Pasting restores your clipboard, and pasted text is kept out of clipboard history and cloud clipboard. Held keys and buttons are released at the end of every call; if a Deckhand process dies while holding them, the next call that acts releases them.
-- **Audit log.** `%LOCALAPPDATA%\deckhand\logs\YYYY-MM-DD.jsonl` keeps one line per call: time, tool (`observe` or `act`), a short summary (for `observe` it starts with `mode=…`; for `act` it lists the steps), result and duration. Typed and clipboard text are logged by length and file paths by name only, unless you set `[log] log_text = true`; notification text is always logged by length. Logs older than 14 days are deleted. No screenshots are saved.
+- **It restores what it borrows.** Pasting restores your clipboard unless you copied something new in the meantime, and pasted text is kept out of clipboard history and cloud clipboard. Held keys and buttons are released at the end of every call; if a Deckhand process dies while holding them, the next worker to start, or the next call that acts, releases them.
+- **Audit log.** `%LOCALAPPDATA%\deckhand\logs\YYYY-MM-DD.jsonl` keeps one line per call: time, tool (`observe` or `act`), a short summary (for `observe` it starts with `mode=…`; for `act` it lists the steps), result and duration. Typed text, key sequences, chosen list options, clipboard text and launch arguments are logged by length, and file and app paths by name only, unless you set `[log] log_text = true`; notification text is always logged by length, and a window, target or query that names a denied window is logged as `<denied window>`. Logs older than 14 days are deleted. No screenshots are saved.
 
 **Recommended Claude Code permissions.** Allow `observe` and keep asking for `act` until you trust it, in `~/.claude/settings.json`:
 
@@ -415,7 +416,7 @@ Don't combine desktop control with bypass-permissions mode. Note that `observe` 
 |---|---|---|
 | **`[guard]`** | | |
 | `deny` | password managers | Windows never to read or touch: a list of `{ process = "...", title = "..." }`. A rule with both needs both. `process` ignores case and `.exe`; `title` is a case-insensitive contains match. Added to the built-ins. |
-| `deny_paths` | `[]` | Absolute folders that `pick` and recording paths may not use. |
+| `deny_paths` | `[]` | Absolute folders that `pick`, recording paths and `launch` (its exe path and the paths in its arguments) may not use. |
 | `yield_ms` | `600` | How long you must be idle before an input step proceeds. |
 | `yield_timeout_ms` | `5000` | How long an input step waits for you before failing with `user_active`. |
 | `kill_hotkey` | `"ctrl+alt+escape"` | The kill-switch chord, in `keys` syntax. |
@@ -555,7 +556,7 @@ Each one writes into its own `%TEMP%\deckhand-record-test-<name>-<pid>-<n>` fold
 cargo run --release --manifest-path bench/deskbench/Cargo.toml
 ```
 
-`--skip-uia`, `--skip-capture` and `--skip-startup` leave out sections; `--probe` is the child mode the start-up section times. Its privacy guard is on by default: it never prints window titles, and it skips windows whose titles match the title rules in your Deckhand config or a `--deny-title <text>` argument.
+`--skip-uia`, `--skip-capture` and `--skip-startup` leave out sections, `--webview-process <exe>` adds a WebView2 app (by process name) to the UI Automation targets, and `--probe` is the child mode the start-up section times. Its privacy guard is on by default: it never prints window titles, and it skips windows whose titles match the title rules in your Deckhand config or a `--deny-title <text>` argument.
 
 The code rules (no comments, small functions, no `unwrap`, RAII handles, actor threads for COM) are in [CLAUDE.md](CLAUDE.md). The design is in [docs/DESIGN.md](docs/DESIGN.md).
 

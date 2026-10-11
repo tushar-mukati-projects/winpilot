@@ -5,7 +5,8 @@ use crate::engine::{Engine, duration_ms};
 pub fn report(engine: &Engine) -> StatusReport {
     StatusReport {
         version: env!("CARGO_PKG_VERSION").to_string(),
-        uptime_ms: duration_ms(engine.uptime()),
+        server_uptime_ms: None,
+        worker_uptime_ms: Some(duration_ms(engine.uptime())),
         stopped: engine.guard.is_stopped(),
         user_idle_ms: engine.guard.user_idle().map(duration_ms),
         kill_hotkey: engine.guard.kill_hotkey().to_string(),

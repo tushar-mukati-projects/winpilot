@@ -100,7 +100,7 @@ fn run(
     recycle: &Sender<Vec<u8>>,
     ready: &Sender<Result<()>>,
 ) -> Encoded {
-    let apartment = match ComApartment::enter_mta() {
+    let apartment = match ComApartment::enter_mta_strict() {
         Ok(apartment) => apartment,
         Err(error) => {
             let _ = ready.send(Err(error));

@@ -23,26 +23,40 @@ pub struct KeyRequest<'a> {
 
 pub fn step(engine: &Engine, target: Option<&Prepared>, request: &KeyRequest<'_>, call: &CallScope) -> Result<Done> {
     let chords = parse_keys(request.keys)?;
-    if request.action == KeyAction::Up {
-        return release(engine, &chords, call);
+    match request.action {
+        KeyAction::Up => release(engine, &chords, call),
+        KeyAction::Down => {
+            send_to_focus(engine, target, &chords, call, || hold(&chords, call).map(|()| Some(HELD.to_string())))
+        }
+        KeyAction::Press => {
+            send_to_focus(engine, target, &chords, call, || press(engine, &chords, request.repeat, call).map(|()| None))
+        }
     }
+}
+
+fn send_to_focus(
+    engine: &Engine,
+    target: Option<&Prepared>,
+    chords: &[Chord],
+    call: &CallScope,
+    send: impl FnOnce() -> Result<Option<String>>,
+) -> Result<Done> {
     let focused = keyboard_target(engine, target, call)?;
     if let Some(element) = &focused.element {
         overlay::focus_field(engine, element.rect);
     }
-    overlay::key_chips(engine, &focused.window, key_chips(&chords));
-    let note = match request.action {
-        KeyAction::Down => hold(&chords, call).map(|()| Some(HELD.to_string()))?,
-        KeyAction::Press | KeyAction::Up => press(engine, &chords, request.repeat, call).map(|()| None)?,
-    };
+    overlay::key_chips(engine, &focused.window, key_chips(chords));
+    let note = send()?;
     settle(engine, &focused.window, call);
     Ok(Done::by(via_focus_click("keys", focused.clicked)).with_note(note))
 }
 
 fn press(engine: &Engine, chords: &[Chord], repeat: u32, call: &CallScope) -> Result<()> {
     for _ in 0..repeat {
-        engine.guard.check_running(call)?;
-        chords.iter().try_for_each(deckhand_input::press_chord)?;
+        for chord in chords {
+            engine.guard.check_running(call)?;
+            deckhand_input::press_chord(chord)?;
+        }
     }
     Ok(())
 }

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 pub use crate::{
     budget::pick_wait,
-    observe::{MediaFormat, ObserveArgs, ObserveMode, OcrMode},
+    observe::{ObserveArgs, ObserveMode, OcrMode},
     observe_request::{
         AppsRequest, ClipboardRequest, ElementsRequest, ImageFormat, ObserveRequest, ScreenshotRequest, SearchRequest,
         TextRequest,

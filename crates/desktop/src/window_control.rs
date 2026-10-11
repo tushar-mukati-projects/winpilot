@@ -4,8 +4,8 @@ use deckhand_core::{Context, Result, WindowRef, WindowState};
 use windows::Win32::{
     Foundation::{LPARAM, WPARAM},
     UI::WindowsAndMessaging::{
-        IsHungAppWindow, PostMessageW, SMTO_ABORTIFHUNG, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SendMessageTimeoutW,
-        ShowWindowAsync, WM_CLOSE, WM_NULL,
+        PostMessageW, SMTO_ABORTIFHUNG, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SendMessageTimeoutW, ShowWindowAsync,
+        WM_CLOSE, WM_NULL,
     },
 };
 
@@ -52,27 +52,20 @@ pub fn wait_until_responsive(hwnd: WindowRef, timeout: Duration) -> bool {
     sent.0 != 0
 }
 
-pub fn is_hung(hwnd: WindowRef) -> bool {
-    let handle = hwnd_of(hwnd);
-    is_live(handle) && unsafe { IsHungAppWindow(handle) }.as_bool()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::window_list::foreground_window;
 
     #[test]
-    fn foreground_window_is_responsive_and_not_hung() {
+    fn foreground_window_is_responsive() {
         let foreground = foreground_window().unwrap();
-        assert!(!is_hung(foreground));
         assert!(wait_until_responsive(foreground, Duration::from_secs(2)));
     }
 
     #[test]
     fn missing_windows_are_rejected() {
         assert!(!wait_until_responsive(WindowRef(0), Duration::from_millis(10)));
-        assert!(!is_hung(WindowRef(0)));
         assert!(close_window(WindowRef(0)).is_err());
         assert!(set_window_state(WindowRef(0), WindowState::Normal).is_err());
     }

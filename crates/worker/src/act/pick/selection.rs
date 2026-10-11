@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 use deckhand_core::{Error, Result};
 
 use super::dialog_kind::DialogKind;
+use crate::act::shortcut::refuse_shortcut;
 
-const SHORTCUT_EXTENSIONS: [&str; 3] = ["lnk", "url", "library-ms"];
+const PICK_INSTEAD: &str = "pick the target file itself, not a shortcut";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Selection {
@@ -79,19 +80,8 @@ fn file_path(text: &str, check: impl Fn(&Path) -> Result<PathBuf>) -> Result<Pat
     if path.file_name().is_none() {
         return Err(Error::invalid(format!("'{text}' names a folder; pick picks files")));
     }
-    refuse_shortcut(&path)?;
+    refuse_shortcut(&path, PICK_INSTEAD)?;
     Ok(path)
-}
-
-fn refuse_shortcut(path: &Path) -> Result<()> {
-    let extension = path.extension().map(|extension| extension.to_string_lossy().to_lowercase());
-    if extension.is_some_and(|extension| SHORTCUT_EXTENSIONS.contains(&extension.as_str())) {
-        return Err(Error::invalid(format!(
-            "{} is a shortcut; pick the target file itself, not a shortcut",
-            path.display()
-        )));
-    }
-    Ok(())
 }
 
 fn shared_folder(paths: &[PathBuf]) -> Result<PathBuf> {

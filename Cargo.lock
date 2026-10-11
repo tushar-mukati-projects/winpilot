@@ -147,7 +147,6 @@ dependencies = [
  "embed-resource",
  "parking_lot",
  "rmcp",
- "schemars",
  "serde",
  "serde_json",
  "tokio",
@@ -195,7 +194,6 @@ name = "deckhand-fixture"
 version = "0.1.0"
 dependencies = [
  "windows",
- "windows-core",
 ]
 
 [[package]]
@@ -205,7 +203,6 @@ dependencies = [
  "deckhand-core",
  "parking_lot",
  "windows",
- "windows-core",
 ]
 
 [[package]]
@@ -214,7 +211,6 @@ version = "0.1.0"
 dependencies = [
  "deckhand-core",
  "deckhand-fixture",
- "parking_lot",
  "windows",
  "windows-core",
 ]
@@ -234,7 +230,6 @@ dependencies = [
  "parking_lot",
  "serde_json",
  "windows",
- "windows-core",
 ]
 
 [[package]]

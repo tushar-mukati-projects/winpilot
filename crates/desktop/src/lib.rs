@@ -64,7 +64,7 @@ pub use toast::ToastBlock;
 pub use token::own_process_elevated;
 pub use uwp_content::uwp_content_pid;
 pub use visible_windows::{VisibleWindow, all_visible_windows};
-pub use window_control::{close_window, is_hung, set_window_state, wait_until_responsive};
+pub use window_control::{close_window, set_window_state, wait_until_responsive};
 pub use window_label::{WindowLabel, process_name, window_label};
 pub use window_list::{foreground_window, is_enabled, is_window, owner_of, window, windows};
 pub use window_placement::move_window;

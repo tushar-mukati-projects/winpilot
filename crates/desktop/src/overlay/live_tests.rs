@@ -56,7 +56,7 @@ fn visible_overlay_covers(point: Point) -> bool {
 }
 
 fn uia_owner_at(point: Point) -> (u32, String) {
-    let _apartment = ComApartment::enter_mta().unwrap();
+    let _apartment = ComApartment::enter_any().unwrap();
     let automation: IUIAutomation = unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) }.unwrap();
     let element = unsafe { automation.ElementFromPoint(POINT { x: point.x, y: point.y }) }.unwrap();
     let process = unsafe { element.CurrentProcessId() }.unwrap();

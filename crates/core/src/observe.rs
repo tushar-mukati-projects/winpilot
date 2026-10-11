@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     blank::non_blank,
     error::{Error, Result},
+    field_rules::only_one,
     format::ObserveFormat,
     geometry::Rect,
+    null_default::or_default,
     observe_fields::check_fields,
     observe_request::{
         AppsRequest, ClipboardRequest, DEFAULT_APPS, DEFAULT_ELEMENTS, DEFAULT_MATCHES, ElementsRequest, ImageFormat,
@@ -52,6 +54,7 @@ pub enum MediaFormat {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
 pub struct ObserveArgs {
+    #[serde(deserialize_with = "or_default")]
     #[schemars(
         description = "elements (default), text, screenshot, record, windows, monitors, apps, clipboard or status."
     )]
@@ -82,17 +85,26 @@ pub struct ObserveArgs {
     pub monitor: Option<u32>,
     #[schemars(description = "text: auto (default: UI Automation text, OCR as fallback), never or always.")]
     pub ocr: Option<OcrMode>,
-    #[schemars(description = "text, clipboard: maximum characters (default 20000, at most 200000).")]
+    #[schemars(
+        description = "text, clipboard: maximum characters (default 20000, at most 200000).",
+        range(min = 1, max = 200_000)
+    )]
     pub max_chars: Option<u32>,
     #[schemars(
         description = "screenshot: low (960 px, q60), medium (default, 1280 px, q80), high (1600 px, q88) or max (native, up to 8000 px, q95)."
     )]
     pub preset: Option<Quality>,
-    #[schemars(description = "screenshot: JPEG quality 1-100, overriding the preset. Recordings use video_quality.")]
+    #[schemars(
+        description = "screenshot: JPEG quality 1-100, overriding the preset. Recordings use video_quality.",
+        range(min = 1, max = 100)
+    )]
     pub quality: Option<u8>,
     #[schemars(description = "record: low, medium, high (default) or max; bitrate for mp4, palette effort for gif.")]
     pub video_quality: Option<Quality>,
-    #[schemars(description = "Maximum output width. screenshot: 64-2576. record: 160-3840 (default 1920, gif 960).")]
+    #[schemars(
+        description = "Maximum output width. screenshot: 64-2576. record: 160-3840 (default 1920, gif 960).",
+        range(min = 64, max = 3840)
+    )]
     pub max_width: Option<u32>,
     #[schemars(description = "screenshot: jpeg (default) or png. record: mp4 (default) or gif.")]
     pub format: Option<MediaFormat>,
@@ -100,9 +112,15 @@ pub struct ObserveArgs {
     pub marks: Option<bool>,
     #[schemars(description = "record: start, stop (saves the file) or status.")]
     pub action: Option<RecordAction>,
-    #[schemars(description = "record: frames per second, 1-60 for mp4 and 1-20 for gif (default 30, gif 20).")]
+    #[schemars(
+        description = "record: frames per second, 1-60 for mp4 and 1-20 for gif (default 30, gif 20).",
+        range(min = 1, max = 60)
+    )]
     pub fps: Option<u32>,
-    #[schemars(description = "record: stop and save after this many seconds, 1-1800 (default 300).")]
+    #[schemars(
+        description = "record: stop and save after this many seconds, 1-1800 (default 300).",
+        range(min = 1, max = 1800)
+    )]
     pub max_seconds: Option<u32>,
     #[schemars(description = "record: show the mouse pointer (default true).")]
     pub cursor: Option<bool>,
@@ -244,6 +262,10 @@ impl ObserveArgs {
             ("region", self.region.is_some()),
             ("monitor", self.monitor.is_some()),
         ])?;
+        let format = self.format.map(MediaFormat::image).transpose()?.unwrap_or_default();
+        if format == ImageFormat::Png && self.quality.is_some() {
+            return Err(Error::invalid("quality is the JPEG quality; png is lossless, so drop quality"));
+        }
         let request = ScreenshotRequest {
             target: self.target.clone(),
             region: self.region,
@@ -251,7 +273,7 @@ impl ObserveArgs {
             preset: self.preset,
             max_width: self.max_width,
             quality: self.quality,
-            format: self.format.map(MediaFormat::image).transpose()?.unwrap_or_default(),
+            format,
             marks: self.marks.unwrap_or(false),
         };
         request.validate()?;
@@ -283,15 +305,6 @@ impl ObserveArgs {
             max: self.max.map_or(DEFAULT_APPS, |max| max.max(1) as usize),
         }
     }
-}
-
-fn only_one(sources: &[(&str, bool)]) -> Result<()> {
-    let given: Vec<&str> = sources.iter().filter(|(_, given)| *given).map(|(name, _)| *name).collect();
-    if given.len() <= 1 {
-        return Ok(());
-    }
-    let names: Vec<&str> = sources.iter().map(|(name, _)| *name).collect();
-    Err(Error::invalid(format!("give only one of {}; got {}", names.join(", "), given.join(" and "))))
 }
 
 #[cfg(test)]
@@ -381,7 +394,7 @@ mod tests {
         );
         assert_eq!(
             invalid(r#"{"mode":"text","window":"w1","target":"e4"}"#),
-            "give only one of window, target, region; got window and target"
+            "give only one of window, target or region; got window and target"
         );
         assert!(invalid(r#"{"mode":"text","region":{"x":0,"y":0,"width":0,"height":5}}"#).contains("positive size"));
     }
@@ -389,12 +402,12 @@ mod tests {
     #[test]
     fn screenshots_take_an_image_format_and_a_numeric_quality() {
         let ObserveRequest::Screenshot(shot) =
-            request(r#"{"mode":"screenshot","monitor":1,"preset":"high","quality":70,"format":"png","marks":true}"#)
+            request(r#"{"mode":"screenshot","monitor":1,"preset":"high","quality":70,"format":"jpeg","marks":true}"#)
         else {
             panic!("expected a screenshot")
         };
         assert_eq!((shot.monitor, shot.preset, shot.quality), (Some(1), Some(Quality::High), Some(70)));
-        assert_eq!((shot.format, shot.marks), (ImageFormat::Png, true));
+        assert_eq!((shot.format, shot.marks), (ImageFormat::Jpeg, true));
         assert_eq!(
             invalid(r#"{"mode":"screenshot","format":"gif"}"#),
             "format gif is for mode=record; screenshots take jpeg or png"
@@ -424,7 +437,7 @@ mod tests {
         );
         assert_eq!(
             invalid(r#"{"mode":"record","action":"start","quality":50}"#),
-            "quality does not apply to mode=record; it is for mode=screenshot"
+            "quality does not apply to mode=record; it is for mode=screenshot; for this mode use video_quality"
         );
     }
 
@@ -457,6 +470,20 @@ mod tests {
             request(r#"{"mode":"clipboard","max_chars":500}"#),
             ObserveRequest::Clipboard(ClipboardRequest { max_chars: 500 })
         );
+    }
+
+    #[test]
+    fn png_screenshots_take_no_jpeg_quality() {
+        assert_eq!(
+            invalid(r#"{"mode":"screenshot","format":"png","quality":80}"#),
+            "quality is the JPEG quality; png is lossless, so drop quality"
+        );
+        assert!(args(r#"{"mode":"screenshot","format":"jpeg","quality":80}"#).request().is_ok());
+    }
+
+    #[test]
+    fn a_null_mode_means_elements() {
+        assert_eq!(args(r#"{"mode":null}"#).mode, ObserveMode::Elements);
     }
 
     #[test]

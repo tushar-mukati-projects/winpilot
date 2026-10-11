@@ -18,7 +18,7 @@ use deckhand_uia::{SnapshotOptions, UiaHandle, UiaOptions};
 use parking_lot::Mutex;
 
 use crate::{
-    act,
+    act::{self, NotifyLimit},
     app_catalog::AppCatalog,
     call_scope::{CallScope, working_deadline},
     cancel::Cancel,
@@ -42,6 +42,7 @@ pub struct Engine {
     pub guard: Guard,
     pub overlay: Option<Arc<Overlay>>,
     pub notifier: Notifier,
+    pub notify_limit: Mutex<NotifyLimit>,
     pub images: Mutex<ImageStore>,
     pub host: HostProcesses,
     pub apps: AppCatalog,
@@ -66,6 +67,7 @@ impl Engine {
             guard,
             overlay,
             notifier: Notifier::new(),
+            notify_limit: Mutex::new(NotifyLimit::default()),
             images: Mutex::new(ImageStore::starting_at(first_ref)),
             host: HostProcesses::detect(),
             apps: AppCatalog::default(),

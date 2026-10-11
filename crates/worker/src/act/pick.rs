@@ -14,14 +14,14 @@ use deckhand_core::{
 use self::{
     dialog::FileDialog,
     dialog_kind::DialogKind,
-    folder::folder_ready,
+    folder::{Destination, folder_ready, listed_files},
     message_box::Prompt,
     selection::{Requested, Selection},
 };
-use super::{click_target, done::Done};
+use super::{click_target, done::Done, foreground::owner_chain};
 use crate::{
-    app_windows::app_windows, call_scope::CallScope, default_window::default_window, engine::Engine, overlay,
-    until::until, watch::Watch, window_classes::is_dialog,
+    app_windows::app_windows, call_scope::CallScope, default_window::default_window, engine::Engine, guard::Guard,
+    overlay, until::until, watch::Watch, window_classes::is_dialog,
 };
 
 const ALREADY_OPEN_WAIT: Duration = Duration::from_secs(1);
@@ -35,6 +35,17 @@ pub struct PickRequest<'a> {
     pub timeout_ms: Option<u64>,
 }
 
+impl<'a> TryFrom<&'a Step> for PickRequest<'a> {
+    type Error = Error;
+
+    fn try_from(step: &'a Step) -> Result<Self> {
+        let Step::Pick { paths, open_with, overwrite, timeout_ms } = step else {
+            return Err(Error::invalid(format!("{} is not a pick step", step.kind())));
+        };
+        Ok(Self { paths, open_with: open_with.as_ref(), overwrite: *overwrite, timeout_ms: *timeout_ms })
+    }
+}
+
 struct Opened {
     dialog: FileDialog,
     ours: bool,
@@ -43,6 +54,10 @@ struct Opened {
 enum Outcome {
     Closed,
     Prompt(WindowInfo),
+}
+
+pub fn check_paths(paths: &[String], guard: &Guard) -> Result<()> {
+    Selection::parse(paths, |path| guard.checked_path(path))?.check_folder()
 }
 
 pub fn step(engine: &Engine, request: &PickRequest<'_>, step: &Step, call: &CallScope) -> Result<Done> {
@@ -93,7 +108,7 @@ fn open_dialog(engine: &Engine, request: &PickRequest<'_>, step: &Step, call: &C
     let existing: HashSet<WindowRef> = dialog_windows(engine)?.iter().map(|window| window.hwnd).collect();
     let clicked = click_target(engine, opener, step, call)?;
     let timeout = pick_wait(request.timeout_ms);
-    let fresh = |window: &WindowInfo| !existing.contains(&window.hwnd);
+    let fresh = |window: &WindowInfo| !existing.contains(&window.hwnd) && belongs_to(window, clicked.hwnd);
     let found = until(engine, call, timeout, &Watch::window(&clicked), || find_dialog(engine, fresh))?;
     let dialog = found.ok_or_else(|| not_opened(opener, timeout))?;
     Ok(Opened { dialog, ours: true })
@@ -101,14 +116,18 @@ fn open_dialog(engine: &Engine, request: &PickRequest<'_>, step: &Step, call: &C
 
 fn existing_dialog(engine: &Engine, call: &CallScope) -> Result<FileDialog> {
     let app = default_window(engine)?;
-    let owned = |window: &WindowInfo| window.pid == app.pid;
+    let owned = |window: &WindowInfo| belongs_to(window, app.hwnd);
     if let Some(dialog) = until(engine, call, ALREADY_OPEN_WAIT, &Watch::window(&app), || find_dialog(engine, owned))? {
         return Ok(dialog);
     }
     if find_dialog(engine, |_| true)?.is_some() {
-        return Err(Error::not_found(format!("no file dialog belongs to {}", app.process)));
+        return Err(Error::not_found(format!("no file dialog belongs to {} ({})", app.hwnd, app.process)));
     }
     Err(Error::not_found("no file dialog is open; pass open_with to click the button that opens one"))
+}
+
+fn belongs_to(dialog: &WindowInfo, window: WindowRef) -> bool {
+    dialog.hwnd == window || owner_chain(Some(dialog.hwnd)).contains(&window)
 }
 
 fn not_opened(opener: &TargetSpec, timeout: Duration) -> Error {
@@ -134,22 +153,34 @@ fn fill(engine: &Engine, dialog: &FileDialog, selection: &Selection, call: &Call
     if let [file] = selection.files.as_slice() {
         return enter(engine, dialog, file);
     }
-    enter(engine, dialog, &selection.folder_text())?;
-    let in_folder = await_folder(engine, dialog, selection, call)?;
+    let destination = Destination {
+        folder: selection.folder_text(),
+        names: selection.file_names(),
+        listed_before: listed_files(&engine.snapshot(&dialog.window)?.elements),
+    };
+    enter(engine, dialog, &destination.folder)?;
+    let in_folder = await_folder(engine, dialog, &destination, call)?;
     enter(engine, &in_folder, &selection.quoted_names())
 }
 
-fn await_folder(engine: &Engine, dialog: &FileDialog, selection: &Selection, call: &CallScope) -> Result<FileDialog> {
-    let (folder, names) = (selection.folder_text(), selection.file_names());
+fn await_folder(
+    engine: &Engine,
+    dialog: &FileDialog,
+    destination: &Destination,
+    call: &CallScope,
+) -> Result<FileDialog> {
     let found = until(engine, call, FOLDER_WAIT, &Watch::window(&dialog.window), || {
         let snapshot = engine.snapshot(&dialog.window)?;
-        if !folder_ready(&snapshot, dialog.name_box, &folder, &names) {
+        if !folder_ready(&snapshot, dialog.name_box, destination) {
             return Ok(None);
         }
         Ok(dialog::recognise(&snapshot))
     })?;
     found.ok_or_else(|| {
-        Error::timeout(format!("the file dialog did not show {folder} after it was asked to; nothing was picked"))
+        Error::timeout(format!(
+            "the file dialog did not show {} after it was asked to; nothing was picked",
+            destination.folder
+        ))
     })
 }
 
@@ -286,10 +317,7 @@ mod tests {
     }
 
     fn run_pick(step: &Step) -> Result<Done> {
-        let Step::Pick { paths, open_with, overwrite, timeout_ms } = step else { panic!("expected pick") };
-        let request =
-            PickRequest { paths, open_with: open_with.as_ref(), overwrite: *overwrite, timeout_ms: *timeout_ms };
-        super::step(engine(), &request, step, &CallScope::relaxed())
+        super::step(engine(), &PickRequest::try_from(step)?, step, &CallScope::relaxed())
     }
 
     fn pick(app: &FixtureApp, button: u32, paths: Vec<String>, overwrite: bool) -> Result<Done> {
@@ -303,6 +331,22 @@ mod tests {
         assert_eq!(picked_note(DialogKind::Open, &files), "picked 2 files in the Open dialog: a.txt, b.txt");
         let saved = vec!["C:\\temp\\out.txt".to_string()];
         assert_eq!(picked_note(DialogKind::Save, &saved), "picked 1 file in the Save dialog: C:\\temp\\out.txt");
+    }
+
+    #[test]
+    fn only_pick_steps_become_pick_requests() {
+        let request_step = pick_step(vec!["C:\\a.txt".to_string()], None, true);
+        let request = PickRequest::try_from(&request_step).unwrap();
+        assert_eq!((request.paths.len(), request.overwrite), (1, true));
+        let other: Step = serde_json::from_str(r#"{"do":"wait","ms":5}"#).unwrap();
+        assert!(PickRequest::try_from(&other).is_err());
+    }
+
+    #[test]
+    fn a_dialog_belongs_to_its_own_window_and_its_owners_only() {
+        let dialog = crate::test_fixture::window(0, "app.exe", "Open", deckhand_core::Rect::default());
+        assert!(belongs_to(&dialog, WindowRef(0)));
+        assert!(!belongs_to(&dialog, WindowRef(77)));
     }
 
     #[test]

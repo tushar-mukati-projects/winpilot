@@ -69,7 +69,7 @@ struct Watch<'a> {
 
 pub(crate) fn run(input: SamplerInput) -> Finished {
     let counters = Arc::clone(&input.counters);
-    let finished = match ComApartment::enter_mta() {
+    let finished = match ComApartment::enter_mta_strict() {
         Ok(apartment) => {
             let finished = record(input);
             drop(apartment);

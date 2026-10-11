@@ -1,20 +1,45 @@
-use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
+use std::marker::PhantomData;
 
-pub struct ComGuard {
-    initialized: bool,
+use deckhand_core::{Context, Result};
+use windows::Win32::{
+    Foundation::RPC_E_CHANGED_MODE,
+    System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize},
+};
+
+pub struct ComApartment {
+    owns_initialization: bool,
+    _bound_to_thread: PhantomData<*const ()>,
 }
 
-impl ComGuard {
-    pub fn multithreaded() -> Self {
-        let result = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
-        Self { initialized: result.is_ok() }
+impl ComApartment {
+    pub fn enter_any() -> Result<Self> {
+        let status = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+        if status == RPC_E_CHANGED_MODE {
+            return Ok(Self { owns_initialization: false, _bound_to_thread: PhantomData });
+        }
+        status.ok().context("initialising COM")?;
+        Ok(Self { owns_initialization: true, _bound_to_thread: PhantomData })
     }
 }
 
-impl Drop for ComGuard {
+impl Drop for ComApartment {
     fn drop(&mut self) {
-        if self.initialized {
+        if self.owns_initialization {
             unsafe { CoUninitialize() };
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nested_entries_balance() {
+        let outer = ComApartment::enter_any().unwrap();
+        let inner = ComApartment::enter_any().unwrap();
+        assert!(outer.owns_initialization && inner.owns_initialization);
+        drop(inner);
+        drop(outer);
     }
 }

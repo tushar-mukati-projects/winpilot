@@ -78,7 +78,8 @@ fn window_source(window: &WindowInfo, crop: Option<Rect>) -> Result<Source> {
 
 fn element(engine: &Engine, target: &Target, call: &CallScope) -> Result<Source> {
     let resolved = resolve::target(engine, target, call)?;
-    let element = resolved.element().ok_or_else(|| Error::invalid("the record target is not an element"))?;
+    let element =
+        resolved.element_or_point_hit().ok_or_else(|| Error::invalid("the record target is not an element"))?;
     let crop = crop_within(resolved.window.rect, element.rect)?;
     window(engine, &resolved.window, Some(crop))
 }

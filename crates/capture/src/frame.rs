@@ -2,6 +2,8 @@ use deckhand_core::{Error, Point, Rect, Result};
 
 use crate::pixels::{BYTES_PER_PIXEL, Block, Pixels, PixelsMut, copy_block};
 
+const COLOUR_BYTES: usize = 3;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameSource {
     Screen,
@@ -32,6 +34,16 @@ impl Frame {
         cropped.source = self.source;
         cropped.paste(self).ok()?;
         Some(cropped)
+    }
+
+    pub fn is_uniform(&self) -> bool {
+        let mut pixels = self.bgra.as_chunks::<BYTES_PER_PIXEL>().0.iter();
+        let Some(first) = pixels.next() else { return true };
+        pixels.all(|pixel| pixel[..COLOUR_BYTES] == first[..COLOUR_BYTES])
+    }
+
+    pub fn is_all_black(&self) -> bool {
+        self.is_uniform() && self.bgra.get(..COLOUR_BYTES).is_none_or(|first| first == [0, 0, 0])
     }
 
     pub(crate) fn black(origin: Point, width: u32, height: u32) -> Self {
@@ -85,6 +97,31 @@ pub(crate) fn overlap(a: Rect, b: Rect) -> Option<Rect> {
 
 #[cfg(test)]
 mod tests {
+    fn painted(colours: &[[u8; 4]]) -> Frame {
+        let bgra: Vec<u8> = colours.iter().flatten().copied().collect();
+        Frame { origin: Point::new(0, 0), width: colours.len() as u32, height: 1, bgra, source: FrameSource::Window }
+    }
+
+    #[test]
+    fn uniform_frames_ignore_alpha_and_one_pixel_breaks_them() {
+        assert!(painted(&[[200, 120, 40, 255]; 9]).is_uniform());
+        assert!(painted(&[[0, 0, 0, 0], [0, 0, 0, 255], [0, 0, 0, 7]]).is_uniform());
+        let mut white = painted(&[[255, 255, 255, 255]; 64]);
+        white.bgra[4 * 40 + 1] = 254;
+        assert!(!white.is_uniform());
+        assert!(painted(&[]).is_uniform());
+    }
+
+    #[test]
+    fn all_black_means_uniform_and_black() {
+        let mut frame = Frame::black(Point::new(0, 0), 4, 4);
+        frame.bgra.iter_mut().skip(3).step_by(4).for_each(|alpha| *alpha = 255);
+        assert!(frame.is_all_black());
+        frame.bgra[20] = 1;
+        assert!(!frame.is_all_black());
+        assert!(!painted(&[[9, 9, 9, 255]; 4]).is_all_black());
+    }
+
     use super::*;
 
     fn gradient(origin: Point, width: u32, height: u32) -> Frame {

@@ -6,6 +6,8 @@ use super::{
     chords::named,
     click_choice::ClickOptions,
     done::Done,
+    foreground::{popup_showing, require_foreground},
+    lift::with_held_modifiers_lifted,
     locate::refreshed,
     mouse_click::{click_by_mouse, click_in_place},
     option_search::{Combo, LISTED_NAMES, Search, in_subtree, search},
@@ -16,6 +18,7 @@ use super::{
 use crate::{call_scope::CallScope, engine::Engine, until::until, watch::Watch};
 
 const METHOD: &str = "mouse-select";
+const LEFT_OPEN: &str = "the dropdown was left open";
 
 pub fn select(engine: &Engine, prepared: &Prepared, id: ElementRef, option: &str, call: &CallScope) -> Result<Done> {
     engine.guard.before_input(Some(&prepared.window), call)?;
@@ -27,8 +30,8 @@ pub fn select(engine: &Engine, prepared: &Prepared, id: ElementRef, option: &str
     open(engine, prepared, &target, call)?;
     let found = await_option(engine, &combo, option, call)?;
     let Some(item) = found.found else {
-        close_dropdown(engine, prepared, id, found.popup, call)?;
-        return Err(missing(id, option, &found.names));
+        let left_open = close_dropdown(engine, prepared, id, found.popup, call)?;
+        return Err(with_note(missing(id, option, &found.names), left_open));
     };
     click_in_place(engine, &item.prepared(), ClickOptions::default(), call)?;
     settle(engine, &prepared.window, call);
@@ -84,25 +87,37 @@ fn await_option(engine: &Engine, combo: &Combo, option: &str, call: &CallScope) 
     Ok(found.unwrap_or(latest))
 }
 
+fn with_note(error: Error, note: Option<&str>) -> Error {
+    match note {
+        Some(note) => Error::new(error.code, format!("{}; {note}", error.message)),
+        None => error,
+    }
+}
+
 fn close_dropdown(
     engine: &Engine,
     prepared: &Prepared,
     id: ElementRef,
     popup: Option<WindowRef>,
     call: &CallScope,
-) -> Result<()> {
+) -> Result<Option<&'static str>> {
     engine.guard.check_running(call)?;
     let expanded = refreshed(engine, id).ok().and_then(|element| element.state.expanded);
     if !should_escape(expanded, popup.is_some_and(popup_showing)) {
-        return Ok(());
+        return Ok(None);
     }
-    deckhand_input::press_chord(&named(NamedKey::Escape))?;
+    if !escape_would_land(engine, prepared, call) {
+        return Ok(Some(LEFT_OPEN));
+    }
+    with_held_modifiers_lifted(call, || deckhand_input::press_chord(&named(NamedKey::Escape)))?;
     settle(engine, &prepared.window, call);
-    Ok(())
+    Ok(None)
 }
 
-fn popup_showing(hwnd: WindowRef) -> bool {
-    deckhand_desktop::all_visible_windows().is_ok_and(|windows| windows.iter().any(|window| window.hwnd == hwnd))
+fn escape_would_land(engine: &Engine, prepared: &Prepared, call: &CallScope) -> bool {
+    require_foreground(prepared.window.hwnd)
+        .and_then(|()| engine.guard.before_input(Some(&prepared.window), call))
+        .is_ok()
 }
 
 #[cfg(test)]
@@ -160,7 +175,10 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_popup_is_not_showing() {
-        assert!(!popup_showing(WindowRef(0)));
+    fn a_dropdown_left_open_is_added_to_the_error() {
+        let error = with_note(missing(ElementRef(7), "Purple", &[]), Some(LEFT_OPEN));
+        assert_eq!(error.code, ErrorCode::NotFound);
+        assert!(error.message.ends_with("no options are showing; the dropdown was left open"), "{}", error.message);
+        assert_eq!(with_note(Error::not_found("gone"), None).message, "gone");
     }
 }

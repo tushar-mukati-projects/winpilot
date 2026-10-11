@@ -4,17 +4,45 @@ use deckhand_core::{
     protocol::{ActArgs, Step},
 };
 
-use super::click_choice::parse_modifiers;
-use crate::window_spec;
+use super::{
+    click_choice::parse_modifiers,
+    mode::Mode,
+    notify_limit::{MAX_PER_CALL, too_many},
+    pick::check_paths,
+};
+use crate::{guard::Guard, window_spec};
 
-pub fn validate(args: &ActArgs) -> Result<()> {
+pub fn validate(args: &ActArgs, guard: &Guard, mode: Mode) -> Result<()> {
     for (index, step) in args.steps.iter().enumerate() {
-        check_step(step).map_err(|error| Error::new(error.code, format!("step {}: {}", index + 1, error.message)))?;
+        check_step(step, guard, mode)
+            .map_err(|error| Error::new(error.code, format!("step {}: {}", index + 1, error.message)))?;
+    }
+    check_notifications(&args.steps)
+}
+
+fn check_notifications(steps: &[Step]) -> Result<()> {
+    let count = steps.iter().filter(|step| matches!(step, Step::Notify { .. })).count();
+    if count > MAX_PER_CALL {
+        return Err(too_many(count));
     }
     Ok(())
 }
 
-fn check_step(step: &Step) -> Result<()> {
+fn check_step(step: &Step, guard: &Guard, mode: Mode) -> Result<()> {
+    match step {
+        Step::Type { target: None, .. } if mode == Mode::Background => {
+            Err(Error::invalid("type in background mode needs a target"))
+        }
+        Step::Pick { paths, open_with, .. } => {
+            check_paths(paths, guard)?;
+            parse_optional(open_with.as_ref())
+        }
+        Step::Wait(wait) => wait.window.as_deref().map(window_spec::parse).transpose().map(drop),
+        _ => check_targets(step),
+    }
+}
+
+fn check_targets(step: &Step) -> Result<()> {
     match step {
         Step::Click { target, modifiers, .. } => {
             target.parse()?;
@@ -49,10 +77,19 @@ mod tests {
     use deckhand_core::{ErrorCode, protocol::AfterMode};
 
     use super::*;
+    use crate::test_fixture::engine;
 
     fn args(steps: &[&str]) -> ActArgs {
         let steps = steps.iter().map(|json| serde_json::from_str(json).unwrap()).collect();
         ActArgs { steps, after: AfterMode::None, stop_on_error: true, background: None }
+    }
+
+    fn validate_in(args: &ActArgs, mode: Mode) -> Result<()> {
+        super::validate(args, &engine().guard, mode)
+    }
+
+    fn validate(args: &ActArgs) -> Result<()> {
+        validate_in(args, Mode::Foreground)
     }
 
     #[test]
@@ -87,5 +124,28 @@ mod tests {
         ] {
             assert!(validate(&args(&[json])).is_err(), "{json}");
         }
+    }
+
+    #[test]
+    fn later_steps_that_cannot_run_are_caught_before_anything_runs() {
+        let relative = validate(&args(&[r#"{"do":"wait","ms":1}"#, r#"{"do":"pick","paths":["notes.txt"]}"#]));
+        assert!(relative.unwrap_err().message.starts_with("step 2: "));
+        let missing_folder = r#"{"do":"pick","paths":["C:\\deckhand-no-such-folder\\a.txt"]}"#;
+        assert_eq!(validate(&args(&[missing_folder])).unwrap_err().code, ErrorCode::NotFound);
+        let bad_scope = r#"{"do":"wait","until":"text","text":"Done","window":"role:button"}"#;
+        assert!(validate(&args(&[bad_scope])).is_err());
+        let untargeted = args(&[r#"{"do":"type","text":"hi"}"#]);
+        assert!(validate(&untargeted).is_ok());
+        let refused = validate_in(&untargeted, Mode::Background).unwrap_err();
+        assert_eq!(refused.message, "step 1: type in background mode needs a target");
+    }
+
+    #[test]
+    fn a_call_may_hold_at_most_three_notify_steps() {
+        let notify = r#"{"do":"notify","title":"a","message":"b"}"#;
+        assert!(validate(&args(&[notify, notify, notify])).is_ok());
+        let error = validate(&args(&[notify, notify, r#"{"do":"wait","ms":1}"#, notify, notify])).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidArgument);
+        assert!(error.message.contains("this one has 4"), "{}", error.message);
     }
 }

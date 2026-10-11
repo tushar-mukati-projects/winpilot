@@ -10,7 +10,7 @@ pub(crate) struct ComApartment {
 }
 
 impl ComApartment {
-    pub(crate) fn enter_mta() -> Result<Self> {
+    pub(crate) fn enter_mta_strict() -> Result<Self> {
         let result = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         result.ok().context("initialising COM (MTA)")?;
         Ok(Self::new(true))
@@ -44,7 +44,7 @@ mod tests {
 
     #[test]
     fn nested_entries_balance() {
-        let outer = ComApartment::enter_mta().unwrap();
+        let outer = ComApartment::enter_mta_strict().unwrap();
         let inner = ComApartment::enter_any().unwrap();
         assert!(inner.owns_initialization);
         drop(inner);

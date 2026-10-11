@@ -2,14 +2,12 @@ use deckhand_core::{ElementRef, Error, Result};
 
 use super::{
     focus::{Focused, focus_is_inside},
-    foreground::require_foreground,
+    foreground::require_in_front,
 };
-use crate::{engine::Engine, window_classes::is_popup};
+use crate::engine::Engine;
 
 pub fn ensure_keys_land(engine: &Engine, focused: &Focused) -> Result<()> {
-    if !is_popup(&focused.window) {
-        require_foreground(focused.window.hwnd)?;
-    }
+    require_in_front(&focused.window)?;
     let Some(element) = &focused.element else { return Ok(()) };
     if focus_is_inside(engine, element.id)? {
         return Ok(());

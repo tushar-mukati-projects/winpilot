@@ -61,7 +61,8 @@ fn scanned(engine: &Engine, window: &WindowInfo, method: OcrMode, max: usize) ->
 
 fn element_text(engine: &Engine, target: &Target, method: OcrMode, max: usize, call: &CallScope) -> Result<Reading> {
     let resolved = resolve::target(engine, target, call)?;
-    let element = resolved.element().cloned().ok_or_else(|| Error::invalid("the text target is not an element"))?;
+    let element =
+        resolved.element_or_point_hit().cloned().ok_or_else(|| Error::invalid("the text target is not an element"))?;
     let ocr_element =
         || frames::element(engine, &resolved.window, element.rect).and_then(|captured| ocr_capture(&captured));
     if method == OcrMode::Always {

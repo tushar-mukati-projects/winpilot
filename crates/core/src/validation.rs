@@ -2,6 +2,7 @@ use std::{fmt::Display, ops::RangeInclusive};
 
 use crate::{
     error::{Error, Result},
+    field_rules::{does_not_apply, first_stray, only_one},
     geometry::{COORD_LIMIT, Rect},
     glide_timing::MAX_GLIDE_MS,
     keys::parse_keys,
@@ -17,6 +18,7 @@ const MAX_STEPS: usize = 50;
 const MAX_TEXT_CHARS: usize = 100_000;
 const CLICK_COUNTS: RangeInclusive<u8> = 1..=3;
 const KEY_REPEATS: RangeInclusive<u32> = 1..=100;
+const MAX_KEY_CHORDS: usize = 200;
 const SCROLL_AMOUNTS: RangeInclusive<u32> = 1..=50;
 const SCREENSHOT_WIDTHS: RangeInclusive<u32> = 64..=2576;
 const JPEG_QUALITIES: RangeInclusive<u8> = 1..=100;
@@ -117,8 +119,8 @@ impl Step {
 }
 
 fn check_fields(step: &str, given: &[(&str, bool)], allowed: &[&str], required: &[&str]) -> Result<()> {
-    if let Some((name, _)) = given.iter().find(|(name, given)| *given && !allowed.contains(name)) {
-        return Err(Error::invalid(format!("{name} does not apply to {step}")));
+    if let Some(name) = first_stray(given, |name| allowed.contains(&name)) {
+        return Err(does_not_apply(name, step));
     }
     let missing = required.iter().find(|name| !given.iter().any(|(field, given)| field == *name && *given));
     match missing {
@@ -129,13 +131,19 @@ fn check_fields(step: &str, given: &[(&str, bool)], allowed: &[&str], required: 
 
 fn check_key(keys: &str, repeat: u32, action: KeyAction) -> Result<()> {
     check_range("key repeat", repeat, &KEY_REPEATS)?;
+    let chords = parse_keys(keys)?;
+    if chords.len() > MAX_KEY_CHORDS {
+        return Err(Error::invalid(format!(
+            "key takes at most {MAX_KEY_CHORDS} chords per step, got {}; split them across steps, or use type for text",
+            chords.len()
+        )));
+    }
     if action == KeyAction::Press {
         return Ok(());
     }
     if repeat != 1 {
         return Err(Error::invalid(format!("key action={} acts once; drop repeat", action.name())));
     }
-    let chords = parse_keys(keys)?;
     if chords.len() != 1 {
         return Err(Error::invalid(format!(
             "key action={} takes one chord like shift or ctrl+a, got {}",
@@ -231,11 +239,11 @@ fn check_no_start_options(request: &RecordRequest) -> Result<()> {
 }
 
 fn check_one_source(request: &RecordRequest) -> Result<()> {
-    let sources = [request.target.is_some(), request.region.is_some(), request.monitor.is_some()];
-    if sources.into_iter().filter(|given| *given).count() <= 1 {
-        return Ok(());
-    }
-    Err(Error::invalid("give only one of target, region or monitor"))
+    only_one(&[
+        ("target", request.target.is_some()),
+        ("region", request.region.is_some()),
+        ("monitor", request.monitor.is_some()),
+    ])
 }
 
 fn check_record_path(path: Option<&str>, format: Option<VideoFormat>) -> Result<()> {
@@ -307,6 +315,18 @@ mod tests {
         assert_eq!(invalid_message(notify("", "ok").validate()), "title must not be empty");
         assert_eq!(invalid_message(notify("Done", "  \n ").validate()), "message must not be empty");
         assert_eq!(invalid_message(notify("Do\0ne", "ok").validate()), "title must not contain NUL characters");
+    }
+
+    #[test]
+    fn a_key_step_takes_at_most_two_hundred_chords() {
+        let keys = |count: usize| vec!["tab"; count].join(" ");
+        let at_limit = Step::Key { keys: keys(200), target: None, repeat: 1, action: KeyAction::Press };
+        assert!(at_limit.validate().is_ok());
+        let over = Step::Key { keys: keys(201), target: None, repeat: 1, action: KeyAction::Press };
+        assert_eq!(
+            invalid_message(over.validate()),
+            "key takes at most 200 chords per step, got 201; split them across steps, or use type for text"
+        );
     }
 
     #[test]
@@ -504,7 +524,7 @@ mod tests {
             (RecordRequest { max_width: Some(159), ..start() }, "max_width must be from 160 to 3840, got 159"),
             (
                 RecordRequest { target: Some("w1".to_string()), monitor: Some(0), ..start() },
-                "give only one of target, region or monitor",
+                "give only one of target, region or monitor; got target and monitor",
             ),
             (RecordRequest { path: Some("C:\\v\\a.webm".to_string()), ..start() }, "path must end in .mp4 or .gif"),
             (

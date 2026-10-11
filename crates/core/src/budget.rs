@@ -22,9 +22,16 @@ const KEY_PRESS_BUDGET: Duration = Duration::from_millis(100);
 
 impl Call {
     pub fn deadline(&self) -> Duration {
+        self.deadline_with_glide(0)
+    }
+
+    pub fn deadline_with_glide(&self, default_glide_ms: u64) -> Duration {
         let deadline = match self {
             Self::Observe(args) => observe_budget(args),
-            Self::Act(args) => args.steps.iter().map(step_budget).fold(ACT_OVERHEAD, Duration::saturating_add),
+            Self::Act(args) => {
+                let steps = args.steps.iter().map(|step| step_budget(step, default_glide_ms));
+                steps.fold(ACT_OVERHEAD, Duration::saturating_add)
+            }
         };
         deadline.min(MAX_DEADLINE)
     }
@@ -49,14 +56,16 @@ const fn record_budget(action: Option<RecordAction>) -> Duration {
     }
 }
 
-fn step_budget(step: &Step) -> Duration {
+fn step_budget(step: &Step, default_glide_ms: u64) -> Duration {
     match step {
         Step::Wait(args) => wait_budget(args),
         Step::Type { text, .. } | Step::Set { value: Some(text), .. } => STEP_BUDGET.saturating_add(typing_time(text)),
         Step::Key { keys, repeat, .. } => STEP_BUDGET.saturating_add(key_time(keys, *repeat)),
-        Step::Mouse { action: MouseAction::Drag, glide_ms, .. } => STEP_BUDGET.saturating_add(glide_time(*glide_ms, 2)),
+        Step::Mouse { action: MouseAction::Drag, glide_ms, .. } => {
+            STEP_BUDGET.saturating_add(glide_time(glide_ms.unwrap_or(default_glide_ms), 2))
+        }
         Step::Click { glide_ms, .. } | Step::Mouse { glide_ms, .. } => {
-            STEP_BUDGET.saturating_add(glide_time(*glide_ms, 1))
+            STEP_BUDGET.saturating_add(glide_time(glide_ms.unwrap_or(default_glide_ms), 1))
         }
         Step::Window { action: WindowAction::Launch, .. } => LAUNCH_BUDGET,
         Step::Pick { timeout_ms, .. } => pick_wait(*timeout_ms).saturating_add(PICK_OVERHEAD),
@@ -78,8 +87,8 @@ pub fn pick_wait(timeout_ms: Option<u64>) -> Duration {
     timeout_ms.map_or(DEFAULT_PICK, Duration::from_millis).min(MAX_WAIT)
 }
 
-fn glide_time(glide_ms: Option<u64>, moves: u32) -> Duration {
-    Duration::from_millis(glide_ms.unwrap_or(0).min(MAX_GLIDE_MS)).saturating_mul(moves)
+fn glide_time(glide_ms: u64, moves: u32) -> Duration {
+    Duration::from_millis(glide_ms.min(MAX_GLIDE_MS)).saturating_mul(moves)
 }
 
 fn typing_time(text: &str) -> Duration {
@@ -147,6 +156,20 @@ mod tests {
         let dragged = step(r#"{"do":"mouse","action":"drag","target":"e1","to":"e2","glide_ms":1500}"#);
         assert_eq!(act(vec![dragged]).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(3));
         assert_eq!(act(vec![step(r#"{"do":"mouse","action":"up"}"#)]).deadline(), ACT_OVERHEAD + STEP_BUDGET);
+    }
+
+    #[test]
+    fn act_deadline_budgets_the_configured_glide_when_a_step_names_none() {
+        let clicked = step(r#"{"do":"click","target":"e1"}"#);
+        assert_eq!(
+            act(vec![clicked.clone()]).deadline_with_glide(500),
+            ACT_OVERHEAD + STEP_BUDGET + Duration::from_millis(500)
+        );
+        let dragged = step(r#"{"do":"mouse","action":"drag","target":"e1","to":"e2"}"#);
+        assert_eq!(act(vec![dragged]).deadline_with_glide(1000), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(2));
+        let explicit = step(r#"{"do":"click","target":"e1","glide_ms":0}"#);
+        assert_eq!(act(vec![explicit]).deadline_with_glide(3000), ACT_OVERHEAD + STEP_BUDGET);
+        assert_eq!(act(vec![clicked]).deadline_with_glide(60_000), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(3));
     }
 
     #[test]

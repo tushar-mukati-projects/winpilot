@@ -12,7 +12,7 @@ pub(crate) struct ComApartment {
 }
 
 impl ComApartment {
-    pub(crate) fn enter_mta() -> Result<Self> {
+    pub(crate) fn enter_any() -> Result<Self> {
         let status = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         if status == RPC_E_CHANGED_MODE {
             return Ok(Self { owns_initialization: false, _bound_to_thread: PhantomData });
@@ -36,8 +36,8 @@ mod tests {
 
     #[test]
     fn nested_entries_balance() {
-        let outer = ComApartment::enter_mta().unwrap();
-        let inner = ComApartment::enter_mta().unwrap();
+        let outer = ComApartment::enter_any().unwrap();
+        let inner = ComApartment::enter_any().unwrap();
         drop(inner);
         drop(outer);
     }

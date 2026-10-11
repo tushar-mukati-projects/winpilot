@@ -1,5 +1,6 @@
 use crate::{
     error::{Error, Result},
+    field_rules::either,
     observe::{ObserveArgs, ObserveMode},
 };
 
@@ -64,11 +65,22 @@ impl ObserveArgs {
 
 pub(crate) fn check_fields(mode: ObserveMode, given: &[&str]) -> Result<()> {
     let Some(stray) = given.iter().find(|field| !modes_of(field).contains(&mode)) else { return Ok(()) };
+    let hint = better_field(stray, mode).map(|better| format!("; for this mode use {better}")).unwrap_or_default();
     Err(Error::invalid(format!(
-        "{stray} does not apply to mode={}; it is for mode={}",
+        "{stray} does not apply to mode={}; it is for mode={}{hint}",
         mode.name(),
         mode_list(modes_of(stray))
     )))
+}
+
+fn better_field(stray: &str, mode: ObserveMode) -> Option<&'static str> {
+    match (stray, mode) {
+        ("window", Screenshot | Record) => Some("target"),
+        ("target", Elements) => Some("window"),
+        ("quality", Record) => Some("video_quality"),
+        ("video_quality", Screenshot) => Some("quality"),
+        _ => None,
+    }
 }
 
 fn modes_of(field: &str) -> &'static [ObserveMode] {
@@ -77,11 +89,7 @@ fn modes_of(field: &str) -> &'static [ObserveMode] {
 
 fn mode_list(modes: &[ObserveMode]) -> String {
     let names: Vec<&str> = modes.iter().map(|mode| mode.name()).collect();
-    match names.split_last() {
-        None => String::new(),
-        Some((last, [])) => (*last).to_string(),
-        Some((last, rest)) => format!("{} or {last}", rest.join(", ")),
-    }
+    either(&names)
 }
 
 #[cfg(test)]
@@ -125,6 +133,18 @@ mod tests {
         assert!(check_fields(ObserveMode::Status, &[]).is_ok());
         let error = check_fields(ObserveMode::Status, &["target"]).unwrap_err();
         assert_eq!(error.message, "target does not apply to mode=status; it is for mode=text, screenshot or record");
+    }
+
+    #[test]
+    fn a_field_from_another_mode_points_at_the_right_one() {
+        let window = check_fields(Screenshot, &["window"]).unwrap_err();
+        assert_eq!(
+            window.message,
+            "window does not apply to mode=screenshot; it is for mode=elements or text; for this mode use target"
+        );
+        let quality = check_fields(Record, &["quality"]).unwrap_err();
+        assert!(quality.message.ends_with("; for this mode use video_quality"), "{}", quality.message);
+        assert!(!check_fields(Apps, &["fps"]).unwrap_err().message.contains("for this mode use"));
     }
 
     #[test]

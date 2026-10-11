@@ -91,6 +91,10 @@ impl Lifecycle {
         self.restarts.load(Ordering::SeqCst)
     }
 
+    pub fn default_glide_ms(&self) -> u64 {
+        self.config.cursor.glide_ms
+    }
+
     pub fn next(self: &Arc<Self>) -> Next {
         let Ok(runtime) = Handle::try_current() else {
             return Next::Fail(Error::internal("the worker supervisor was called outside the async runtime"));

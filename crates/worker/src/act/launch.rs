@@ -8,8 +8,10 @@ use deckhand_desktop::apps::{self, AppEntry};
 
 use super::{
     done::Done,
+    launch_args::check_launch_args,
     launch_match::{AppIdentity, Before, WindowFacts, is_fresh, pick_launched, switched_to},
     settle,
+    shortcut::refuse_shortcut,
 };
 use crate::{
     app_match::{self, without_launch_extension},
@@ -24,6 +26,7 @@ use crate::{
 const WINDOW_WAIT: Duration = Duration::from_secs(20);
 const FRESH_LISTING: Duration = Duration::from_secs(300);
 const RECENT_LISTING: Duration = Duration::from_secs(10);
+const LAUNCH_INSTEAD: &str = "launch the program it points to, or the app by name";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LaunchTarget {
@@ -40,6 +43,7 @@ struct Started {
 
 pub fn launch(engine: &Engine, app: &str, args: Option<&str>, call: &CallScope) -> Result<Done> {
     let target = launch_target(engine, app.trim())?;
+    check_args(engine, args)?;
     engine.guard.before_input(None, call)?;
     let before = before_launch()?;
     let started = start(&target, args)?;
@@ -63,10 +67,16 @@ fn launch_target(engine: &Engine, app: &str) -> Result<LaunchTarget> {
         return find_app(engine, without_launch_extension(app)).map(LaunchTarget::App);
     }
     let path = engine.guard.checked_path(Path::new(app))?;
+    refuse_shortcut(&path, LAUNCH_INSTEAD)?;
     if !path.exists() {
         return Err(Error::not_found(format!("{} does not exist", path.display())));
     }
     Ok(LaunchTarget::Path(path))
+}
+
+fn check_args(engine: &Engine, args: Option<&str>) -> Result<()> {
+    let Some(args) = args.filter(|_| engine.guard.protects_paths()) else { return Ok(()) };
+    check_launch_args(args, |path| engine.guard.checked_path(path))
 }
 
 fn has_separator(app: &str) -> bool {
@@ -142,6 +152,14 @@ mod tests {
         let error = launch_target(engine(), &missing.to_string_lossy()).unwrap_err();
         assert_eq!(error.code, ErrorCode::NotFound);
         assert_eq!(launch_target(engine(), "tools\\app.exe").unwrap_err().code, ErrorCode::InvalidArgument);
+    }
+
+    #[test]
+    fn shortcut_paths_are_refused_before_launching() {
+        let shortcut = std::env::temp_dir().join("deckhand-no-such-app-7f3a.lnk");
+        let error = launch_target(engine(), &shortcut.to_string_lossy()).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidArgument);
+        assert!(error.message.ends_with(LAUNCH_INSTEAD), "{}", error.message);
     }
 
     #[test]

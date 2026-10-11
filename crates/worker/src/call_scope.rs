@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Error, Result, keys::Chord, protocol::MouseButton};
+use deckhand_core::{Error, Point, Result, keys::Chord, protocol::MouseButton};
 use parking_lot::Mutex;
 
 use crate::cancel::Cancel;
@@ -17,8 +17,14 @@ pub struct CallScope {
     deadline: Instant,
     acting: AtomicBool,
     overlay_shown: AtomicBool,
-    held: Mutex<Vec<MouseButton>>,
+    held: Mutex<Vec<HeldButton>>,
     held_keys: Mutex<Vec<Chord>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HeldButton {
+    pub button: MouseButton,
+    pub pressed_at: Point,
 }
 
 impl CallScope {
@@ -33,19 +39,23 @@ impl CallScope {
         }
     }
 
-    pub fn note_held(&self, button: MouseButton) {
+    pub fn note_held(&self, button: MouseButton, pressed_at: Point) {
         let mut held = self.held.lock();
-        if !held.contains(&button) {
-            held.push(button);
+        if held.iter().all(|held| held.button != button) {
+            held.push(HeldButton { button, pressed_at });
         }
     }
 
     pub fn note_released(&self, button: MouseButton) {
-        self.held.lock().retain(|held| *held != button);
+        self.held.lock().retain(|held| held.button != button);
     }
 
-    pub fn take_held(&self) -> Vec<MouseButton> {
+    pub fn take_held(&self) -> Vec<HeldButton> {
         std::mem::take(&mut *self.held.lock())
+    }
+
+    pub fn held_buttons(&self) -> Vec<MouseButton> {
+        self.held.lock().iter().map(|held| held.button).collect()
     }
 
     pub fn note_held_keys(&self, chord: Chord) {
@@ -61,6 +71,10 @@ impl CallScope {
 
     pub fn take_held_keys(&self) -> Vec<Chord> {
         std::mem::take(&mut *self.held_keys.lock())
+    }
+
+    pub fn held_keys(&self) -> Vec<Chord> {
+        self.held_keys.lock().clone()
     }
 
     pub fn check(&self) -> Result<()> {
@@ -149,14 +163,16 @@ mod tests {
     }
 
     #[test]
-    fn held_buttons_are_tracked_until_released_or_taken() {
+    fn held_buttons_keep_their_first_press_point_until_released_or_taken() {
         let scope = CallScope::relaxed();
-        scope.note_held(MouseButton::Left);
-        scope.note_held(MouseButton::Left);
-        scope.note_held(MouseButton::Right);
+        scope.note_held(MouseButton::Left, Point::new(10, 20));
+        scope.note_held(MouseButton::Left, Point::new(99, 99));
+        scope.note_held(MouseButton::Right, Point::new(5, 5));
+        assert_eq!(scope.held_buttons(), vec![MouseButton::Left, MouseButton::Right]);
         scope.note_released(MouseButton::Right);
-        assert_eq!(scope.take_held(), vec![MouseButton::Left]);
-        assert!(scope.take_held().is_empty());
+        let left = HeldButton { button: MouseButton::Left, pressed_at: Point::new(10, 20) };
+        assert_eq!(scope.take_held(), vec![left]);
+        assert!(scope.take_held().is_empty() && scope.held_buttons().is_empty());
     }
 
     #[test]
@@ -168,6 +184,7 @@ mod tests {
         scope.note_held_keys(shift);
         scope.note_held_keys(ctrl_a);
         scope.note_released_keys(ctrl_a);
+        assert_eq!(scope.held_keys(), vec![shift]);
         assert_eq!(scope.take_held_keys(), vec![shift]);
         assert!(scope.take_held_keys().is_empty());
     }

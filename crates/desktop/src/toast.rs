@@ -31,7 +31,7 @@ impl ToastBlock {
 }
 
 pub(crate) fn show_toast(title: &str, message: &str) -> Result<ToastResult> {
-    let _apartment = ComApartment::enter_mta()?;
+    let _apartment = ComApartment::enter_any()?;
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_USER_MODEL_ID))
         .context("creating the Deckhand toast notifier")?;
     let setting = notifier.Setting().context("reading whether Deckhand may show notifications")?;

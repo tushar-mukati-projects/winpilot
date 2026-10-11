@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use deckhand_core::{Error, ErrorCode, Result, TargetSpec, WindowInfo};
 
 use super::mode::Mode;
@@ -22,6 +24,16 @@ pub fn prepare(engine: &Engine, spec: &TargetSpec, mode: Mode, call: &CallScope)
 
 pub fn prepare_default_window(engine: &Engine, call: &CallScope) -> Result<Prepared> {
     ready(engine, Resolved { window: default_window(engine)?, reach: Reach::Window }, Mode::Foreground, call)
+}
+
+pub fn given_or_else(
+    target: Option<&Prepared>,
+    fallback: impl FnOnce() -> Result<Prepared>,
+) -> Result<Cow<'_, Prepared>> {
+    match target {
+        Some(prepared) => Ok(Cow::Borrowed(prepared)),
+        None => fallback().map(Cow::Owned),
+    }
 }
 
 pub fn foreground_app(engine: &Engine, call: &CallScope) -> Result<WindowInfo> {
@@ -52,4 +64,25 @@ fn foreground_window() -> Result<WindowInfo> {
     let hwnd =
         deckhand_desktop::foreground_window().ok_or_else(|| Error::not_found("no window is in the foreground"))?;
     deckhand_desktop::window(hwnd)
+}
+
+#[cfg(test)]
+mod tests {
+    use deckhand_core::{Rect, WindowRef};
+
+    use super::*;
+    use crate::test_fixture::window;
+
+    fn whole(hwnd: i64) -> Prepared {
+        Resolved { window: window(hwnd, "app.exe", "App", Rect::new(0, 0, 10, 10)), reach: Reach::Window }
+    }
+
+    #[test]
+    fn a_given_target_is_borrowed_and_only_a_missing_one_runs_the_fallback() {
+        let given = whole(1);
+        let chosen = given_or_else(Some(&given), || Err(Error::internal("the fallback ran"))).unwrap();
+        assert!(matches!(chosen, Cow::Borrowed(_)));
+        assert_eq!(given_or_else(None, || Ok(whole(2))).unwrap().window.hwnd, WindowRef(2));
+        assert!(given_or_else(None, || Err(Error::not_found("nothing here"))).is_err());
+    }
 }

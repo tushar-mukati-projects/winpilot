@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     blank::non_blank,
     error::{Error, Result},
+    field_rules::{does_not_apply, first_stray},
     target::{Target, parse_text_target},
 };
 
@@ -38,7 +39,8 @@ pub struct WaitArgs {
     pub until: Option<Until>,
     #[serde(default)]
     #[schemars(
-        description = "time: milliseconds to pause, at most 5000. idle: how long the UI must stay quiet (default 300)."
+        description = "time: milliseconds to pause, at most 5000. idle: how long the UI must stay quiet (default 300).",
+        range(max = 60_000)
     )]
     pub ms: Option<u64>,
     #[serde(default)]
@@ -53,7 +55,7 @@ pub struct WaitArgs {
     )]
     pub window: Option<String>,
     #[serde(default)]
-    #[schemars(description = "Give up after this long (default 5000, max 60000).")]
+    #[schemars(description = "Give up after this long (default 5000, max 60000).", range(max = 60_000))]
     pub timeout_ms: Option<u64>,
 }
 
@@ -140,9 +142,8 @@ impl WaitArgs {
         if self.until.is_none() && self.ms.is_none() {
             return Err(Error::invalid("wait needs ms (to pause) or until (to wait for a change)"));
         }
-        let stray = self.given().into_iter().find(|(name, given)| *given && !until.fields().contains(name));
-        match stray {
-            Some((name, _)) => Err(Error::invalid(format!("{name} does not apply to wait until={}", until.name()))),
+        match first_stray(&self.given(), |name| until.fields().contains(&name)) {
+            Some(name) => Err(does_not_apply(name, &format!("wait until={}", until.name()))),
             None => Ok(()),
         }
     }

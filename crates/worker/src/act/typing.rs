@@ -6,9 +6,12 @@ use super::{
     chords::named,
     clip::{NOTE_LIMIT, quoted},
     done::{Done, via_focus_click},
+    field::{is_readable, read_value},
     focus::{Focused, keyboard_target},
+    landing::ensure_keys_land,
+    lift::with_held_modifiers_lifted,
     mode::Mode,
-    paste::paste,
+    paste::{Readback, paste, readback},
     settle,
     target::Prepared,
 };
@@ -16,18 +19,30 @@ use crate::{call_scope::CallScope, engine::Engine, overlay};
 
 const PASTE_THRESHOLD: usize = 200;
 const KEPT_CLIPBOARD: &str = "the clipboard holds more than text, so the text was typed to keep it intact";
+const UNCONFIRMABLE: &str = "the field does not expose its value to confirm a paste, so the text was typed";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Typing {
     Keys,
-    Paste,
+    Paste(Readback),
     KeysToKeepClipboard,
+    KeysToConfirm,
 }
 
 pub struct TypeRequest<'a> {
     pub text: &'a str,
     pub enter: bool,
     pub how: TypeHow,
+}
+
+impl Typing {
+    fn note(&self) -> Option<String> {
+        match self {
+            Self::KeysToKeepClipboard => Some(KEPT_CLIPBOARD.to_string()),
+            Self::KeysToConfirm => Some(UNCONFIRMABLE.to_string()),
+            Self::Keys | Self::Paste(_) => None,
+        }
+    }
 }
 
 pub fn step(
@@ -54,31 +69,42 @@ fn type_for_real(
     if let Some(element) = &focused.element {
         overlay::focus_field(engine, element.rect);
     }
+    let chars = request.text.chars().count();
     overlay::typing(engine, &focused.window);
-    let typing = choose_typing(request.how, request.text.chars().count(), clipboard_holds_only_text);
+    let typing =
+        choose_typing(request.how, chars, || readback(engine, focused.element.as_ref()), clipboard_holds_only_text);
+    let instead = typing.note();
     let (method, restore_note) = enter_text(engine, &focused, request.text, typing, call)?;
     if request.enter {
-        deckhand_input::press_chord(&named(NamedKey::Enter))?;
+        press_enter(engine, &focused, call)?;
     }
     settle(engine, &focused.window, call);
-    let kept = (typing == Typing::KeysToKeepClipboard).then(|| KEPT_CLIPBOARD.to_string());
     Ok(Done::by(via_focus_click(method, focused.clicked))
-        .with_note(kept)
+        .with_note(instead)
         .with_note(restore_note)
         .with_note(value_note(engine, focused.element.as_ref())))
 }
 
-pub fn choose_typing(how: TypeHow, chars: usize, clipboard_text_only: impl FnOnce() -> bool) -> Typing {
+pub fn choose_typing(
+    how: TypeHow,
+    chars: usize,
+    readback: impl FnOnce() -> Option<Readback>,
+    clipboard_text_only: impl FnOnce() -> bool,
+) -> Typing {
     let wants_paste = match how {
         TypeHow::Keys => false,
         TypeHow::Paste => true,
         TypeHow::Auto => chars > PASTE_THRESHOLD,
     };
-    match (wants_paste && clipboard_text_only(), how) {
-        (true, _) => Typing::Paste,
-        (false, TypeHow::Paste) => Typing::KeysToKeepClipboard,
-        (false, _) => Typing::Keys,
+    if !wants_paste {
+        return Typing::Keys;
     }
+    let instead = |reason: Typing| if how == TypeHow::Paste { reason } else { Typing::Keys };
+    let Some(readback) = readback() else { return instead(Typing::KeysToConfirm) };
+    if !clipboard_text_only() {
+        return instead(Typing::KeysToKeepClipboard);
+    }
+    Typing::Paste(readback)
 }
 
 fn clipboard_holds_only_text() -> bool {
@@ -93,43 +119,63 @@ fn enter_text(
     call: &CallScope,
 ) -> Result<(&'static str, Option<String>)> {
     match typing {
-        Typing::Paste => {
-            paste(engine, &focused.window, focused.element.as_ref(), text, call).map(|note| ("paste", note))
+        Typing::Paste(readback) => paste(engine, &focused.window, &readback, text, call).map(|note| ("paste", note)),
+        Typing::Keys | Typing::KeysToKeepClipboard | Typing::KeysToConfirm => {
+            deckhand_input::type_text(text).map(|()| ("keys", None))
         }
-        Typing::Keys | Typing::KeysToKeepClipboard => deckhand_input::type_text(text).map(|()| ("keys", None)),
     }
 }
 
+fn press_enter(engine: &Engine, focused: &Focused, call: &CallScope) -> Result<()> {
+    engine.guard.check_running(call)?;
+    ensure_keys_land(engine, focused)?;
+    with_held_modifiers_lifted(call, || deckhand_input::press_chord(&named(NamedKey::Enter)))
+}
+
 pub fn value_note(engine: &Engine, element: Option<&Element>) -> Option<String> {
-    let element = element.filter(|element| element.patterns.value && !element.state.password)?;
-    let id = element.id;
-    let value = engine.uia.run(move |uia| uia.value(id)).ok().flatten()?;
+    let element = element.filter(|element| is_readable(element))?;
+    let value = read_value(engine, element.id).ok().flatten()?;
     Some(format!("value now {}", quoted(&value, NOTE_LIMIT)))
 }
 
 #[cfg(test)]
 mod tests {
+    use deckhand_core::ElementRef;
+
     use super::*;
 
     fn never_asked() -> bool {
         panic!("the clipboard should not be inspected")
     }
 
-    #[test]
-    fn short_text_is_typed_without_looking_at_the_clipboard() {
-        assert_eq!(choose_typing(TypeHow::Auto, 200, never_asked), Typing::Keys);
-        assert_eq!(choose_typing(TypeHow::Keys, 5000, never_asked), Typing::Keys);
+    fn never_read() -> Option<Readback> {
+        panic!("the field should not be read")
+    }
+
+    fn field() -> Readback {
+        Readback { id: ElementRef(4), before: String::new() }
     }
 
     #[test]
-    fn long_text_is_pasted_only_over_a_text_clipboard() {
-        assert_eq!(choose_typing(TypeHow::Auto, 201, || true), Typing::Paste);
-        assert_eq!(choose_typing(TypeHow::Auto, 201, || false), Typing::Keys);
+    fn short_text_is_typed_without_looking_at_the_field_or_the_clipboard() {
+        assert_eq!(choose_typing(TypeHow::Auto, 200, never_read, never_asked), Typing::Keys);
+        assert_eq!(choose_typing(TypeHow::Keys, 5000, never_read, never_asked), Typing::Keys);
     }
 
     #[test]
-    fn explicit_paste_keeps_a_rich_clipboard_by_typing() {
-        assert_eq!(choose_typing(TypeHow::Paste, 3, || true), Typing::Paste);
-        assert_eq!(choose_typing(TypeHow::Paste, 3, || false), Typing::KeysToKeepClipboard);
+    fn long_text_is_pasted_only_into_a_readable_field_over_a_text_clipboard() {
+        assert_eq!(choose_typing(TypeHow::Auto, 201, || Some(field()), || true), Typing::Paste(field()));
+        assert_eq!(choose_typing(TypeHow::Auto, 201, || Some(field()), || false), Typing::Keys);
+        assert_eq!(choose_typing(TypeHow::Auto, 201, || None, never_asked), Typing::Keys);
+    }
+
+    #[test]
+    fn explicit_paste_says_why_it_typed_instead() {
+        assert_eq!(choose_typing(TypeHow::Paste, 3, || Some(field()), || true), Typing::Paste(field()));
+        assert_eq!(choose_typing(TypeHow::Paste, 3, || Some(field()), || false), Typing::KeysToKeepClipboard);
+        assert_eq!(choose_typing(TypeHow::Paste, 3, || None, never_asked), Typing::KeysToConfirm);
+        assert_eq!(Typing::KeysToConfirm.note().as_deref(), Some(UNCONFIRMABLE));
+        assert_eq!(Typing::KeysToKeepClipboard.note().as_deref(), Some(KEPT_CLIPBOARD));
+        assert_eq!(Typing::Keys.note(), None);
     }
 }

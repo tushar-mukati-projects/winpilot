@@ -141,7 +141,8 @@ pub fn set_clipboard(text: &str) -> Call {
 pub fn status_report() -> StatusReport {
     StatusReport {
         version: "test".to_string(),
-        uptime_ms: 5,
+        server_uptime_ms: None,
+        worker_uptime_ms: Some(5),
         stopped: false,
         user_idle_ms: Some(1000),
         kill_hotkey: "ctrl+alt+escape".to_string(),

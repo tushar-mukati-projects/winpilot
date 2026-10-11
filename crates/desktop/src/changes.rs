@@ -32,10 +32,6 @@ impl ChangeMonitor {
         Ok(Self { _hooks: hooks })
     }
 
-    pub fn last_change(&self, pid: u32) -> Option<Instant> {
-        board().last_change(pid)
-    }
-
     pub fn wait_quiet(&self, pid: u32, quiet: Duration, max: Duration) -> bool {
         board().wait_quiet(pid, quiet, max)
     }
@@ -73,7 +69,6 @@ mod tests {
         let _own = monitor.wait_change(Some(std::process::id()), started, Duration::from_millis(50));
         assert!(started.elapsed() < Duration::from_millis(1500));
         let _opened = second.windows_opened_since(started);
-        let _last = second.last_change(std::process::id());
         assert!(!monitor.wait_quiet(1, Duration::from_millis(50), Duration::from_millis(10)));
         drop(second);
         drop(monitor);

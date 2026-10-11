@@ -8,7 +8,7 @@ pub(crate) struct ComApartment {
 }
 
 impl ComApartment {
-    pub(crate) fn enter_multithreaded() -> Result<Self> {
+    pub(crate) fn enter_mta_strict() -> Result<Self> {
         let status = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         status.ok().context("initialising COM (multithreaded) on the UI Automation thread")?;
         Ok(Self { _bound_to_thread: PhantomData })

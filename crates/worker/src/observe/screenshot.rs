@@ -89,7 +89,8 @@ fn window_shot(engine: &Engine, window: WindowInfo) -> Result<Shot> {
 
 fn element_shot(engine: &Engine, target: &Target, call: &CallScope) -> Result<Shot> {
     let resolved = resolve::target(engine, target, call)?;
-    let element = resolved.element().ok_or_else(|| Error::invalid("the screenshot target is not an element"))?;
+    let element =
+        resolved.element_or_point_hit().ok_or_else(|| Error::invalid("the screenshot target is not an element"))?;
     let Captured { frame, note } = frames::element(engine, &resolved.window, element.rect)?;
     let label = with_source(&format!("{} in {}", element.id, window_line(&resolved.window)), frame.source);
     Ok(Shot { frame, label, window: Some(resolved.window), note })

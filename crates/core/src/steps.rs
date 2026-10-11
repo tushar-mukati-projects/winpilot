@@ -1,7 +1,12 @@
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
-use crate::{geometry::Rect, target::TargetSpec, wait::WaitArgs};
+use crate::{
+    geometry::Rect,
+    null_default::{or_default, or_one_u8, or_one_u32, or_true},
+    target::TargetSpec,
+    wait::WaitArgs,
+};
 
 const fn default_true() -> bool {
     true
@@ -28,12 +33,13 @@ pub enum AfterMode {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ActArgs {
-    #[schemars(description = "Up to 50 steps, run in order. Each is an object with a \"do\" field.")]
+    #[serde(deserialize_with = "numbered_steps")]
+    #[schemars(description = "Up to 50 steps, run in order. Each is an object with a \"do\" field.", length(max = 50))]
     pub steps: Vec<Step>,
-    #[serde(rename = "return", default)]
+    #[serde(rename = "return", default, deserialize_with = "or_default")]
     #[schemars(description = "What to report afterwards: diff (default), observe, screenshot or none.")]
     pub after: AfterMode,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", deserialize_with = "or_true")]
     #[schemars(description = "Stop at the first failing step (default true).")]
     pub stop_on_error: bool,
     #[serde(default)]
@@ -114,20 +120,21 @@ pub enum WindowAction {
 pub enum Step {
     Click {
         target: TargetSpec,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "or_default")]
         button: MouseButton,
-        #[serde(default = "default_click_count")]
-        #[schemars(description = "1-3.")]
+        #[serde(default = "default_click_count", deserialize_with = "or_one_u8")]
+        #[schemars(description = "Clicks: 1-3.", range(min = 1, max = 3))]
         count: u8,
         #[serde(default)]
         #[schemars(description = "Modifier keys to hold, e.g. ctrl or ctrl+shift.")]
         modifiers: Option<String>,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "or_default")]
         #[schemars(description = "auto (a pattern on background windows, else the mouse), invoke or mouse.")]
         how: ClickHow,
         #[serde(default)]
         #[schemars(
-            description = "Milliseconds the cursor glides first (default [cursor] glide_ms; 0 jumps; max 3000)."
+            description = "Milliseconds the cursor glides first (default [cursor] glide_ms; 0 jumps; max 3000).",
+            range(max = 3000)
         )]
         glide_ms: Option<u64>,
     },
@@ -135,11 +142,12 @@ pub enum Step {
         #[serde(default)]
         #[schemars(description = "Field to type into. Omit to type into the focused app (never Claude's terminal).")]
         target: Option<TargetSpec>,
+        #[schemars(description = "Text to type; newlines become Enter.")]
         text: String,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "or_default")]
         #[schemars(description = "Press Enter after typing.")]
         enter: bool,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "or_default")]
         #[schemars(description = "auto, keys or paste (the clipboard is restored).")]
         how: TypeHow,
     },
@@ -147,11 +155,14 @@ pub enum Step {
         #[schemars(description = "Keys like ctrl+s, enter, alt+f4, or a sequence: ctrl+k ctrl+s.")]
         keys: String,
         #[serde(default)]
+        #[schemars(
+            description = "Element or window to send the keys to. Omit to use the focused app (never Claude's terminal)."
+        )]
         target: Option<TargetSpec>,
-        #[serde(default = "default_one")]
-        #[schemars(description = "1-100.")]
+        #[serde(default = "default_one", deserialize_with = "or_one_u32")]
+        #[schemars(description = "Times to press the keys: 1-100.", range(min = 1, max = 100))]
         repeat: u32,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "or_default")]
         #[schemars(
             description = "press (default), down (hold) or up (release). Held keys are released when the call ends."
         )]
@@ -175,11 +186,12 @@ pub enum Step {
         #[schemars(description = "scroll: up, down, left or right.")]
         direction: Option<Direction>,
         #[serde(default)]
-        #[schemars(description = "scroll: wheel notches, 1-50 (default 3).")]
+        #[schemars(description = "scroll: wheel notches, 1-50 (default 3).", range(min = 1, max = 50))]
         amount: Option<u32>,
         #[serde(default)]
         #[schemars(
-            description = "Milliseconds the cursor glides first (default [cursor] glide_ms; 0 jumps; max 3000)."
+            description = "Milliseconds the cursor glides first (default [cursor] glide_ms; 0 jumps; max 3000).",
+            range(max = 3000)
         )]
         glide_ms: Option<u64>,
     },
@@ -192,10 +204,13 @@ pub enum Step {
         #[schemars(description = "Item to choose in a combobox or list.")]
         option: Option<String>,
         #[serde(default)]
+        #[schemars(description = "Check (true) or uncheck (false) a checkbox or toggle.")]
         checked: Option<bool>,
         #[serde(default)]
+        #[schemars(description = "Expand (true) or collapse (false) a tree item, expander or menu.")]
         expanded: Option<bool>,
         #[serde(default)]
+        #[schemars(description = "Select (true) or deselect (false) a list, tab or tree item.")]
         selected: Option<bool>,
     },
     Focus {
@@ -225,11 +240,14 @@ pub enum Step {
         #[serde(default)]
         #[schemars(description = "Click this first to open the dialog, e.g. an Upload button.")]
         open_with: Option<TargetSpec>,
-        #[serde(default)]
+        #[serde(default, deserialize_with = "or_default")]
         #[schemars(description = "In a Save dialog, confirm replacing an existing file.")]
         overwrite: bool,
         #[serde(default)]
-        #[schemars(description = "How long open_with may take to open the dialog (default 15000, max 60000).")]
+        #[schemars(
+            description = "How long open_with may take to open the dialog (default 15000, max 60000).",
+            range(max = 60_000)
+        )]
         timeout_ms: Option<u64>,
     },
     Wait(WaitArgs),
@@ -238,11 +256,21 @@ pub enum Step {
         text: String,
     },
     Notify {
-        #[schemars(description = "Bold first line, 1-63 characters.")]
+        #[schemars(description = "Bold first line, 1-63 characters.", length(min = 1, max = 63))]
         title: String,
-        #[schemars(description = "Body text, 1-255 characters.")]
+        #[schemars(description = "Body text, 1-255 characters.", length(min = 1, max = 255))]
         message: String,
     },
+}
+
+fn numbered_steps<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<Step>, D::Error> {
+    let raw = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    raw.into_iter()
+        .enumerate()
+        .map(|(index, step)| {
+            serde_json::from_value(step).map_err(|error| de::Error::custom(format!("step {}: {error}", index + 1)))
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -446,6 +474,42 @@ mod tests {
             assert!(message.contains(expected), "{json}: {message}");
         }
         assert!(serde_json::from_str::<Step>(r#"{"do":"click","target":{"x":1,"y":2,"image":"i3"}}"#).is_err());
+    }
+
+    #[test]
+    fn a_step_that_does_not_parse_is_named_by_its_number() {
+        let error = serde_json::from_str::<ActArgs>(r#"{"steps":[{"do":"wait","ms":1},{"do":"clik","target":"e1"}]}"#)
+            .unwrap_err()
+            .to_string();
+        assert!(error.starts_with("step 2: unknown variant `clik`"), "{error}");
+    }
+
+    #[test]
+    fn the_schema_states_the_real_limits() {
+        let schema = serde_json::to_value(schemars::schema_for!(ActArgs)).unwrap();
+        assert_eq!(schema["properties"]["steps"]["maxItems"], 50);
+        let text = schema.to_string();
+        for limit in
+            [r#""maximum":3"#, r#""maximum":100"#, r#""maximum":3000"#, r#""maxLength":63"#, r#""maxLength":255"#]
+        {
+            assert!(text.contains(limit), "missing {limit}");
+        }
+    }
+
+    #[test]
+    fn null_fields_take_their_defaults() {
+        let args: ActArgs = serde_json::from_str(
+            r#"{"steps":[{"do":"click","target":"e1","button":null,"count":null,"how":null},
+            {"do":"type","text":"x","enter":null,"how":null},{"do":"key","keys":"a","repeat":null,"action":null},
+            {"do":"pick","paths":["C:\\a.txt"],"overwrite":null}],"return":null,"stop_on_error":null}"#,
+        )
+        .unwrap();
+        assert_eq!(args.after, AfterMode::Diff);
+        assert!(args.stop_on_error);
+        assert!(matches!(args.steps[0], Step::Click { button: MouseButton::Left, count: 1, how: ClickHow::Auto, .. }));
+        assert!(matches!(args.steps[1], Step::Type { enter: false, how: TypeHow::Auto, .. }));
+        assert!(matches!(args.steps[2], Step::Key { repeat: 1, action: KeyAction::Press, .. }));
+        assert!(matches!(args.steps[3], Step::Pick { overwrite: false, .. }));
     }
 
     #[test]

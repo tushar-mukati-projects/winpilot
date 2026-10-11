@@ -34,12 +34,9 @@ impl ChordDetector {
     }
 
     pub(crate) fn pressed(&mut self, key: PhysicalKey) -> Option<VIRTUAL_KEY> {
-        let held = HeldKey {
-            make_code: key.make_code,
-            extended: u32::from(key.flags) & RI_KEY_E0 != 0,
-            vk: key.vk,
-        };
-        let already = self.held.iter().position(|known| known.make_code == held.make_code && known.extended == held.extended);
+        let held = HeldKey { make_code: key.make_code, extended: u32::from(key.flags) & RI_KEY_E0 != 0, vk: key.vk };
+        let already =
+            self.held.iter().position(|known| known.make_code == held.make_code && known.extended == held.extended);
         if u32::from(key.flags) & RI_KEY_BREAK != 0 {
             if let Some(index) = already {
                 self.held.swap_remove(index);
@@ -74,7 +71,10 @@ pub(crate) fn required_modifiers(binding: HotkeyBinding) -> Modifiers {
 }
 
 pub(crate) const fn covers(held: Modifiers, wanted: Modifiers) -> bool {
-    (held.ctrl || !wanted.ctrl) && (held.alt || !wanted.alt) && (held.shift || !wanted.shift) && (held.win || !wanted.win)
+    (held.ctrl || !wanted.ctrl)
+        && (held.alt || !wanted.alt)
+        && (held.shift || !wanted.shift)
+        && (held.win || !wanted.win)
 }
 
 #[cfg(test)]

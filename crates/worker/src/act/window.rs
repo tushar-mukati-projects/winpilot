@@ -13,10 +13,12 @@ use super::{
     settle,
     steps::StepContext,
 };
-use crate::{call_scope::CallScope, engine::Engine, overlay, resolve, until::until, watch::Watch};
+use crate::{
+    app_windows::app_windows, call_scope::CallScope, engine::Engine, overlay, resolve, until::until, watch::Watch,
+    window_classes::is_shell,
+};
 
 const CLOSE_WAIT: Duration = Duration::from_secs(3);
-const LISTED_MATCHES: usize = 8;
 
 pub struct WindowRequest<'a> {
     pub action: WindowAction,
@@ -24,6 +26,17 @@ pub struct WindowRequest<'a> {
     pub app: Option<&'a str>,
     pub args: Option<&'a str>,
     pub rect: Option<Rect>,
+}
+
+impl<'a> TryFrom<&'a Step> for WindowRequest<'a> {
+    type Error = Error;
+
+    fn try_from(step: &'a Step) -> Result<Self> {
+        let Step::Window { action, target, app, args, rect } = step else {
+            return Err(Error::invalid(format!("{} is not a window step", step.kind())));
+        };
+        Ok(Self { action: *action, target: target.as_ref(), app: app.as_deref(), args: args.as_deref(), rect: *rect })
+    }
 }
 
 pub fn step(engine: &Engine, request: &WindowRequest<'_>, step: &Step, context: &StepContext<'_>) -> Result<Done> {
@@ -73,7 +86,27 @@ fn target_window(engine: &Engine, target: &TargetSpec, call: &CallScope) -> Resu
     };
     engine.guard.check_window(&window)?;
     engine.host.refuse(&window)?;
+    require_app_window(&window, &app_windows(engine)?)?;
     Ok(window)
+}
+
+pub fn require_app_window(window: &WindowInfo, listed: &[WindowInfo]) -> Result<()> {
+    if is_shell(window) {
+        return Err(Error::new(
+            ErrorCode::Denied,
+            format!(
+                "{} ({}) is part of the Windows shell; window actions only control app windows",
+                window.hwnd, window.class_name
+            ),
+        ));
+    }
+    if listed.iter().all(|app| app.hwnd != window.hwnd) {
+        return Err(Error::not_found(format!(
+            "{} is not an app window Deckhand lists (observe mode=windows shows them)",
+            window.hwnd
+        )));
+    }
+    Ok(())
 }
 
 fn close(engine: &Engine, window: &WindowInfo, call: &CallScope) -> Result<Done> {
@@ -111,22 +144,12 @@ fn move_to(engine: &Engine, window: &WindowInfo, rect: Rect, call: &CallScope) -
 }
 
 pub fn single_window(spec: &str, found: Vec<WindowInfo>) -> Result<WindowInfo> {
-    let count = found.len();
-    let mut found = found.into_iter();
-    match (found.next(), count) {
-        (None, _) => Err(Error::not_found(format!("no open window matches {spec}"))),
-        (Some(only), 1) => Ok(only),
-        (Some(first), _) => Err(ambiguous(spec, count, std::iter::once(first).chain(found))),
+    let mut found = found;
+    match found.len() {
+        0 => Err(Error::not_found(format!("no open window matches {spec}"))),
+        1 => Ok(found.remove(0)),
+        _ => Err(resolve::ambiguous(spec, found.iter(), "pass one window ref")),
     }
-}
-
-fn ambiguous(spec: &str, count: usize, windows: impl Iterator<Item = WindowInfo>) -> Error {
-    let mut lines: Vec<String> = windows.take(LISTED_MATCHES).map(|window| window_line(&window)).collect();
-    if count > LISTED_MATCHES {
-        lines.push("…".to_string());
-    }
-    let listed = lines.join("; ");
-    Error::new(ErrorCode::Ambiguous, format!("{count} windows match {spec}: {listed}; pass one window ref"))
 }
 
 #[cfg(test)]
@@ -135,6 +158,13 @@ mod tests {
 
     use super::*;
     use crate::test_fixture::window;
+
+    fn of_class(hwnd: i64, class_name: &str) -> WindowInfo {
+        WindowInfo {
+            class_name: class_name.to_string(),
+            ..window(hwnd, "explorer.exe", "Program Manager", Rect::default())
+        }
+    }
 
     #[test]
     fn only_a_single_matching_window_can_be_controlled() {
@@ -148,20 +178,41 @@ mod tests {
             "{}",
             error.message
         );
+        assert!(error.message.ends_with("; pass one window ref"), "{}", error.message);
         assert_eq!(single_window("Nothing", Vec::new()).unwrap_err().code, ErrorCode::NotFound);
     }
 
     #[test]
-    fn long_ambiguity_lists_are_capped() {
-        let many: Vec<WindowInfo> = (1..=10).map(|hwnd| window(hwnd, "app.exe", "A", Rect::default())).collect();
-        let message = single_window("A", many).unwrap_err().message;
-        assert!(message.contains("w8 app.exe \"A\"; …; pass one window ref"), "{message}");
-        assert!(!message.contains("w9 "));
+    fn shell_windows_are_refused_even_when_listed() {
+        let desktop = of_class(1, "Progman");
+        let error = require_app_window(&desktop, std::slice::from_ref(&desktop)).unwrap_err();
+        assert_eq!(error.code, ErrorCode::Denied);
+        assert!(error.message.starts_with("w1 (Progman) is part of the Windows shell"), "{}", error.message);
+        for class_name in ["WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"] {
+            let shell = of_class(2, class_name);
+            assert!(require_app_window(&shell, std::slice::from_ref(&shell)).is_err(), "{class_name}");
+        }
+    }
+
+    #[test]
+    fn a_window_must_be_one_deckhand_lists() {
+        let app = of_class(3, "Notepad");
+        assert!(require_app_window(&app, std::slice::from_ref(&app)).is_ok());
+        assert_eq!(require_app_window(&app, &[of_class(4, "Notepad")]).unwrap_err().code, ErrorCode::NotFound);
     }
 
     #[test]
     fn state_changes_are_named() {
         assert_eq!(state_word(WindowState::Minimized), "minimized");
         assert_eq!(state_word(WindowState::Normal), "restored");
+    }
+
+    #[test]
+    fn only_window_steps_become_window_requests() {
+        let step: Step = serde_json::from_str(r#"{"do":"window","action":"close","target":"w1"}"#).unwrap();
+        let request = WindowRequest::try_from(&step).unwrap();
+        assert_eq!((request.action, request.app), (WindowAction::Close, None));
+        let other: Step = serde_json::from_str(r#"{"do":"wait","ms":5}"#).unwrap();
+        assert!(WindowRequest::try_from(&other).is_err());
     }
 }

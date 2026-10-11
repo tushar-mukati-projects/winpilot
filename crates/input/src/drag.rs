@@ -4,7 +4,7 @@ use deckhand_core::{Point, Result, protocol::MouseButton};
 
 use crate::{
     event::InputEvent,
-    mouse::{ButtonTransition, button_event, move_event},
+    mouse::{ButtonTransition, button_event, button_events, move_event},
     physical_button::PhysicalButton,
     send::send,
     timed_moves::{move_plan, play},
@@ -40,10 +40,6 @@ pub fn drag_guarded(
     drag_with(plan, DragIo { sleep: thread::sleep, send, guard })
 }
 
-pub fn drag(from: Point, to: Point, button: MouseButton, duration: Duration) -> Result<()> {
-    drag_guarded(from, to, button, duration, || Ok(()))
-}
-
 fn drag_with(
     plan: DragPlan,
     mut io: DragIo<impl FnMut(Duration), impl FnMut(&[InputEvent]) -> Result<()>, impl FnMut() -> Result<()>>,
@@ -51,9 +47,13 @@ fn drag_with(
     (io.guard)()?;
     let outcome = perform_drag(plan, &mut io);
     if outcome.is_err() {
-        let _ = (io.send)(&[button_event(plan.button, ButtonTransition::Release)]);
+        let _ = (io.send)(&drop_back_at_start(plan));
     }
     outcome
+}
+
+fn drop_back_at_start(plan: DragPlan) -> Vec<InputEvent> {
+    button_events(plan.desktop, plan.from, plan.button, ButtonTransition::Release)
 }
 
 fn perform_drag(
@@ -103,6 +103,10 @@ mod tests {
         vec![button_event(button, ButtonTransition::Release)]
     }
 
+    fn dropped_back(button: PhysicalButton) -> Vec<InputEvent> {
+        vec![move_event(DESKTOP, FROM), button_event(button, ButtonTransition::Release)]
+    }
+
     fn path_moves() -> usize {
         move_plan(DESKTOP, FROM, TO, SHORTEST_DRAG).len()
     }
@@ -121,27 +125,27 @@ mod tests {
     }
 
     #[test]
-    fn failed_intermediate_move_still_releases_the_button() {
+    fn failed_intermediate_move_drops_back_at_the_start() {
         let (outcome, calls) = recorded_drag(PhysicalButton::Right, Some(4), None);
         assert!(outcome.is_err());
         assert_eq!(calls.len(), 5);
-        assert_eq!(calls[4], release(PhysicalButton::Right));
+        assert_eq!(calls[4], dropped_back(PhysicalButton::Right));
     }
 
     #[test]
     fn failed_press_still_sends_a_release() {
         let (outcome, calls) = recorded_drag(PhysicalButton::Left, Some(1), None);
         assert!(outcome.is_err());
-        assert_eq!(calls.last(), Some(&release(PhysicalButton::Left)));
+        assert_eq!(calls.last(), Some(&dropped_back(PhysicalButton::Left)));
     }
 
     #[test]
-    fn an_abort_mid_drag_stops_moving_and_releases_the_button() {
+    fn an_abort_mid_drag_stops_moving_and_drops_back_at_the_start() {
         let (outcome, calls) = recorded_drag(PhysicalButton::Left, None, Some(5));
         assert_eq!(outcome.unwrap_err().code, ErrorCode::StoppedByUser);
         assert_eq!(calls.len(), 1 + 3 + 1);
         assert!(calls.len() < path_moves() + 2);
-        assert_eq!(calls.last(), Some(&release(PhysicalButton::Left)));
+        assert_eq!(calls.last(), Some(&dropped_back(PhysicalButton::Left)));
     }
 
     #[test]

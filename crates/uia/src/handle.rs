@@ -72,7 +72,7 @@ impl Drop for Shared {
 
 impl Session {
     fn open(options: UiaOptions) -> Result<Self> {
-        let apartment = ComApartment::enter_multithreaded()?;
+        let apartment = ComApartment::enter_mta_strict()?;
         use_physical_pixels()?;
         let uia = Uia::create(options)?;
         Ok(Self { uia, _apartment: apartment })

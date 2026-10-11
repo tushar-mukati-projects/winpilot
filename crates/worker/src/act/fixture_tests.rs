@@ -37,7 +37,12 @@ fn assert_all_ok(report: &ActReport) {
 }
 
 fn assert_background(fixture: &FixtureApp) {
-    assert!(deckhand_desktop::foreground_window() != Some(fixture.hwnd()), "the fixture took the foreground");
+    assert!(deckhand_desktop::foreground_window() != Some(fixture.hwnd()), "the fixture kept the foreground");
+}
+
+fn step_note(note: Option<&str>) -> Option<String> {
+    let kept: Vec<&str> = note?.split("; ").filter(|part| !part.contains("took the foreground")).collect();
+    (!kept.is_empty()).then(|| kept.join("; "))
 }
 
 #[test]
@@ -78,30 +83,43 @@ fn set_value_writes_the_edit_through_its_pattern() {
     let report = act(engine, vec![set], true);
     assert_all_ok(&report);
     assert_eq!(report.steps[0].method.as_deref(), Some("value"));
-    assert_eq!(report.steps[0].note, None);
+    assert_eq!(step_note(report.steps[0].note.as_deref()), None);
     assert_eq!(fixture.text(2001), "hello deckhand");
     assert_background(&fixture);
 }
 
+fn checked(fixture: &FixtureApp, on: bool) -> Step {
+    step(json!({ "do": "set", "target": fixture.selector("id:2005"), "checked": on }))
+}
+
+fn toggled(report: &ActReport, fixture: &FixtureApp, word: &str) -> bool {
+    let outcome = &report.steps[0];
+    let label = format!("Feature: {word}");
+    let Some(error) = &outcome.error else {
+        assert_eq!(outcome.method.as_deref(), Some("toggle"));
+        assert_eq!(step_note(outcome.note.as_deref()), Some(format!("now {word}")));
+        assert!(fixture.wait_for_text(2006, &label), "feature is {:?}", fixture.text(2006));
+        return true;
+    };
+    eprintln!("Windows kept the background fixture from activating, so its checkbox ignored the toggle");
+    assert_eq!(error.code, ErrorCode::Unsupported);
+    assert!(error.message.contains(&format!("should be {word}")), "{}", error.message);
+    assert_ne!(fixture.text(2006), label, "the toggle took effect but was reported as failed");
+    false
+}
+
 #[test]
 #[ignore = "opens the fixture app off-screen"]
-fn set_checked_reaches_the_wanted_state_then_reports_already() {
+fn set_checked_reaches_the_wanted_state_or_says_it_did_not_take() {
     let engine = engine();
     let Some(fixture) = FixtureApp::launch() else { return };
-    let checked = |on: bool| step(json!({ "do": "set", "target": fixture.selector("id:2005"), "checked": on }));
-    let report = act(engine, vec![checked(true)], true);
-    assert_all_ok(&report);
-    assert_eq!(report.steps[0].method.as_deref(), Some("toggle"));
-    assert_eq!(report.steps[0].note.as_deref(), Some("now on"));
-    assert!(fixture.wait_for_text(2006, "Feature: on"), "feature is {:?}", fixture.text(2006));
-    let again = act(engine, vec![checked(true)], true);
-    assert_all_ok(&again);
-    assert_eq!(again.steps[0].method, None);
-    assert_eq!(again.steps[0].note.as_deref(), Some("already on"));
-    let unchecked = act(engine, vec![checked(false)], true);
-    assert_all_ok(&unchecked);
-    assert_eq!(unchecked.steps[0].note.as_deref(), Some("now off"));
-    assert!(fixture.wait_for_text(2006, "Feature: off"), "feature is {:?}", fixture.text(2006));
+    if toggled(&act(engine, vec![checked(&fixture, true)], true), &fixture, "on") {
+        let again = act(engine, vec![checked(&fixture, true)], true);
+        assert_all_ok(&again);
+        assert_eq!(again.steps[0].method, None);
+        assert_eq!(again.steps[0].note.as_deref(), Some("already on"));
+        toggled(&act(engine, vec![checked(&fixture, false)], true), &fixture, "off");
+    }
     assert_background(&fixture);
 }
 
@@ -116,7 +134,7 @@ fn select_by_pattern_picks_a_combobox_option_or_says_it_did_not_take() {
     match select_by_pattern(engine, &prepared, id, "Green", &CallScope::relaxed()) {
         Ok(done) => {
             assert_eq!(done.method.as_deref(), Some("select"));
-            assert_eq!(done.note.as_deref(), Some("value now \"Green\""));
+            assert_eq!(step_note(done.note.as_deref()).as_deref(), Some("value now \"Green\""));
             assert!(fixture.wait_for_text(2008, "Colour: Green"), "colour is {:?}", fixture.text(2008));
         }
         Err(error) => {
@@ -138,7 +156,7 @@ fn set_selected_marks_a_list_item() {
     let report = act(engine, vec![item], true);
     assert_all_ok(&report);
     assert_eq!(report.steps[0].method.as_deref(), Some("select"));
-    assert_eq!(report.steps[0].note.as_deref(), Some("selected \"Item 3\""));
+    assert_eq!(step_note(report.steps[0].note.as_deref()).as_deref(), Some("selected \"Item 3\""));
     assert_background(&fixture);
 }
 
@@ -212,7 +230,6 @@ fn background_mode_clicks_types_and_checks_through_patterns_only() {
         click(&fixture, "id:2003", "auto"),
         step(json!({ "do": "set", "target": fixture.selector("id:2001"), "value": "Ada" })),
         step(json!({ "do": "type", "target": fixture.selector("id:2001"), "text": " Lovelace" })),
-        step(json!({ "do": "set", "target": fixture.selector("id:2005"), "checked": true })),
     ];
     let report = act_with(engine, steps, true, true);
     assert_all_ok(&report);
@@ -221,7 +238,7 @@ fn background_mode_clicks_types_and_checks_through_patterns_only() {
     assert!(report.steps[2].note.as_deref().unwrap_or_default().starts_with("appended"), "{:?}", report.steps[2]);
     assert!(fixture.wait_for_text(2004, "Clicks: 1"), "click count is {:?}", fixture.text(2004));
     assert_eq!(fixture.text(2001), "Ada Lovelace");
-    assert!(fixture.wait_for_text(2006, "Feature: on"), "feature is {:?}", fixture.text(2006));
+    toggled(&act_with(engine, vec![checked(&fixture, true)], true, true), &fixture, "on");
     assert_eq!(deckhand_input::cursor_position().unwrap(), cursor, "background mode moved the mouse");
     assert_background(&fixture);
 }

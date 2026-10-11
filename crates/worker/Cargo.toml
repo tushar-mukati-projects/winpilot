@@ -13,14 +13,13 @@ deckhand-capture.workspace = true
 deckhand-input.workspace = true
 deckhand-desktop.workspace = true
 windows.workspace = true
-windows-core.workspace = true
 parking_lot.workspace = true
 base64.workspace = true
-serde_json.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
 deckhand-fixture.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

@@ -113,6 +113,22 @@ fn held_keys_are_released_at_the_end_of_the_call() {
 
 #[test]
 #[ignore = "moves the mouse and keyboard"]
+fn a_long_wait_is_refused_while_a_key_is_held() {
+    let engine = engine();
+    let Some(fixture) = FixtureApp::launch_on_screen() else { return };
+    let steps = vec![
+        step(json!({ "do": "key", "keys": "shift", "action": "down", "target": fixture.selector("id:2002") })),
+        step(json!({ "do": "wait", "ms": 1500 })),
+    ];
+    let report = act(engine, steps);
+    assert_eq!(method(&report, 0), Some("keys"));
+    let refused = &report.steps[1];
+    assert_eq!(refused.error.as_ref().map(|error| error.code), Some(ErrorCode::InvalidArgument));
+    assert_eq!(refused.note.as_deref(), Some("released Shift left held by key down"));
+}
+
+#[test]
+#[ignore = "moves the mouse and keyboard"]
 fn typing_without_a_target_goes_to_the_focused_app() {
     let engine = engine();
     let Some(fixture) = FixtureApp::launch_on_screen() else { return };
@@ -155,6 +171,24 @@ fn a_held_mouse_button_is_released_at_the_end_of_the_call() {
     let report = act(engine, vec![down]);
     assert_eq!(method(&report, 0), Some("mouse"));
     assert_eq!(report.steps[0].note.as_deref(), Some("released the left mouse button left held by mouse down"));
+}
+
+#[test]
+#[ignore = "moves the mouse and keyboard"]
+fn a_button_held_when_the_call_fails_is_released_where_it_was_pressed() {
+    let engine = engine();
+    let Some(fixture) = FixtureApp::launch_on_screen() else { return };
+    let steps = vec![
+        step(json!({ "do": "mouse", "action": "down", "target": fixture.selector("id:2001") })),
+        step(json!({ "do": "mouse", "action": "move", "target": fixture.selector("id:2002") })),
+        step(json!({ "do": "click", "target": fixture.selector("id:9999") })),
+    ];
+    let report = act(engine, steps);
+    assert_eq!(method(&report, 1), Some("mouse"));
+    let failed = &report.steps[2];
+    assert_eq!(failed.error.as_ref().map(|error| error.code), Some(ErrorCode::NotFound));
+    let note = failed.note.as_deref().unwrap_or_default();
+    assert!(note.ends_with("back where it was pressed because the call ended early"), "{note}");
 }
 
 #[test]

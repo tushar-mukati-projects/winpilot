@@ -2,9 +2,8 @@ use deckhand_core::Result;
 
 use super::{
     click_choice::ClickOptions,
-    hit::hit_point,
     locate::{Located, locate, locate_in_front},
-    motion::move_pointer,
+    motion::Motion,
     target::Prepared,
 };
 use crate::{call_scope::CallScope, engine::Engine, overlay};
@@ -37,9 +36,7 @@ fn click_located(
     options: ClickOptions,
     call: &CallScope,
 ) -> Result<Located> {
-    let point = hit_point(engine, prepared, &located)?;
-    overlay::begin(engine, &located.window, call);
-    move_pointer(engine, point, options.glide_ms)?;
+    let point = Motion::start(engine, call).approach(prepared, &located, options.glide_ms)?;
     deckhand_input::click(point, options.button, options.count, options.modifiers)?;
     overlay::click(engine, point, options.count);
     Ok(Located { point, ..located })

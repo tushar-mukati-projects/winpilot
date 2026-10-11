@@ -14,7 +14,3 @@ pub fn glide_to_guarded(target: Point, duration: Duration, guard: impl FnMut() -
     let desktop = VirtualDesktop::current()?;
     play(&move_plan(desktop, from, target, duration), thread::sleep, send, guard)
 }
-
-pub fn glide_to(target: Point, duration: Duration) -> Result<()> {
-    glide_to_guarded(target, duration, || Ok(()))
-}

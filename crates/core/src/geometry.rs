@@ -22,10 +22,17 @@ impl Point {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, JsonSchema)]
+#[schemars(
+    description = "A screen rectangle in physical pixels of the virtual screen (negative left of or above the primary monitor)."
+)]
 pub struct Rect {
+    #[schemars(description = "Left edge, physical pixels.")]
     pub x: i32,
+    #[schemars(description = "Top edge, physical pixels.")]
     pub y: i32,
+    #[schemars(description = "Width in physical pixels.")]
     pub width: i32,
+    #[schemars(description = "Height in physical pixels.")]
     pub height: i32,
 }
 

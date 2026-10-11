@@ -1,6 +1,12 @@
-use deckhand_core::{ElementRef, Error, Result};
+use deckhand_core::{Error, Result};
 
-use super::{done::Done, settle, target::Prepared, value::mismatch_note};
+use super::{
+    by_pattern::by_pattern,
+    done::Done,
+    field::{is_writable, read_value},
+    target::Prepared,
+    value::mismatch_note,
+};
 use crate::{call_scope::CallScope, engine::Engine, overlay};
 
 const APPENDED: &str = "appended to the existing text; background mode can't place a caret";
@@ -8,7 +14,7 @@ const REPLACED: &str = "the field hides its value, so it now holds only the type
 
 pub fn step(engine: &Engine, prepared: &Prepared, text: &str, call: &CallScope) -> Result<Done> {
     let element = prepared.require_element("type in background mode")?;
-    if !element.patterns.value || element.state.read_only {
+    if !is_writable(element) {
         return Err(Error::unsupported(format!(
             "{} has no writable value pattern, so background mode can't type into it",
             element.id
@@ -21,10 +27,10 @@ pub fn step(engine: &Engine, prepared: &Prepared, text: &str, call: &CallScope) 
     let id = element.id;
     let (value, note) = appended(read_value(engine, id)?.as_deref(), text);
     let wanted = value.clone();
-    engine.uia.run(move |uia| uia.set_value(id, &wanted))?;
-    settle(engine, &prepared.window, call);
+    let ((), handed_back) =
+        by_pattern(engine, &prepared.window, call, || engine.uia.run(move |uia| uia.set_value(id, &wanted)))?;
     let check = mismatch_note(read_value(engine, id)?, &value);
-    Ok(Done::by("value").with_note(note.map(str::to_string)).with_note(check))
+    Ok(Done::by("value").with_note(note.map(str::to_string)).with_note(check).with_note(handed_back))
 }
 
 pub fn appended(current: Option<&str>, text: &str) -> (String, Option<&'static str>) {
@@ -33,10 +39,6 @@ pub fn appended(current: Option<&str>, text: &str) -> (String, Option<&'static s
         Some("") => (text.to_string(), None),
         Some(current) => (format!("{current}{text}"), Some(APPENDED)),
     }
-}
-
-fn read_value(engine: &Engine, id: ElementRef) -> Result<Option<String>> {
-    engine.uia.run(move |uia| uia.value(id))
 }
 
 #[cfg(test)]
