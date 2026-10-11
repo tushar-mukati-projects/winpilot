@@ -3,7 +3,9 @@ use std::{fmt::Display, ops::RangeInclusive};
 use crate::{
     error::{Error, Result},
     geometry::{COORD_LIMIT, Rect},
-    protocol::{ActArgs, ReadTextArgs, ScreenshotArgs, Step, WindowsArgs},
+    protocol::{
+        ActArgs, NOTIFY_MESSAGE_MAX, NOTIFY_TITLE_MAX, NotifyArgs, ReadTextArgs, ScreenshotArgs, Step, WindowsArgs,
+    },
 };
 
 const MAX_STEPS: usize = 50;
@@ -99,6 +101,29 @@ impl WindowsArgs {
     }
 }
 
+impl NotifyArgs {
+    pub fn validate(&self) -> Result<()> {
+        check_notification_text("title", &self.title, NOTIFY_TITLE_MAX)?;
+        check_notification_text("message", &self.message, NOTIFY_MESSAGE_MAX)
+    }
+}
+
+fn check_notification_text(field: &str, text: &str, max: usize) -> Result<()> {
+    if text.trim().is_empty() {
+        return Err(Error::invalid(format!("{field} must not be empty")));
+    }
+    if text.contains('\0') {
+        return Err(Error::invalid(format!("{field} must not contain NUL characters")));
+    }
+    let length = text.encode_utf16().count();
+    if length > max {
+        return Err(Error::invalid(format!(
+            "{field} must be at most {max} characters (emoji count as two), got {length}; shorten it"
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -107,6 +132,42 @@ mod tests {
         protocol::{AfterMode, TypeHow, WindowAction},
         target::TargetSpec,
     };
+
+    fn notify(title: &str, message: &str) -> NotifyArgs {
+        NotifyArgs { title: title.to_string(), message: message.to_string() }
+    }
+
+    #[test]
+    fn notification_text_fits_the_balloon_limits() {
+        assert!(notify("Export", "Export finished").validate().is_ok());
+        assert!(notify(&"t".repeat(NOTIFY_TITLE_MAX), &"m".repeat(NOTIFY_MESSAGE_MAX)).validate().is_ok());
+        assert!(notify("Done", "line one\nline two").validate().is_ok());
+        assert!(notify(&"é".repeat(NOTIFY_TITLE_MAX), "ok").validate().is_ok());
+    }
+
+    #[test]
+    fn notification_text_that_is_too_long_is_refused_not_cut() {
+        assert_eq!(
+            invalid_message(notify(&"t".repeat(64), "ok").validate()),
+            "title must be at most 63 characters (emoji count as two), got 64; shorten it"
+        );
+        assert_eq!(
+            invalid_message(notify("Done", &"m".repeat(256)).validate()),
+            "message must be at most 255 characters (emoji count as two), got 256; shorten it"
+        );
+        let emoji = "🎉".repeat(32);
+        assert_eq!(emoji.chars().count(), 32);
+        assert!(invalid_message(notify(&emoji, "ok").validate()).ends_with("got 64; shorten it"));
+        assert!(notify(&"🎉".repeat(31), "ok").validate().is_ok());
+    }
+
+    #[test]
+    fn notification_text_must_be_present_and_free_of_nul() {
+        assert_eq!(invalid_message(notify("", "ok").validate()), "title must not be empty");
+        assert_eq!(invalid_message(notify("Done", "  \n ").validate()), "message must not be empty");
+        assert_eq!(invalid_message(notify("Do\0ne", "ok").validate()), "title must not contain NUL characters");
+        assert_eq!(invalid_message(notify("Done", "ok\0hidden").validate()), "message must not contain NUL characters");
+    }
 
     fn step(json: &str) -> Step {
         serde_json::from_str(json).unwrap()

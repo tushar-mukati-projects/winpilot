@@ -64,8 +64,9 @@ fn ancestor_names(snapshot: &Snapshot, index: usize) -> Vec<String> {
     let names: Vec<String> = snapshot
         .ancestors(index)
         .into_iter()
-        .filter(|ancestor| !ancestor.name.trim().is_empty())
-        .map(|ancestor| ancestor.name.clone())
+        .map(|ancestor| ancestor.name.trim())
+        .filter(|name| !name.is_empty() && *name != snapshot.window.title.trim())
+        .map(str::to_string)
         .collect();
     let skip = names.len().saturating_sub(PATH_DEPTH);
     names.into_iter().skip(skip).collect()
@@ -74,6 +75,41 @@ fn ancestor_names(snapshot: &Snapshot, index: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paths_skip_unnamed_ancestors_and_the_window_title() {
+        use deckhand_core::{ElementRef, Rect, Role, WindowRef, WindowState};
+        let window = WindowInfo {
+            hwnd: WindowRef(1),
+            title: "App".to_string(),
+            process: "app.exe".to_string(),
+            pid: 1,
+            class_name: String::new(),
+            rect: Rect::new(0, 0, 100, 100),
+            state: WindowState::Normal,
+            foreground: true,
+            elevated: false,
+        };
+        let element = |id: u32, depth: u16, name: &str| deckhand_core::Element {
+            id: ElementRef(id),
+            depth,
+            role: Role::Group,
+            name: name.to_string(),
+            value: None,
+            automation_id: String::new(),
+            class_name: String::new(),
+            rect: Rect::new(0, 0, 10, 10),
+            state: deckhand_core::ElementState::default(),
+            patterns: deckhand_core::Patterns::default(),
+        };
+        let snapshot = Snapshot {
+            window,
+            elements: vec![element(1, 0, "App"), element(2, 1, ""), element(3, 2, "Toolbar"), element(4, 3, "Save")],
+            focused: None,
+            truncated: false,
+        };
+        assert_eq!(ancestor_names(&snapshot, 3), ["Toolbar"]);
+    }
 
     #[test]
     fn the_search_stops_when_time_runs_short() {

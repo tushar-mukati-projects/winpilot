@@ -82,18 +82,13 @@ const PASSWORD_MANAGERS: [&str; 6] =
 
 impl Default for GuardConfig {
     fn default() -> Self {
-        let mut deny: Vec<DenyRule> = PASSWORD_MANAGERS
+        let deny = PASSWORD_MANAGERS
             .iter()
             .map(|process| DenyRule { process: Some((*process).to_string()), title: None })
             .collect();
-        deny.push(DenyRule { process: Some("explorer.exe".to_string()), title: Some("recovery".to_string()) });
-        deny.push(DenyRule { process: None, title: Some("Downloads\\recovery".to_string()) });
-        let deny_paths = std::env::var_os("USERPROFILE")
-            .map(|home| vec![PathBuf::from(home).join("Downloads").join("recovery")])
-            .unwrap_or_default();
         Self {
             deny,
-            deny_paths,
+            deny_paths: Vec::new(),
             yield_ms: 600,
             yield_timeout_ms: 5000,
             kill_hotkey: "ctrl+alt+shift+backspace".to_string(),
@@ -191,7 +186,11 @@ mod tests {
     use crate::error::ErrorCode;
 
     fn guard() -> GuardConfig {
-        GuardConfig { deny_paths: vec![PathBuf::from("C:\\Users\\me\\Downloads\\recovery")], ..GuardConfig::default() }
+        let mut guard = GuardConfig::default();
+        guard.deny.push(DenyRule { process: Some("explorer.exe".to_string()), title: Some("vault".to_string()) });
+        guard.deny.push(DenyRule { process: None, title: Some("Documents\\vault".to_string()) });
+        guard.deny_paths.push(PathBuf::from("C:\\Users\\me\\Documents\\vault"));
+        guard
     }
 
     #[test]
@@ -201,11 +200,20 @@ mod tests {
     }
 
     #[test]
-    fn explorer_rule_needs_both_process_and_title() {
-        assert!(guard().denies_window("explorer.exe", "recovery"));
+    fn built_ins_are_only_the_password_managers() {
+        let built_in = GuardConfig::default();
+        assert_eq!(built_in.deny.len(), PASSWORD_MANAGERS.len());
+        assert!(built_in.deny.iter().all(|rule| rule.title.is_none() && rule.process.is_some()));
+        assert!(built_in.deny_paths.is_empty());
+        assert!(!built_in.denies_window("explorer.exe", "Downloads"));
+    }
+
+    #[test]
+    fn process_and_title_rule_needs_both() {
+        assert!(guard().denies_window("explorer.exe", "vault"));
         assert!(!guard().denies_window("explorer.exe", "Documents"));
-        assert!(!guard().denies_window("chrome.exe", "recovery tips"));
-        assert!(guard().denies_window("notepad.exe", "C:\\Users\\me\\Downloads\\recovery\\keys.txt"));
+        assert!(!guard().denies_window("chrome.exe", "vault tips"));
+        assert!(guard().denies_window("notepad.exe", "C:\\Users\\me\\Documents\\vault\\keys.txt"));
     }
 
     #[test]
@@ -217,22 +225,22 @@ mod tests {
     #[test]
     fn denies_paths_on_component_boundaries() {
         let guard = guard();
-        assert!(guard.denies_path(Path::new("C:\\Users\\me\\Downloads\\recovery")));
-        assert!(guard.denies_path(Path::new("c:/users/me/downloads/recovery/ssh/id_ed25519")));
-        assert!(guard.denies_path(Path::new("\\\\?\\C:\\Users\\me\\Downloads\\recovery\\a.txt")));
-        assert!(!guard.denies_path(Path::new("C:\\Users\\me\\Downloads\\recovery-old\\a.txt")));
+        assert!(guard.denies_path(Path::new("C:\\Users\\me\\Documents\\vault")));
+        assert!(guard.denies_path(Path::new("c:/users/me/documents/vault/ssh/id_ed25519")));
+        assert!(guard.denies_path(Path::new("\\\\?\\C:\\Users\\me\\Documents\\vault\\a.txt")));
+        assert!(!guard.denies_path(Path::new("C:\\Users\\me\\Documents\\vault-old\\a.txt")));
         assert!(!guard.denies_path(Path::new("C:\\Users\\me\\Documents\\a.txt")));
     }
 
     #[test]
     fn checked_path_names_the_failed_rule() {
         let guard = guard();
-        let denied = guard.checked_path(Path::new("C:\\Users\\me\\Downloads\\recovery\\a.txt")).unwrap_err();
+        let denied = guard.checked_path(Path::new("C:\\Users\\me\\Documents\\vault\\a.txt")).unwrap_err();
         assert_eq!(denied.code, ErrorCode::Denied);
-        let relative = guard.checked_path(Path::new("Downloads\\recovery")).unwrap_err();
+        let relative = guard.checked_path(Path::new("Documents\\vault")).unwrap_err();
         assert_eq!(relative.code, ErrorCode::InvalidArgument);
         assert!(relative.message.contains("is a relative path"), "{}", relative.message);
-        assert!(guard.denies_path(Path::new("Downloads\\recovery")));
+        assert!(guard.denies_path(Path::new("Documents\\vault")));
         let clean = guard.checked_path(Path::new("c:/Users/me/Documents/a.txt")).unwrap();
         assert_eq!(clean, PathBuf::from("C:\\Users\\me\\Documents\\a.txt"));
     }
@@ -249,8 +257,8 @@ mod tests {
 
     #[test]
     fn title_rules_ignore_case_and_spacing() {
-        let rule = DenyRule { process: None, title: Some("Downloads\\recovery".to_string()) };
-        assert!(rule.matches("notepad.exe", "C:\\Users\\ME\\DOWNLOADS\\RECOVERY\\keys.txt - Notepad"));
+        let rule = DenyRule { process: None, title: Some("Documents\\vault".to_string()) };
+        assert!(rule.matches("notepad.exe", "C:\\Users\\ME\\DOCUMENTS\\VAULT\\keys.txt - Notepad"));
         assert!(!rule.matches("notepad.exe", "keys.txt - Notepad"));
     }
 

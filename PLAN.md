@@ -6,9 +6,9 @@ Deckhand is a single Rust binary that Claude Code runs as an MCP server over std
 
 ---
 
-## 1. Why Windows-MCP felt slow: measured on this laptop
+## 1. Why Windows-MCP felt slow: measured on the author's laptop
 
-The figures come from the 139 Windows-MCP calls in your last two sessions, joined with Claude Code's MCP server log. The six tasks took 1,330 s of wall-clock in total:
+The figures come from the 139 Windows-MCP calls in the author's last two sessions, joined with Claude Code's MCP server log. The six tasks took 1,330 s of wall-clock in total:
 
 | Where the time went | Seconds | Share |
 |---|---|---|
@@ -25,9 +25,9 @@ What inside Windows-MCP caused it:
 4. **One action per model turn.** The pattern was always look → act → look. Results were large: 6 MB of images and 169k characters in total. Context at those turns had a median of about 875k tokens, which makes every model turn slower.
 5. **Startup.** The server took 5–13 s to start, and its startup handshake timed out 5 times.
 
-## 2. What a Rust core does on this laptop: measured
+## 2. What a Rust core does on the author's laptop: measured
 
-`bench/deskbench` ran read-only on this machine (2560×1600 screen, `windows` 0.62.2):
+`bench/deskbench` ran read-only on the author's laptop (2560×1600 screen, `windows` 0.62.2):
 
 | Operation | Windows-MCP | Rust (measured) |
 |---|---|---|
@@ -35,7 +35,7 @@ What inside Windows-MCP caused it:
 | Element tree, small window (20 elements) | ~0.8 s on a quiet desktop | **15 ms** |
 | Element tree, Claude Deck (102 elements) | 0.22–0.42 s | **35 ms** |
 | Element tree, Chrome medium page (423) | — | **40 ms** |
-| Element tree, Chrome heavy page (2,119) | 9–56 s in your sessions | **140 ms** |
+| Element tree, Chrome heavy page (2,119) | 9–56 s in the author's sessions | **140 ms** |
 | Element under a point (hit test) | — | **2 ms** |
 | Screenshot (warm DXGI capture, resize to 1568 px, JPEG q75) | 0.13 s plus a 3.5 s flash | **21–23 ms**, 45–115 KB |
 | OCR, Windows.Media.Ocr on the downscaled frame | — | **25–130 ms** |
@@ -100,7 +100,7 @@ Claude Code ──stdio (MCP)──▶ deckhand.exe mcp            tokio + rmcp;
 
   The `uiautomation` crate's constructor gives the old `CUIAutomation`, which has none of these.
 
-## 6. The MCP tools (10, short descriptions)
+## 6. The MCP tools (11, short descriptions)
 
 The core four tools set `_meta["anthropic/alwaysLoad"]`, so Claude Code doesn't defer them behind ToolSearch (that would cost an extra round trip per session). Read-only tools set `readOnlyHint` so they can be auto-allowed.
 
@@ -111,10 +111,11 @@ The core four tools set `_meta["anthropic/alwaysLoad"]`, so Claude Code doesn't 
 | `find` | Server-side search by selector or text, foreground or all windows | Matching refs with role, name and path; never the whole tree |
 | `screenshot` | Image of the foreground window, a window, a region or a monitor; optional ref labels (`marks`) | JPEG ≤1280 px wide (2560×1600 → 1280×800 ≈ 1,330 tokens) plus `img=i7 scale=2.0 origin=0,0` |
 | `wait_for` | Wait until an element appears or disappears, a window opens, text shows up, or the UI goes idle | Event-driven, with a 250 ms poll fallback; returns state when met; 5 s default, 60 s max |
-| `windows` | list / focus / launch / close / minimize / maximize / restore / move | `launch` resolves Start-menu names (no PowerShell), waits for the window and returns its snapshot |
+| `windows` | list / focus / launch / close / minimize / maximize / restore / move / monitors / apps | `launch` resolves Start-menu names (no PowerShell), waits for the window and returns its snapshot |
 | `pick_file` | Fill any native Open/Save dialog: `paths:[…]`, optional `open_with` (a target to click first, e.g. an Upload button), `overwrite:false` | One call does the whole upload: click Upload, wait for the dialog, set the path, press Open, verify it closed |
-| `read_text` | Full text of an element, window or region: TextPattern / Value first, OCR as fallback | Plain text, optional line boxes |
+| `read_text` | Full text of an element, window or region: TextPattern / Value first (never a document's Value, which browsers fill with the URL), OCR as fallback. A browser window reads its page document. | Plain text, optional line boxes |
 | `clipboard` | Get or set text | — |
+| `notify` | Show the user a tray-balloon notification (title ≤ 63, message ≤ 255 UTF-16 units) | `notification shown`, or what suppressed it (Focus Assist, full screen, presentation, lock screen) |
 | `status` | Health: paused/stopped, user active, lock holder, worker restarts, recent timings and errors | — |
 
 ### Element lines (token-cheap)
@@ -164,7 +165,7 @@ Each step is an object with a `do` field: `click` (`button`, `count` 1–3, `mod
 | App switch ≤100 ms | `EnumWindows` (0.2 ms) plus `SetForegroundWindow`. If Windows refuses, tap Alt with SendInput and retry. Confirm with `GetForegroundWindow`. |
 | Launch | Name→AUMID index from `shell:AppsFolder` and Start-menu `.lnk` files, cached. `IApplicationActivationManager` for packaged apps, `ShellExecuteExW` for Win32. Wait on WindowOpened. |
 | Fewer turns | Act by selector without observing; batch steps; diff returned with every action; `pick_file` and `launch` do whole flows; waits run on the server. |
-| Fewer tokens | Text first; screenshots only when asked; ≤1280 px JPEG; diffs instead of trees; 10 tools with short descriptions. A `desktop` subagent keeps screen data out of the main session's context. |
+| Fewer tokens | Text first; screenshots only when asked; ≤1280 px JPEG; diffs instead of trees; 11 tools with short descriptions. A `desktop` subagent keeps screen data out of the main session's context. |
 | Reads never blocked | The user-activity guard applies to input steps only. Reads can run concurrently: capture and OCR have their own threads. |
 
 ## 8. Reliability rules
@@ -183,17 +184,17 @@ Each step is an object with a `do` field: `click` (`button`, `count` 1–3, `mod
 - **Kill switch:** a global hotkey (default `Ctrl+Alt+Shift+Backspace`, the same chord Windows-MCP used, since many laptop keyboards have no Pause key; configurable). It stops all input at once and cancels in-flight steps. Until you press it again or resume from the panel, `act` returns `stopped_by_user`. The model can't re-arm it.
 - **User yield, not refusal:** if you touched the mouse or keyboard in the last 600 ms, an input step waits for up to 5 s of quiet, then proceeds or returns `user_active`. Your own input is told apart from Deckhand's by `LLMHF_INJECTED` plus a marker in `dwExtraInfo` (Raw Input monitor on its own thread).
 - **Deny lists in `%APPDATA%\deckhand\config.toml`:**
-  - processes and window-title patterns never to read or touch (defaults include password managers and any title containing `Downloads\recovery`);
-  - `pick_file` refuses paths under the folders in `[guard] deny_paths`.
+  - processes and window-title patterns never to read or touch (the built-in defaults are the common password managers; add your own, such as the name of a private folder);
+  - `pick_file` refuses paths under any folder listed in `deny_paths`.
 - **Visible agent:** a thin border around the window being driven and a ripple at each click point. It's excluded from screenshots with `WDA_EXCLUDEFROMCAPTURE`, and it's static with no animation loop.
 - **Audit log:** rolling JSONL in `%LOCALAPPDATA%\deckhand\logs` with tool, target (role and short name), process, method, result and duration. Typed text is logged by length only unless `log_text = true`. No screenshots are saved.
 - **Claude Code permissions:** auto-allow `observe`, `find`, `screenshot`, `read_text` and `status`; ask for `act`, `pick_file`, `windows` and `clipboard` until you trust it. Don't combine desktop control with bypass-permissions mode.
 
 ## 10. Claude Code integration
 
-- **Install** the built exe to `%LOCALAPPDATA%\Programs\deckhand\deckhand.exe` rather than registering `target\release` directly. A running MCP server locks its exe, which would break `cargo build`. An `install` script copies the exe and checks its SHA-256 (this laptop has a known bit-flip fault on large writes).
+- **Install** the built exe to `%LOCALAPPDATA%\Programs\deckhand\deckhand.exe` rather than registering `target\release` directly. A running MCP server locks its exe, which would break `cargo build`. An `install` script copies the exe and checks its SHA-256, so a corrupted copy is never registered.
 - **Register:** `claude mcp add -s user deckhand -- "%LOCALAPPDATA%\Programs\deckhand\deckhand.exe" mcp`.
-- **`desktop` subagent** (`~/.claude/agents/desktop.md`): tools limited to `mcp__deckhand__*`, with instructions to act by selector, batch steps, avoid screenshots unless needed, and use `pick_file` for uploads. The main session hands it a goal and gets back a short result, so screen data never bloats the main context (your sessions ran at ~875k tokens).
+- **`desktop` subagent** (`~/.claude/agents/desktop.md`): tools limited to `mcp__deckhand__*`, with instructions to act by selector, batch steps, avoid screenshots unless needed, and use `pick_file` for uploads. The main session hands it a goal and gets back a short result, so screen data never bloats the main context (the measured sessions ran at ~875k tokens).
 - **Replace Windows-MCP** once Deckhand passes the Phase 4 gate: `claude mcp remove windows-mcp -s user`, then `uv tool uninstall windows-mcp`.
 
 ## 11. Repo layout and crates

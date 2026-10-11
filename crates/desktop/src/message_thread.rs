@@ -53,6 +53,10 @@ impl MessageThread {
     pub(crate) fn post(&self, message: u32) -> bool {
         unsafe { PostThreadMessageW(self.thread_id, message, WPARAM(0), LPARAM(0)) }.is_ok()
     }
+
+    pub(crate) fn is_finished(&self) -> bool {
+        self.handle.as_ref().is_none_or(JoinHandle::is_finished)
+    }
 }
 
 impl Drop for MessageThread {
@@ -171,6 +175,19 @@ mod tests {
         assert!(!stopped.load(Ordering::SeqCst));
         drop(thread);
         assert!(stopped.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_thread_that_quits_by_itself_reports_finished() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let (thread, ()) = MessageThread::spawn("test-quit", move || Ok((Idle(flag), ()))).unwrap();
+        assert!(!thread.is_finished());
+        assert!(thread.post(WM_QUIT));
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !thread.is_finished() && std::time::Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(thread.is_finished());
     }
 
     #[test]

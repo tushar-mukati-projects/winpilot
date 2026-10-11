@@ -8,7 +8,7 @@ use deckhand_core::{
     Config, Result, Snapshot, WindowInfo,
     protocol::{Call, Reply, Timing},
 };
-use deckhand_desktop::{changes::ChangeMonitor, overlay::Overlay};
+use deckhand_desktop::{Notifier, changes::ChangeMonitor, overlay::Overlay};
 use deckhand_uia::{SnapshotOptions, UiaHandle, UiaOptions};
 use parking_lot::Mutex;
 
@@ -20,7 +20,7 @@ use crate::{
     guard::Guard,
     host::HostProcesses,
     images::ImageStore,
-    observe, pick_file, read_text, screenshot, status, wait, window_tool,
+    notify_tool, observe, pick_file, read_text, screenshot, status, wait, window_tool,
 };
 
 const RECENT_TIMINGS: usize = 8;
@@ -32,6 +32,7 @@ pub struct Engine {
     pub changes: ChangeMonitor,
     pub guard: Guard,
     pub overlay: Option<Overlay>,
+    pub notifier: Notifier,
     pub images: Mutex<ImageStore>,
     pub host: HostProcesses,
     pub apps: window_tool::AppCatalog,
@@ -54,6 +55,7 @@ impl Engine {
             changes,
             guard,
             overlay,
+            notifier: Notifier::new(),
             images: Mutex::new(ImageStore::starting_at(first_ref)),
             host: HostProcesses::detect(),
             apps: window_tool::AppCatalog::default(),
@@ -82,6 +84,7 @@ impl Engine {
             Call::PickFile(args) => pick_file::run(self, &args, scope).map(Reply::PickFile),
             Call::ReadText(args) => read_text::run(self, &args, scope).map(Reply::ReadText),
             Call::Clipboard(args) => clipboard_tool::run(self, &args, scope).map(Reply::Clipboard),
+            Call::Notify(args) => notify_tool::run(self, &args, scope).map(Reply::Notify),
             Call::Status => Ok(Reply::Status(status::report(self))),
         }
     }

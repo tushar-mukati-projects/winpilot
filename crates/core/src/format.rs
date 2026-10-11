@@ -5,8 +5,9 @@ use crate::{
     geometry::{Point, Rect},
     matching::is_gap,
     protocol::{
-        ActReport, After, ClipboardReport, DialogKind, DiffReport, FindReport, Found, Observation, PickReport,
-        ScreenshotReport, StatusReport, StepOutcome, TextReport, TextSource, Timing, WaitReport, WindowsReport,
+        ActReport, After, AppInfo, AppKind, ClipboardReport, DialogKind, DiffReport, FindReport, Found, MonitorInfo,
+        NotifyReport, Observation, PickReport, ScreenshotReport, StatusReport, StepOutcome, TextReport, TextSource,
+        Timing, WaitReport, WindowsReport,
     },
     role::Role,
 };
@@ -26,6 +27,7 @@ impl Default for ObserveFormat {
 
 const NAME_LIMIT: usize = 80;
 const VALUE_LIMIT: usize = 60;
+const APP_ID_LIMIT: usize = 160;
 const MAX_CHANGES: usize = 40;
 const MAX_LISTED_WINDOWS: usize = 8;
 const RECENT_TIMINGS: usize = 5;
@@ -83,10 +85,40 @@ pub fn windows(report: &WindowsReport) -> String {
     lines.extend(windows_headline(report.window.as_ref(), report.note.as_deref()));
     lines.extend(report.observation.as_ref().map(|found| observation(found, &ObserveFormat::default())));
     lines.extend(report.windows.iter().map(window_line));
+    lines.extend(report.monitors.iter().map(monitor_line));
+    lines.extend(report.apps.iter().map(app_line));
     if lines.is_empty() {
         return "no windows".to_string();
     }
     lines.join("\n")
+}
+
+fn monitor_line(monitor: &MonitorInfo) -> String {
+    let primary = if monitor.primary { " primary" } else { "" };
+    format!(
+        "monitor {} {} {}%{primary} · work area {}",
+        monitor.index,
+        size_at(monitor.rect),
+        monitor.scale_percent,
+        size_at(monitor.work_area)
+    )
+}
+
+fn app_line(app: &AppInfo) -> String {
+    let kind = match app.kind {
+        AppKind::Packaged => "packaged",
+        AppKind::Desktop => "desktop",
+    };
+    format!("{} {kind} {}", quote(app.name.trim(), NAME_LIMIT), single_line(app.id.trim(), APP_ID_LIMIT))
+}
+
+pub fn notify(report: &NotifyReport) -> String {
+    match (report.shown, report.note.as_deref()) {
+        (true, None) => "notification shown".to_string(),
+        (true, Some(note)) => format!("notification shown: {note}"),
+        (false, Some(note)) => format!("notification suppressed by {note}"),
+        (false, None) => "notification suppressed".to_string(),
+    }
 }
 
 pub fn pick(report: &PickReport) -> String {
@@ -237,9 +269,13 @@ fn window_list(label: &str, windows: &[WindowInfo]) -> Option<String> {
 }
 
 fn observation_header(snapshot: &Snapshot) -> String {
-    let Rect { x, y, width, height } = snapshot.window.rect;
     let focus = snapshot.focused.map(|id| format!(" · focus {id}")).unwrap_or_default();
-    format!("window {} {width}x{height}@{x},{y}{focus}", window_line(&snapshot.window))
+    format!("window {} {}{focus}", window_line(&snapshot.window), size_at(snapshot.window.rect))
+}
+
+fn size_at(rect: Rect) -> String {
+    let Rect { x, y, width, height } = rect;
+    format!("{width}x{height}@{x},{y}")
 }
 
 fn element_lines(elements: &[Element], listed: &[bool], format: &ObserveFormat) -> Vec<String> {
@@ -1230,6 +1266,7 @@ mod tests {
             window: Some(notepad_window()),
             observation: Some(plain_observation(vec![element(1, 0, Role::Button, "OK")])),
             note: Some("launched".to_string()),
+            ..WindowsReport::default()
         };
         assert_eq!(
             windows(&report),
@@ -1244,13 +1281,18 @@ mod tests {
             window: None,
             observation: None,
             note: None,
+            ..WindowsReport::default()
         };
         assert_eq!(windows(&report), "w16 notepad.exe \"Untitled - Notepad\" foreground\nw2 chrome.exe \"Inbox\"");
     }
 
+    fn empty_windows_report() -> WindowsReport {
+        WindowsReport::default()
+    }
+
     #[test]
     fn windows_report_edge_forms() {
-        let empty = WindowsReport { windows: Vec::new(), window: None, observation: None, note: None };
+        let empty = empty_windows_report();
         assert_eq!(windows(&empty), "no windows");
         let note_only = WindowsReport { note: Some("closed w5".to_string()), ..empty.clone() };
         assert_eq!(windows(&note_only), "closed w5");
@@ -1258,11 +1300,68 @@ mod tests {
         assert_eq!(windows(&window_only), "w5 app.exe \"A\"");
     }
 
+    fn monitor(index: u32, rect: Rect, work_area: Rect, scale_percent: u32, primary: bool) -> MonitorInfo {
+        MonitorInfo { index, rect, work_area, scale_percent, primary }
+    }
+
+    #[test]
+    fn monitors_are_one_line_each() {
+        let primary = monitor(0, Rect::new(0, 0, 2560, 1600), Rect::new(0, 0, 2560, 1552), 125, true);
+        let left = monitor(1, Rect::new(-1920, 200, 1920, 1080), Rect::new(-1920, 200, 1920, 1040), 100, false);
+        let report = WindowsReport { monitors: vec![primary, left], ..empty_windows_report() };
+        assert_eq!(
+            windows(&report),
+            "monitor 0 2560x1600@0,0 125% primary · work area 2560x1552@0,0\n\
+             monitor 1 1920x1080@-1920,200 100% · work area 1920x1040@-1920,200"
+        );
+    }
+
+    fn app(name: &str, id: &str, kind: AppKind) -> AppInfo {
+        AppInfo { name: name.to_string(), id: id.to_string(), kind }
+    }
+
+    #[test]
+    fn apps_are_one_line_each_after_the_note() {
+        let report = WindowsReport {
+            note: Some("showing 2 of 40 apps matching \"note\"".to_string()),
+            apps: vec![
+                app("Notepad", "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App", AppKind::Packaged),
+                app("Notepad++ \"64\"", "{6D809377}\\Notepad++\\notepad++.exe", AppKind::Desktop),
+            ],
+            ..WindowsReport::default()
+        };
+        assert_eq!(
+            windows(&report),
+            "showing 2 of 40 apps matching \"note\"\n\
+             \"Notepad\" packaged Microsoft.WindowsNotepad_8wekyb3d8bbwe!App\n\
+             \"Notepad++ \\\"64\\\"\" desktop {6D809377}\\Notepad++\\notepad++.exe"
+        );
+    }
+
+    #[test]
+    fn long_app_ids_are_shortened() {
+        let line = app_line(&app("Tool", &"x".repeat(400), AppKind::Desktop));
+        assert!(line.ends_with('…'));
+        assert_eq!(line.chars().count(), "\"Tool\" desktop ".chars().count() + APP_ID_LIMIT);
+    }
+
+    #[test]
+    fn notify_report_forms() {
+        let report = |shown: bool, note: Option<&str>| NotifyReport { shown, note: note.map(str::to_string) };
+        assert_eq!(notify(&report(true, None)), "notification shown");
+        assert_eq!(
+            notify(&report(false, Some("Focus Assist (quiet hours)"))),
+            "notification suppressed by Focus Assist (quiet hours)"
+        );
+        assert_eq!(notify(&report(false, None)), "notification suppressed");
+        assert_eq!(notify(&report(true, Some("queued"))), "notification shown: queued");
+    }
+
     #[test]
     fn pick_report_forms() {
         let open = PickReport {
             dialog: DialogKind::Open,
-            files: vec!["C:\\Users\\lap\\a.txt".to_string(), "C:/temp/b.txt".to_string()],
+            files: vec!["C:\\Users\\me\\a.txt".to_string(), "C:/temp/b.txt".to_string()],
             after: None,
         };
         assert_eq!(pick(&open), "picked 2 files in the Open dialog: a.txt, b.txt");

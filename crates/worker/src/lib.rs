@@ -13,6 +13,7 @@ mod frames;
 mod guard;
 mod host;
 mod images;
+mod notify_tool;
 mod observe;
 mod on_screen;
 mod pick_file;

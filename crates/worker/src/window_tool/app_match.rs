@@ -4,7 +4,7 @@ use deckhand_desktop::apps::AppEntry;
 const MAX_LISTED: usize = 8;
 const MAX_SUGGESTED: usize = 5;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Level {
     Exact,
     Prefix,
@@ -25,6 +25,18 @@ pub fn find<'a>(apps: &'a [AppEntry], wanted: &str) -> Result<&'a AppEntry> {
         }
     }
     Err(not_found(apps, wanted.trim()))
+}
+
+pub fn ranked<'a>(apps: &'a [AppEntry], wanted: &str) -> Vec<&'a AppEntry> {
+    let folded = wanted.trim().to_lowercase();
+    let mut found: Vec<(Level, &AppEntry)> =
+        apps.iter().filter_map(|app| best_level(app, &folded).map(|level| (level, app))).collect();
+    found.sort_by_key(|(level, _)| *level);
+    found.into_iter().map(|(_, app)| app).collect()
+}
+
+fn best_level(app: &AppEntry, wanted: &str) -> Option<Level> {
+    LEVELS.into_iter().find(|&level| matches(app, wanted, level))
 }
 
 fn matches(app: &AppEntry, wanted: &str, level: Level) -> bool {
@@ -164,6 +176,27 @@ mod tests {
         let closest = error.message.split("closest: ").nth(1).unwrap();
         assert!(closest.starts_with("Notepad"), "{}", error.message);
         assert!(closest.split(", ").count() <= MAX_SUGGESTED);
+    }
+
+    fn ranked_names(wanted: &str) -> Vec<String> {
+        ranked(&catalog(), wanted).into_iter().map(|app| app.name.clone()).collect()
+    }
+
+    #[test]
+    fn ranking_puts_exact_then_prefix_then_contains() {
+        let mut apps = catalog();
+        apps.insert(0, app("OneNote", "Microsoft.Office.OneNote_8wekyb3d8bbwe!App"));
+        let names: Vec<&str> = ranked(&apps, " NOTEPAD ").into_iter().map(|app| app.name.as_str()).collect();
+        assert_eq!(names, ["Notepad", "Notepad++"]);
+        let names: Vec<&str> = ranked(&apps, "note").into_iter().map(|app| app.name.as_str()).collect();
+        assert_eq!(names, ["Notepad", "Notepad++", "OneNote"]);
+    }
+
+    #[test]
+    fn ranking_matches_ids_exactly_and_keeps_catalog_order_within_a_level() {
+        assert_eq!(ranked_names("microsoft.paint_8wekyb3d8bbwe!app"), ["Paint"]);
+        assert_eq!(ranked_names("pad"), ["Notepad", "Notepad++"]);
+        assert!(ranked_names("qqqq").is_empty());
     }
 
     #[test]

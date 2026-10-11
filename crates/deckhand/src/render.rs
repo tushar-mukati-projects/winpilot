@@ -37,6 +37,7 @@ fn contents(reply: Reply, extras: &Extras) -> Vec<ContentBlock> {
         Reply::PickFile(report) => text(format::pick(&report)),
         Reply::ReadText(report) => text(format::text(&report)),
         Reply::Clipboard(report) => text(format::clipboard(&report)),
+        Reply::Notify(report) => text(format::notify(&report)),
         Reply::Status(report) => text(status(report, extras)),
     }
 }

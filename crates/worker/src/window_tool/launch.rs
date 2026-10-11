@@ -59,6 +59,7 @@ pub fn launch(engine: &Engine, args: &WindowsArgs, call: &CallScope) -> Result<W
         window: Some(window),
         observation: Some(observation),
         note: Some("launched".to_string()),
+        ..WindowsReport::default()
     })
 }
 

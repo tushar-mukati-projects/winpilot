@@ -173,6 +173,66 @@ mod tests {
         run(engine(), &ReadTextArgs { target: Some(target), region: None, method, max_chars }, &CallScope::relaxed())
     }
 
+    fn with_value(mut element: Element, value: &str) -> Element {
+        element.value = Some(value.to_string());
+        element.patterns.value = true;
+        element
+    }
+
+    fn chrome_shaped_snapshot() -> Snapshot {
+        let mut omnibox = with_text_pattern(with_value(element(8, 6, Role::Edit, "Address and search bar"), "url"));
+        omnibox.rect = Rect::new(120, 40, 600, 30);
+        let page = with_text_pattern(with_value(element(12, 7, Role::Document, "Page"), "https://example.com/"));
+        let frame = with_text_pattern(with_value(element(48, 11, Role::Document, "Frame"), "https://ads.example/"));
+        let elements = vec![
+            sized(element(1, 0, Role::Window, "Page - Google Chrome"), Rect::new(0, 0, 800, 600)),
+            sized(element(3, 1, Role::Pane, ""), Rect::new(0, 0, 800, 600)),
+            sized(element(5, 2, Role::Tab, "Page"), Rect::new(0, 0, 200, 30)),
+            omnibox,
+            sized(element(10, 6, Role::Pane, ""), Rect::new(0, 80, 800, 520)),
+            sized(page, Rect::new(0, 80, 800, 520)),
+            sized(frame, Rect::new(500, 300, 300, 200)),
+        ];
+        snapshot("Page - Google Chrome", elements)
+    }
+
+    #[test]
+    fn a_browser_page_document_wins_over_the_omnibox_and_frames() {
+        assert_eq!(main_text_element(&chrome_shaped_snapshot()), Some(ElementRef(12)));
+    }
+
+    #[test]
+    fn browser_chrome_alone_has_no_main_text() {
+        let mut chrome_only = chrome_shaped_snapshot();
+        chrome_only.elements.retain(|element| element.role != Role::Document);
+        assert_eq!(main_text_element(&chrome_only), None);
+    }
+
+    fn visible_chrome_window() -> Option<WindowInfo> {
+        deckhand_desktop::windows()
+            .ok()?
+            .into_iter()
+            .filter(|window| window.process.eq_ignore_ascii_case("chrome.exe"))
+            .filter(|window| window.state != deckhand_core::WindowState::Minimized)
+            .filter(|window| !engine().guard.denies(window))
+            .max_by_key(|window| window.rect.area())
+    }
+
+    #[test]
+    fn a_live_chrome_window_reads_its_page_document() {
+        let Some(window) = visible_chrome_window() else { return };
+        let snapshot = engine().snapshot(&window).unwrap();
+        let chosen = main_text_element(&snapshot).expect("a visible Chrome window has a page document");
+        let page = snapshot.elements.iter().find(|element| element.id == chosen).unwrap();
+        assert_eq!(page.role, Role::Document);
+        let text = snapshot_text(engine(), &snapshot, DEFAULT_MAX_CHARS).unwrap();
+        let address = page.value.as_deref().unwrap_or_default().trim();
+        assert!(
+            address.is_empty() || text.trim() != address,
+            "read_text returned the page address instead of its text"
+        );
+    }
+
     #[test]
     fn max_chars_defaults_and_clamps() {
         assert_eq!(max_chars(None), 20_000);

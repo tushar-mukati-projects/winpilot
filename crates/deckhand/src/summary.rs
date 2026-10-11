@@ -3,8 +3,8 @@ use std::path::Path;
 use deckhand_core::{
     Rect, TargetSpec,
     protocol::{
-        ActArgs, Call, ClipboardArgs, Condition, FindArgs, MouseButton, ObserveArgs, PickFileArgs, ReadTextArgs,
-        ScreenshotArgs, Step, WindowsArgs,
+        ActArgs, Call, ClipboardArgs, Condition, FindArgs, MouseButton, NotifyArgs, ObserveArgs, PickFileArgs,
+        ReadTextArgs, ScreenshotArgs, Step, WindowsArgs,
     },
 };
 use serde::Serialize;
@@ -22,6 +22,7 @@ pub fn describe(call: &Call, log_text: bool) -> String {
         Call::PickFile(args) => pick_file(args, log_text),
         Call::ReadText(args) => read_text(args),
         Call::Clipboard(args) => clipboard(args, log_text),
+        Call::Notify(args) => notify(args),
         Call::Status => String::new(),
     };
     clip(summary)
@@ -159,6 +160,10 @@ fn read_text(args: &ReadTextArgs) -> String {
 fn clipboard(args: &ClipboardArgs, log_text: bool) -> String {
     let text = args.text.as_deref().map(|text| typed(text, log_text));
     joined(&wire_name(&args.action), &text.unwrap_or_default())
+}
+
+fn notify(args: &NotifyArgs) -> String {
+    fields(&[("title", Some(typed(&args.title, false))), ("message", Some(typed(&args.message, false)))])
 }
 
 fn rect(rect: Rect) -> String {
@@ -347,6 +352,33 @@ mod tests {
             timeout_ms: Some(2000),
         };
         assert_eq!(describe(&Call::WaitFor(condition), false), "appears target=name:Done timeout_ms=2000");
+    }
+
+    #[test]
+    fn notifications_log_only_their_lengths() {
+        let call = Call::Notify(NotifyArgs { title: "Payroll".to_string(), message: "Salary file sent".to_string() });
+        assert_eq!(describe(&call, false), "title=<7 chars> message=<16 chars>");
+        assert_eq!(describe(&call, true), "title=<7 chars> message=<16 chars>");
+    }
+
+    #[test]
+    fn monitors_action_is_named() {
+        let call = Call::Windows(WindowsArgs {
+            action: WindowAction::Monitors,
+            window: None,
+            app: None,
+            args: None,
+            rect: None,
+        });
+        assert_eq!(describe(&call, false), "monitors");
+        let apps = Call::Windows(WindowsArgs {
+            action: WindowAction::Apps,
+            window: None,
+            app: Some("code".to_string()),
+            args: None,
+            rect: None,
+        });
+        assert_eq!(describe(&apps, false), "apps app=code");
     }
 
     #[test]

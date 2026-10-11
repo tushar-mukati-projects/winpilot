@@ -90,6 +90,21 @@ mod tests {
     }
 
     #[test]
+    fn a_private_folder_is_guarded_by_user_rules() {
+        let text = "[guard]\n\
+                    deny = [{ process = \"explorer.exe\", title = \"vault\" }, { title = \"Documents\\\\vault\" }]\n\
+                    deny_paths = ['C:\\Users\\me\\Documents\\vault']\n";
+        let loaded = parse(text, path());
+        assert_eq!(loaded.problem, None);
+        let guard = &loaded.config.guard;
+        assert!(guard.denies_path(Path::new("C:\\Users\\me\\Documents\\vault\\keys.txt")));
+        assert!(guard.denies_window("explorer.exe", "vault"));
+        assert!(guard.denies_window("notepad.exe", "C:\\Users\\me\\Documents\\vault\\keys.txt - Notepad"));
+        assert!(guard.denies_window("KeePassXC.exe", "Passwords"));
+        assert!(!guard.denies_window("notepad.exe", "Untitled - Notepad"));
+    }
+
+    #[test]
     fn empty_text_gives_defaults() {
         let loaded = parse("", path());
         assert_eq!(loaded, LoadedConfig::defaults());

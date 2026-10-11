@@ -272,6 +272,8 @@ pub enum WaitCondition {
     Idle { quiet: Duration },
 }
 
+pub const NOTIFY_TITLE_MAX: usize = 63;
+pub const NOTIFY_MESSAGE_MAX: usize = 255;
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(5);
 pub const MAX_WAIT: Duration = Duration::from_secs(60);
 pub const DEFAULT_IDLE: Duration = Duration::from_millis(300);
@@ -362,6 +364,8 @@ pub enum WindowAction {
     Maximize,
     Restore,
     Move,
+    Monitors,
+    Apps,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -372,7 +376,9 @@ pub struct WindowsArgs {
     #[schemars(description = "Window ref or selector for focus/close/minimize/maximize/restore/move.")]
     pub window: Option<String>,
     #[serde(default)]
-    #[schemars(description = "App to launch: a Start-menu name like Notepad, an app id, or an exe path.")]
+    #[schemars(
+        description = "App to launch: a Start-menu name like Notepad, an app id, or an exe path. For apps: a name filter."
+    )]
     pub app: Option<String>,
     #[serde(default)]
     #[schemars(description = "Command-line arguments for launch.")]
@@ -437,6 +443,15 @@ pub struct ClipboardArgs {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StatusArgs {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NotifyArgs {
+    #[schemars(description = "Bold first line, 1 to 63 characters.")]
+    pub title: String,
+    #[schemars(description = "Body text, 1 to 255 characters.")]
+    pub message: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Observation {
@@ -511,12 +526,39 @@ pub struct WaitReport {
     pub element: Option<Element>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppKind {
+    Packaged,
+    Desktop,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppInfo {
+    pub name: String,
+    pub id: String,
+    pub kind: AppKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MonitorInfo {
+    pub index: u32,
+    pub rect: Rect,
+    pub work_area: Rect,
+    pub scale_percent: u32,
+    pub primary: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WindowsReport {
     pub windows: Vec<WindowInfo>,
     pub window: Option<WindowInfo>,
     pub observation: Option<Observation>,
     pub note: Option<String>,
+    #[serde(default)]
+    pub monitors: Vec<MonitorInfo>,
+    #[serde(default)]
+    pub apps: Vec<AppInfo>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -554,6 +596,12 @@ pub struct ClipboardReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotifyReport {
+    pub shown: bool,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Timing {
     pub tool: String,
     pub ms: u64,
@@ -586,6 +634,7 @@ pub enum Call {
     PickFile(PickFileArgs),
     ReadText(ReadTextArgs),
     Clipboard(ClipboardArgs),
+    Notify(NotifyArgs),
     Status,
 }
 
@@ -601,6 +650,7 @@ pub enum Reply {
     PickFile(PickReport),
     ReadText(TextReport),
     Clipboard(ClipboardReport),
+    Notify(NotifyReport),
     Status(StatusReport),
 }
 
@@ -623,6 +673,7 @@ impl Call {
             Self::PickFile(_) => "pick_file",
             Self::ReadText(_) => "read_text",
             Self::Clipboard(_) => "clipboard",
+            Self::Notify(_) => "notify",
             Self::Status => "status",
         }
     }
@@ -635,23 +686,22 @@ impl Call {
             | Self::WaitFor(_)
             | Self::ReadText(_)
             | Self::Status => true,
-            Self::Windows(args) => args.action == WindowAction::List,
+            Self::Windows(args) => {
+                matches!(args.action, WindowAction::List | WindowAction::Monitors | WindowAction::Apps)
+            }
             Self::Clipboard(args) => args.action == ClipboardAction::Get,
-            Self::Act(_) | Self::PickFile(_) => false,
+            Self::Act(_) | Self::PickFile(_) | Self::Notify(_) => false,
         }
     }
 
     pub fn deadline(&self) -> Duration {
         let deadline = match self {
-            Self::Observe(_) | Self::Find(_) | Self::Windows(WindowsArgs { action: WindowAction::List, .. }) => {
-                Duration::from_secs(10)
-            }
+            Self::Windows(WindowsArgs { action: WindowAction::Launch, .. }) => Duration::from_secs(30),
+            Self::Observe(_) | Self::Find(_) | Self::Windows(_) => Duration::from_secs(10),
             Self::Screenshot(_) => Duration::from_secs(8),
             Self::ReadText(_) => Duration::from_secs(20),
             Self::Status => Duration::from_secs(3),
-            Self::Clipboard(_) => Duration::from_secs(5),
-            Self::Windows(WindowsArgs { action: WindowAction::Launch, .. }) => Duration::from_secs(30),
-            Self::Windows(_) => Duration::from_secs(10),
+            Self::Clipboard(_) | Self::Notify(_) => Duration::from_secs(5),
             Self::WaitFor(condition) => condition.timeout() + Duration::from_secs(5),
             Self::PickFile(args) => {
                 args.timeout_ms.map_or(DEFAULT_PICK, Duration::from_millis).min(MAX_WAIT) + ACT_OVERHEAD
@@ -761,6 +811,52 @@ mod tests {
         assert!(Call::Status.is_read_only());
         let set = ClipboardArgs { action: ClipboardAction::Set, text: Some("x".to_string()) };
         assert!(!Call::Clipboard(set).is_read_only());
+    }
+
+    fn windows_call(action: WindowAction) -> Call {
+        Call::Windows(WindowsArgs { action, window: None, app: None, args: None, rect: None })
+    }
+
+    fn notify_call() -> Call {
+        Call::Notify(NotifyArgs { title: "Export".to_string(), message: "Export finished".to_string() })
+    }
+
+    #[test]
+    fn monitors_are_read_only_and_notify_is_not() {
+        assert!(windows_call(WindowAction::Monitors).is_read_only());
+        assert!(windows_call(WindowAction::Apps).is_read_only());
+        assert!(!windows_call(WindowAction::Launch).is_read_only());
+        assert!(windows_call(WindowAction::List).is_read_only());
+        assert!(!windows_call(WindowAction::Close).is_read_only());
+        assert!(!notify_call().is_read_only());
+    }
+
+    #[test]
+    fn notify_and_monitors_have_names_and_deadlines() {
+        assert_eq!(notify_call().name(), "notify");
+        assert_eq!(notify_call().deadline(), Duration::from_secs(5));
+        assert_eq!(windows_call(WindowAction::Monitors).name(), "windows");
+        assert_eq!(windows_call(WindowAction::Monitors).deadline(), Duration::from_secs(10));
+        assert_eq!(windows_call(WindowAction::Apps).deadline(), Duration::from_secs(10));
+    }
+
+    #[test]
+    fn monitors_action_and_notify_args_parse() {
+        let args: WindowsArgs = serde_json::from_str(r#"{"action":"monitors"}"#).unwrap();
+        assert_eq!(args.action, WindowAction::Monitors);
+        let notify: NotifyArgs = serde_json::from_str(r#"{"title":"Done","message":"Export finished"}"#).unwrap();
+        assert_eq!(notify.title, "Done");
+        assert!(serde_json::from_str::<NotifyArgs>(r#"{"title":"Done","message":"m","icon":"x"}"#).is_err());
+        assert!(serde_json::from_str::<NotifyArgs>(r#"{"title":"Done"}"#).is_err());
+    }
+
+    #[test]
+    fn windows_reports_without_monitors_still_deserialize() {
+        let report: WindowsReport =
+            serde_json::from_str(r#"{"windows":[],"window":null,"observation":null,"note":"closed w5"}"#).unwrap();
+        assert!(report.monitors.is_empty());
+        assert!(report.apps.is_empty());
+        assert_eq!(report.note.as_deref(), Some("closed w5"));
     }
 
     fn step(json: &str) -> Step {

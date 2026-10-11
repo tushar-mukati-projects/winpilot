@@ -138,7 +138,7 @@ mod tests {
 
     use super::*;
 
-    const ROOT: &str = r"C:\Users\me\Downloads\recovery";
+    const ROOT: &str = r"C:\Users\me\Documents\vault";
 
     fn guarded(path: &str) -> Result<PathBuf> {
         checked_path(Path::new(path), &[PathBuf::from(ROOT)])
@@ -166,37 +166,37 @@ mod tests {
     #[test]
     fn protected_folders_are_denied_on_component_boundaries() {
         assert!(denied(ROOT));
-        assert!(denied(r"C:\Users\me\Downloads\recovery\"));
-        assert!(denied(r"c:/users/me/downloads/RECOVERY/ssh/id_ed25519"));
-        assert!(guarded(r"C:\Users\me\Downloads\recovery-old\a.txt").is_ok());
-        assert!(guarded(r"C:\Users\me\Downloads\recover\a.txt").is_ok());
+        assert!(denied(r"C:\Users\me\Documents\vault\"));
+        assert!(denied(r"c:/users/me/documents/VAULT/ssh/id_ed25519"));
+        assert!(guarded(r"C:\Users\me\Documents\vault-old\a.txt").is_ok());
+        assert!(guarded(r"C:\Users\me\Documents\vaul\a.txt").is_ok());
         assert!(guarded(r"C:\Users\me\Documents\a.txt").is_ok());
     }
 
     #[test]
     fn every_reviewed_bypass_is_rejected() {
         let cases = [
-            (r"C:\Users\me\Downloads\x\..\recovery\a.txt", "'.' or '..' component"),
-            (r"C:\Users\me\Downloads\.\recovery\a.txt", "'.' or '..' component"),
-            (r"C:\Users\me\Downloads\\recovery\a.txt", "doubled separator"),
-            (r"C:\Users\me\Downloads\recovery.\a.txt", "ending in '.' or a space"),
-            (r"C:\Users\me\Downloads\recovery \a.txt", "ending in '.' or a space"),
-            (r"C:\Users\me\DOWNLO~1\recovery\a.txt", "contains '~'"),
-            (r"\\localhost\C$\Users\me\Downloads\recovery\a.txt", "UNC or device path"),
-            (r"\\?\UNC\localhost\C$\Users\me\Downloads\recovery\a.txt", "UNC or device path"),
-            (r"\\.\C:\Users\me\Downloads\recovery\a.txt", "UNC or device path"),
-            (r"\\?\C:\Users\me\Downloads\recovery\a.txt", "UNC or device path"),
-            (r"\\?\GLOBALROOT\Device\HarddiskVolume3\Users\me\Downloads\recovery\a.txt", "UNC or device path"),
-            (r"//localhost/C$/Users/me/Downloads/recovery/a.txt", "UNC or device path"),
-            (r"Downloads\recovery\a.txt", "relative path"),
-            (r"\Users\me\Downloads\recovery\a.txt", "relative to the current drive"),
-            (r"C:Users\me\Downloads\recovery\a.txt", "relative to the current folder"),
-            (r"C:\Users\me\Downloads\recovery::$DATA", "contains ':' after the drive letter"),
-            (r"%USERPROFILE%\Downloads\recovery\a.txt", "environment variables"),
-            (r"C:\Users\%USERNAME%\Downloads\recovery\a.txt", "environment variables"),
-            (r"~\Downloads\recovery\a.txt", "contains '~'"),
-            (r"C:\Users\me\Downloads\recovery\a?.txt", "contains '?'"),
-            ("C:\\Users\\me\\Downloads\\rec\u{0}overy", "contains '\\0'"),
+            (r"C:\Users\me\Documents\x\..\vault\a.txt", "'.' or '..' component"),
+            (r"C:\Users\me\Documents\.\vault\a.txt", "'.' or '..' component"),
+            (r"C:\Users\me\Documents\\vault\a.txt", "doubled separator"),
+            (r"C:\Users\me\Documents\vault.\a.txt", "ending in '.' or a space"),
+            (r"C:\Users\me\Documents\vault \a.txt", "ending in '.' or a space"),
+            (r"C:\Users\me\DOCUME~1\vault\a.txt", "contains '~'"),
+            (r"\\localhost\C$\Users\me\Documents\vault\a.txt", "UNC or device path"),
+            (r"\\?\UNC\localhost\C$\Users\me\Documents\vault\a.txt", "UNC or device path"),
+            (r"\\.\C:\Users\me\Documents\vault\a.txt", "UNC or device path"),
+            (r"\\?\C:\Users\me\Documents\vault\a.txt", "UNC or device path"),
+            (r"\\?\GLOBALROOT\Device\HarddiskVolume3\Users\me\Documents\vault\a.txt", "UNC or device path"),
+            (r"//localhost/C$/Users/me/Documents/vault/a.txt", "UNC or device path"),
+            (r"Documents\vault\a.txt", "relative path"),
+            (r"\Users\me\Documents\vault\a.txt", "relative to the current drive"),
+            (r"C:Users\me\Documents\vault\a.txt", "relative to the current folder"),
+            (r"C:\Users\me\Documents\vault::$DATA", "contains ':' after the drive letter"),
+            (r"%USERPROFILE%\Documents\vault\a.txt", "environment variables"),
+            (r"C:\Users\%USERNAME%\Documents\vault\a.txt", "environment variables"),
+            (r"~\Documents\vault\a.txt", "contains '~'"),
+            (r"C:\Users\me\Documents\vault\a?.txt", "contains '?'"),
+            ("C:\\Users\\me\\Documents\\va\u{0}ult", "contains '\\0'"),
             ("", "empty path"),
         ];
         for (path, reason) in cases {

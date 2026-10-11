@@ -1,4 +1,4 @@
-use deckhand_core::{ElementRef, Result};
+use deckhand_core::{ElementRef, Result, Role};
 use windows::Win32::UI::Accessibility::{
     IUIAutomationTextPattern, IUIAutomationValuePattern, UIA_TextPatternId, UIA_ValuePatternId,
 };
@@ -59,6 +59,9 @@ fn readable_text(target: &Resolved, max_chars: usize) -> Result<Option<String>> 
     if let Some(text) = document_text(target, max_chars)? {
         return Ok(Some(text));
     }
+    if !value_is_content(target.info.role) {
+        return Ok(None);
+    }
     value_text(target, max_chars)
 }
 
@@ -82,6 +85,10 @@ fn value_text(target: &Resolved, max_chars: usize) -> Result<Option<String>> {
     };
     let value = unsafe { pattern.CurrentValue() }.uia(&reading)?;
     Ok(non_empty(truncate_chars(value.to_string(), max_chars)))
+}
+
+const fn value_is_content(role: Role) -> bool {
+    !matches!(role, Role::Document)
 }
 
 fn non_empty(text: String) -> Option<String> {
@@ -135,6 +142,13 @@ mod tests {
         assert_eq!(truncate_chars("héllo".to_string(), 2), "hé");
         assert_eq!(truncate_chars("hi".to_string(), 5), "hi");
         assert_eq!(truncate_chars("日本語".to_string(), 0), "");
+    }
+
+    #[test]
+    fn a_document_value_is_its_address_not_its_text() {
+        assert!(!value_is_content(Role::Document));
+        assert!(value_is_content(Role::Edit));
+        assert!(value_is_content(Role::Combobox));
     }
 
     #[test]

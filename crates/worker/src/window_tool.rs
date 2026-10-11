@@ -1,7 +1,9 @@
 mod app_catalog;
+mod app_list;
 mod app_match;
 mod launch;
 mod launch_match;
+mod monitor_list;
 
 use std::time::Duration;
 
@@ -33,11 +35,13 @@ pub fn run(engine: &Engine, args: &WindowsArgs, call: &CallScope) -> Result<Wind
         WindowAction::Maximize => change_state(engine, args, call, WindowState::Maximized),
         WindowAction::Restore => change_state(engine, args, call, WindowState::Normal),
         WindowAction::Move => move_to(engine, args, call),
+        WindowAction::Monitors => monitor_list::monitors(),
+        WindowAction::Apps => app_list::apps(engine, args),
     }
 }
 
 fn list(engine: &Engine) -> Result<WindowsReport> {
-    Ok(WindowsReport { windows: app_windows(engine)?, window: None, observation: None, note: None })
+    Ok(WindowsReport { windows: app_windows(engine)?, ..WindowsReport::default() })
 }
 
 fn focus(engine: &Engine, args: &WindowsArgs, call: &CallScope) -> Result<WindowsReport> {
@@ -138,7 +142,7 @@ fn ambiguous(spec: &str, count: usize, windows: impl Iterator<Item = WindowInfo>
 }
 
 fn noted(window: WindowInfo, observation: Option<Observation>, note: &str) -> WindowsReport {
-    WindowsReport { windows: Vec::new(), window: Some(window), observation, note: Some(note.to_string()) }
+    WindowsReport { window: Some(window), observation, note: Some(note.to_string()), ..WindowsReport::default() }
 }
 
 #[cfg(test)]

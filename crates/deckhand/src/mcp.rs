@@ -4,7 +4,7 @@ use deckhand_core::{
     Context, ErrorCode, Result,
     format::ObserveFormat,
     protocol::{
-        ActArgs, Call, ClipboardArgs, Condition, FindArgs, ObserveArgs, PickFileArgs, ReadTextArgs, Reply,
+        ActArgs, Call, ClipboardArgs, Condition, FindArgs, NotifyArgs, ObserveArgs, PickFileArgs, ReadTextArgs, Reply,
         ScreenshotArgs, StatusArgs, WindowsArgs,
     },
 };
@@ -40,12 +40,15 @@ marks labels element refs.";
 const WAIT_FOR: &str = "Wait until an element appears or disappears, a window opens or closes, text shows up, or the UI \
 goes idle. Event-driven on the desktop side: default 5 s, max 60 s. Use instead of sleeping or polling with observe.";
 const WINDOWS: &str = "List, focus, launch, close, minimize, maximize, restore or move windows. launch takes a \
-Start-menu name like Notepad, an app id or an exe path, waits for the window and returns its elements.";
+Start-menu name like Notepad, an app id or an exe path, waits for the window and returns its elements. apps lists \
+installed apps (app filters them). monitors lists displays; the index is screenshot's monitor.";
 const PICK_FILE: &str = "Fill a native Open/Save dialog in one call: optionally click open_with first (e.g. an Upload \
 button), set the paths, confirm and check the dialog closed. Use for every upload or save-as dialog.";
 const READ_TEXT: &str = "Read the full text of an element, window or region: UI Automation text first, OCR as fallback. \
-Use for long documents, logs and values that observe shortens.";
+Use for long documents, logs and values that observe shortens. On a browser window it returns the page text.";
 const CLIPBOARD: &str = "Get or set the clipboard text.";
+const NOTIFY: &str = "Show the user a Windows notification (title + message), e.g. when a long task finishes. Reports \
+when Focus Assist or a full-screen app holds it back.";
 const STATUS: &str = "Health check: stopped by the kill hotkey or not, user activity, worker restarts, recent timings \
 and errors.";
 
@@ -247,6 +250,15 @@ impl DeckhandServer {
         self.run(Call::Clipboard(args), ObserveFormat::default(), &context).await
     }
 
+    #[tool(description = NOTIFY, annotations(open_world_hint = false))]
+    async fn notify(
+        &self,
+        Parameters(args): Parameters<NotifyArgs>,
+        context: RequestContext<RoleServer>,
+    ) -> CallToolResult {
+        self.run(Call::Notify(args), ObserveFormat::default(), &context).await
+    }
+
     #[tool(description = STATUS, annotations(read_only_hint = true, open_world_hint = false))]
     async fn status(
         &self,
@@ -285,10 +297,11 @@ mod tests {
     use super::*;
     use crate::testing::{FakeSpawner, FakeWorker, echo_worker};
 
-    const TOOLS: [&str; 10] = [
+    const TOOLS: [&str; 11] = [
         "act",
         "clipboard",
         "find",
+        "notify",
         "observe",
         "pick_file",
         "read_text",
@@ -331,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn exactly_the_ten_tools_are_listed() {
+    fn exactly_the_eleven_tools_are_listed() {
         let names: Vec<String> = tools().iter().map(|tool| tool.name.to_string()).collect();
         assert_eq!(names, TOOLS);
     }

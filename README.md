@@ -27,10 +27,11 @@ Restart open Claude Code sessions to load it. Re-running the script swaps in a n
 | `find` | Searches by selector or text in one window or in all of them. |
 | `screenshot` | Captures a window, element, region or monitor as a JPEG or PNG, optionally with ref labels drawn on. |
 | `wait_for` | Waits until an element appears or disappears, a window opens or closes, some text shows up, or the UI goes idle. |
-| `windows` | Lists, focuses, launches, closes, minimizes, maximizes, restores or moves windows. |
+| `windows` | Lists, focuses, launches, closes, minimizes, maximizes, restores or moves windows. `apps` lists installed apps (optionally filtered by name), and `monitors` lists the displays with their work area and scale, numbered as `screenshot` numbers them. |
 | `pick_file` | Fills a native Open or Save dialog, optionally clicking an Upload button first. |
-| `read_text` | Gets the full text of an element or window through UI Automation, falling back to OCR. |
+| `read_text` | Gets the full text of an element or window through UI Automation, falling back to OCR. On a browser window it returns the page text. |
 | `clipboard` | Gets or sets clipboard text. |
+| `notify` | Shows you a Windows notification, for example when a long task finishes. It reports when Focus Assist holds it back. |
 | `status` | Shows health, the kill switch, user activity and recent timings. |
 
 **Targets** take one of these forms:
@@ -51,12 +52,30 @@ process:chrome text:"Sign in"
 
 `click` · `hover` · `type` · `set_value` · `key` · `scroll` · `drag` · `select` · `toggle` · `expand` · `collapse` · `focus` · `wait_for` · `wait`
 
+## Compared with Windows-MCP
+
+Deckhand replaces Windows-MCP. Each Windows-MCP tool maps to a Deckhand tool like this:
+
+| Windows-MCP | Deckhand |
+|---|---|
+| Click / Type / Scroll / Move / Shortcut / Wait / MultiSelect / MultiEdit | `act` steps |
+| WaitFor | `wait_for` |
+| Snapshot | `observe` |
+| Screenshot | `screenshot` |
+| App | `windows` (`launch`, `apps` and the window actions) |
+| Clipboard | `clipboard` |
+| ControlStatus | `status` |
+| DisplayInventory | `windows` with `action: "monitors"` |
+| Notification | `notify` |
+| Scrape | `read_text` on the browser window, plus Claude Code's WebFetch |
+| PowerShell / Registry / FileSystem / Process | Not included: Claude Code has its own tools for these, governed by its permission rules |
+
 ## Safety
 
 - **Kill switch.** `Ctrl+Alt+Shift+Backspace` stops all input from every Deckhand session; press it again to resume. Claude cannot undo it.
 - **You keep priority.** While you're using the mouse or keyboard, input steps wait for you to stop. Read-only tools are never blocked.
 - **Claude's own terminal is off-limits.** Deckhand won't type into or act on the terminal that hosts Claude.
-- **Deny list.** Password managers, and Explorer windows showing the recovery folder, are never read or acted on. Screenshots black out denied windows. `pick_file` refuses paths under `Downloads\recovery`.
+- **Deny list.** Password managers, and any windows or folders you add in the config, are never read or acted on. Screenshots black out denied windows. `pick_file` refuses paths under the folders in `deny_paths`.
 - **Elevation and the secure desktop.** Elevated windows, UAC prompts and the lock screen are reported, never driven.
 - **Audit log.** `%LOCALAPPDATA%\deckhand\logs\YYYY-MM-DD.jsonl` keeps one line per call. Typed text and file names are redacted.
 - **Visible agent.** A thin border marks the window being driven, and a ripple marks each click. Both are hidden from screenshots.
@@ -111,3 +130,7 @@ cargo test -p deckhand --test e2e -- --ignored --test-threads=1
 | `deckhand-worker` | The engine behind every tool |
 | `deckhand` | The binary: MCP server, worker supervisor, audit log |
 | `deckhand-fixture` | A test-only Win32 app |
+
+## License
+
+MIT. See [LICENSE](LICENSE).
