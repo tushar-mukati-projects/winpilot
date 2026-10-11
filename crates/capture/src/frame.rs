@@ -1,0 +1,170 @@
+use deckhand_core::{Error, Point, Rect, Result};
+
+use crate::pixels::{BYTES_PER_PIXEL, Block, Pixels, PixelsMut, copy_block};
+
+pub(crate) const MAX_SIDE: i32 = 32_768;
+pub(crate) const MAX_PIXELS: i64 = 64 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Frame {
+    pub origin: Point,
+    pub width: u32,
+    pub height: u32,
+    pub bgra: Vec<u8>,
+}
+
+impl Frame {
+    pub fn rect(&self) -> Rect {
+        Rect::new(self.origin.x, self.origin.y, self.width as i32, self.height as i32)
+    }
+
+    pub fn crop(&self, rect: Rect) -> Option<Self> {
+        if !self.is_well_formed() {
+            return None;
+        }
+        let overlap = overlap(self.rect(), rect)?;
+        let mut cropped = Self::black(Point::new(overlap.x, overlap.y), overlap.width as u32, overlap.height as u32);
+        cropped.paste(self).ok()?;
+        Some(cropped)
+    }
+
+    pub(crate) fn black(origin: Point, width: u32, height: u32) -> Self {
+        let length = width as usize * height as usize * BYTES_PER_PIXEL;
+        Self { origin, width, height, bgra: vec![0; length] }
+    }
+
+    pub(crate) fn is_well_formed(&self) -> bool {
+        let expected = u64::from(self.width) * u64::from(self.height) * BYTES_PER_PIXEL as u64;
+        self.width > 0 && self.height > 0 && i32::try_from(self.width).is_ok() && self.bgra.len() as u64 == expected
+    }
+
+    pub(crate) fn stride(&self) -> usize {
+        self.width as usize * BYTES_PER_PIXEL
+    }
+
+    pub(crate) fn pixels(&self) -> Pixels<'_> {
+        Pixels { bytes: &self.bgra, stride: self.stride() }
+    }
+
+    pub(crate) fn pixels_mut(&mut self) -> PixelsMut<'_> {
+        let stride = self.stride();
+        PixelsMut { bytes: &mut self.bgra, stride }
+    }
+
+    pub(crate) fn offset_of(&self, point: Point) -> (usize, usize) {
+        let x = i64::from(point.x) - i64::from(self.origin.x);
+        let y = i64::from(point.y) - i64::from(self.origin.y);
+        (x.max(0) as usize, y.max(0) as usize)
+    }
+
+    pub(crate) fn paste(&mut self, piece: &Self) -> Result<()> {
+        let overlap =
+            overlap(self.rect(), piece.rect()).ok_or_else(|| Error::internal("piece is outside the frame"))?;
+        let (x, y) = piece.offset_of(Point::new(overlap.x, overlap.y));
+        let block = Block { x, y, width: overlap.width as usize, height: overlap.height as usize };
+        let to = self.offset_of(Point::new(overlap.x, overlap.y));
+        copy_block(&piece.pixels(), block, &mut self.pixels_mut(), to)
+    }
+}
+
+pub(crate) fn overlap(a: Rect, b: Rect) -> Option<Rect> {
+    let left = a.x.max(b.x);
+    let top = a.y.max(b.y);
+    let right = (i64::from(a.x) + i64::from(a.width)).min(i64::from(b.x) + i64::from(b.width));
+    let bottom = (i64::from(a.y) + i64::from(a.height)).min(i64::from(b.y) + i64::from(b.height));
+    let width = right - i64::from(left);
+    let height = bottom - i64::from(top);
+    (width > 0 && height > 0).then(|| Rect::new(left, top, width as i32, height as i32))
+}
+
+pub(crate) fn validate_capture_rect(rect: Rect) -> Result<()> {
+    if rect.width <= 0 || rect.height <= 0 {
+        return Err(Error::invalid("capture rectangle is empty"));
+    }
+    if rect.width > MAX_SIDE || rect.height > MAX_SIDE {
+        return Err(Error::invalid(format!("capture rectangle sides must be at most {MAX_SIDE} px")));
+    }
+    if i64::from(rect.width) * i64::from(rect.height) > MAX_PIXELS {
+        return Err(Error::invalid(format!("capture rectangle must hold at most {MAX_PIXELS} pixels")));
+    }
+    if rect.x.checked_add(rect.width).is_none() || rect.y.checked_add(rect.height).is_none() {
+        return Err(Error::invalid("capture rectangle extends past the coordinate range"));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use deckhand_core::ErrorCode;
+
+    use super::*;
+
+    fn gradient(origin: Point, width: u32, height: u32) -> Frame {
+        let mut frame = Frame::black(origin, width, height);
+        for (index, pixel) in frame.bgra.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+            let (x, y) = (index as u32 % width, index as u32 / width);
+            *pixel = [x as u8, y as u8, 7, 255];
+        }
+        frame
+    }
+
+    fn pixel(frame: &Frame, x: u32, y: u32) -> [u8; 4] {
+        let start = ((y * frame.width + x) * 4) as usize;
+        frame.bgra[start..start + 4].try_into().unwrap()
+    }
+
+    #[test]
+    fn crop_inside_copies_the_region() {
+        let frame = gradient(Point::new(100, 50), 40, 30);
+        let cropped = frame.crop(Rect::new(110, 60, 5, 4)).unwrap();
+        assert_eq!(cropped.rect(), Rect::new(110, 60, 5, 4));
+        assert_eq!(pixel(&cropped, 0, 0), [10, 10, 7, 255]);
+        assert_eq!(pixel(&cropped, 4, 3), [14, 13, 7, 255]);
+    }
+
+    #[test]
+    fn crop_clips_to_the_frame() {
+        let frame = gradient(Point::new(-20, -10), 40, 30);
+        let cropped = frame.crop(Rect::new(10, 15, 100, 100)).unwrap();
+        assert_eq!(cropped.rect(), Rect::new(10, 15, 10, 5));
+        assert_eq!(pixel(&cropped, 0, 0), [30, 25, 7, 255]);
+    }
+
+    #[test]
+    fn crop_without_overlap_is_none() {
+        let frame = gradient(Point::new(0, 0), 10, 10);
+        assert_eq!(frame.crop(Rect::new(10, 0, 5, 5)), None);
+        assert_eq!(frame.crop(Rect::new(0, 0, 0, 5)), None);
+        assert_eq!(frame.crop(Rect::new(3, 3, -2, 5)), None);
+    }
+
+    #[test]
+    fn crop_survives_extreme_coordinates() {
+        let frame = gradient(Point::new(i32::MAX - 5, i32::MIN), 10, 10);
+        let cropped = frame.crop(Rect::new(i32::MAX - 2, i32::MIN, i32::MAX, i32::MAX)).unwrap();
+        assert_eq!(cropped.width, 7);
+        assert_eq!(cropped.height, 10);
+        assert_eq!(frame.crop(Rect::new(i32::MIN, i32::MIN, i32::MAX, 1)), None);
+    }
+
+    #[test]
+    fn crop_of_a_malformed_frame_is_none() {
+        let frame = Frame { origin: Point::new(0, 0), width: 10, height: 10, bgra: vec![0; 12] };
+        assert_eq!(frame.crop(Rect::new(0, 0, 5, 5)), None);
+    }
+
+    #[test]
+    fn capture_rect_validation() {
+        assert!(validate_capture_rect(Rect::new(-100, -100, 200, 100)).is_ok());
+        let failures = [
+            Rect::new(0, 0, 0, 10),
+            Rect::new(0, 0, 10, -1),
+            Rect::new(0, 0, MAX_SIDE + 1, 10),
+            Rect::new(0, 0, MAX_SIDE, MAX_SIDE),
+            Rect::new(i32::MAX - 5, 0, 10, 10),
+        ];
+        for rect in failures {
+            assert_eq!(validate_capture_rect(rect).unwrap_err().code, ErrorCode::InvalidArgument, "{rect:?}");
+        }
+    }
+}

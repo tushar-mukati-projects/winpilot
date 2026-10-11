@@ -21,7 +21,7 @@ cargo fmt --all
 | `deckhand-uia` | UI Automation on one dedicated MTA thread: snapshots, element refs, pattern actions | core, windows |
 | `deckhand-capture` | Screen capture (warm DXGI, GDI, PrintWindow), resize, JPEG/PNG encode, marks, OCR | core, windows |
 | `deckhand-input` | SendInput mouse/keyboard/text, physical-input monitor, kill-switch hotkey | core, windows |
-| `deckhand-desktop` | Windows, focus, launch, clipboard, monitors, integrity, change monitor, overlay, named sync objects | core, input, windows |
+| `deckhand-desktop` | Windows, focus, launch, clipboard, monitors, integrity, change monitor, overlay, named sync objects | core, windows |
 | `deckhand-worker` | The engine: runs each tool call using the platform crates | all of the above |
 | `deckhand` | The binary: `deckhand mcp` (rmcp stdio server and worker supervisor) and `deckhand worker` | core, worker, rmcp |
 | `deckhand-fixture` | A test-only Win32 app with known controls and file dialogs | windows |
