@@ -4,7 +4,7 @@ use crate::{
     config::RecordConfig,
     error::{Error, Result},
     quality::Quality,
-    recording::{RecordArgs, VideoFormat},
+    recording::{RecordRequest, VideoFormat},
 };
 
 pub const RECORD_SECONDS: RangeInclusive<u32> = 1..=1800;
@@ -20,7 +20,7 @@ pub struct RecordPlan {
     pub max_width: u32,
 }
 
-pub fn record_plan(args: &RecordArgs, config: &RecordConfig) -> Result<RecordPlan> {
+pub fn record_plan(args: &RecordRequest, config: &RecordConfig) -> Result<RecordPlan> {
     let format = record_format(args, config)?;
     Ok(RecordPlan {
         format,
@@ -32,7 +32,7 @@ pub fn record_plan(args: &RecordArgs, config: &RecordConfig) -> Result<RecordPla
     })
 }
 
-fn record_format(args: &RecordArgs, config: &RecordConfig) -> Result<VideoFormat> {
+fn record_format(args: &RecordRequest, config: &RecordConfig) -> Result<VideoFormat> {
     match args.path.as_deref() {
         Some(path) => VideoFormat::for_path(path, args.format),
         None => Ok(args.format.unwrap_or(config.format)),
@@ -59,15 +59,15 @@ mod tests {
     use super::*;
     use crate::{error::ErrorCode, recording::RecordAction};
 
-    fn start() -> RecordArgs {
-        RecordArgs::new(RecordAction::Start)
+    fn start() -> RecordRequest {
+        RecordRequest::new(RecordAction::Start)
     }
 
-    fn plan(args: &RecordArgs) -> RecordPlan {
+    fn plan(args: &RecordRequest) -> RecordPlan {
         record_plan(args, &RecordConfig::default()).unwrap()
     }
 
-    fn invalid(args: &RecordArgs, config: &RecordConfig) -> String {
+    fn invalid(args: &RecordRequest, config: &RecordConfig) -> String {
         let error = record_plan(args, config).unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidArgument);
         error.message
@@ -91,7 +91,7 @@ mod tests {
 
     #[test]
     fn gif_defaults_cap_fps_at_twenty_and_width_at_960() {
-        let gif = plan(&RecordArgs { format: Some(VideoFormat::Gif), ..start() });
+        let gif = plan(&RecordRequest { format: Some(VideoFormat::Gif), ..start() });
         assert_eq!((gif.format, gif.fps, gif.max_width), (VideoFormat::Gif, 20, 960));
         let configured = RecordConfig { format: VideoFormat::Gif, fps: 12, ..RecordConfig::default() };
         let from_config = record_plan(&start(), &configured).unwrap();
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn every_argument_overrides_its_config_value() {
-        let args = RecordArgs {
+        let args = RecordRequest {
             format: Some(VideoFormat::Gif),
             fps: Some(10),
             quality: Some(Quality::Low),
@@ -128,7 +128,7 @@ mod tests {
     fn configured_max_width_applies_to_both_formats() {
         let config = RecordConfig { max_width: Some(1280), ..RecordConfig::default() };
         assert_eq!(record_plan(&start(), &config).unwrap().max_width, 1280);
-        let gif = RecordArgs { format: Some(VideoFormat::Gif), ..start() };
+        let gif = RecordRequest { format: Some(VideoFormat::Gif), ..start() };
         assert_eq!(record_plan(&gif, &config).unwrap().max_width, 1280);
     }
 
@@ -144,10 +144,10 @@ mod tests {
 
     #[test]
     fn the_path_extension_picks_the_format() {
-        let gif = plan(&RecordArgs { path: Some("C:\\v\\clip.GIF".to_string()), ..start() });
+        let gif = plan(&RecordRequest { path: Some("C:\\v\\clip.GIF".to_string()), ..start() });
         assert_eq!((gif.format, gif.fps), (VideoFormat::Gif, 20));
         let config = RecordConfig { format: VideoFormat::Gif, ..RecordConfig::default() };
-        let mp4 = RecordArgs { path: Some("C:\\v\\clip.mp4".to_string()), ..start() };
+        let mp4 = RecordRequest { path: Some("C:\\v\\clip.mp4".to_string()), ..start() };
         assert_eq!(record_plan(&mp4, &config).unwrap().format, VideoFormat::Mp4);
     }
 
@@ -155,18 +155,21 @@ mod tests {
     fn a_mismatched_or_unknown_extension_is_invalid() {
         let config = RecordConfig::default();
         let mismatch =
-            RecordArgs { path: Some("C:\\v\\clip.mp4".to_string()), format: Some(VideoFormat::Gif), ..start() };
+            RecordRequest { path: Some("C:\\v\\clip.mp4".to_string()), format: Some(VideoFormat::Gif), ..start() };
         assert_eq!(invalid(&mismatch, &config), "path ends in .mp4 but format is gif; make them match");
-        let unknown = RecordArgs { path: Some("C:\\v\\clip.avi".to_string()), ..start() };
+        let unknown = RecordRequest { path: Some("C:\\v\\clip.avi".to_string()), ..start() };
         assert_eq!(invalid(&unknown, &config), "path must end in .mp4 or .gif");
     }
 
     #[test]
     fn asked_fps_above_the_gif_limit_is_invalid_even_when_the_format_comes_from_config() {
         let config = RecordConfig { format: VideoFormat::Gif, ..RecordConfig::default() };
-        assert_eq!(invalid(&RecordArgs { fps: Some(30), ..start() }, &config), "gif fps must be from 1 to 20, got 30");
-        assert_eq!(record_plan(&RecordArgs { fps: Some(20), ..start() }, &config).unwrap().fps, 20);
-        let mp4 = RecordArgs { fps: Some(61), ..start() };
+        assert_eq!(
+            invalid(&RecordRequest { fps: Some(30), ..start() }, &config),
+            "gif fps must be from 1 to 20, got 30"
+        );
+        assert_eq!(record_plan(&RecordRequest { fps: Some(20), ..start() }, &config).unwrap().fps, 20);
+        let mp4 = RecordRequest { fps: Some(61), ..start() };
         assert_eq!(invalid(&mp4, &RecordConfig::default()), "mp4 fps must be from 1 to 60, got 61");
     }
 }

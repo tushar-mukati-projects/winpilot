@@ -1,13 +1,16 @@
-use deckhand_core::{Element, Result, TargetSpec, keys::NamedKey, protocol::TypeHow};
+use deckhand_core::{Element, Error, Result, keys::NamedKey, protocol::TypeHow};
 use deckhand_desktop::clipboard;
 
 use super::{
+    append,
     chords::named,
     clip::{NOTE_LIMIT, quoted},
     done::{Done, via_focus_click},
     focus::{Focused, keyboard_target},
+    mode::Mode,
     paste::paste,
     settle,
+    target::Prepared,
 };
 use crate::{call_scope::CallScope, engine::Engine, overlay};
 
@@ -22,14 +25,32 @@ pub enum Typing {
 }
 
 pub struct TypeRequest<'a> {
-    pub target: Option<&'a TargetSpec>,
     pub text: &'a str,
     pub enter: bool,
     pub how: TypeHow,
 }
 
-pub fn step(engine: &Engine, request: &TypeRequest<'_>, call: &CallScope) -> Result<Done> {
-    let focused = keyboard_target(engine, request.target, call)?;
+pub fn step(
+    engine: &Engine,
+    target: Option<&Prepared>,
+    request: &TypeRequest<'_>,
+    mode: Mode,
+    call: &CallScope,
+) -> Result<Done> {
+    match (mode, target) {
+        (Mode::Foreground, _) => type_for_real(engine, target, request, call),
+        (Mode::Background, Some(prepared)) => append::step(engine, prepared, request.text, call),
+        (Mode::Background, None) => Err(Error::invalid("type in background mode needs a target")),
+    }
+}
+
+fn type_for_real(
+    engine: &Engine,
+    target: Option<&Prepared>,
+    request: &TypeRequest<'_>,
+    call: &CallScope,
+) -> Result<Done> {
+    let focused = keyboard_target(engine, target, call)?;
     if let Some(element) = &focused.element {
         overlay::focus_field(engine, element.rect);
     }

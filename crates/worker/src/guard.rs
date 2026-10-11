@@ -122,6 +122,11 @@ impl Guard {
     }
 
     pub fn before_input(&self, window: Option<&WindowInfo>, call: &CallScope) -> Result<()> {
+        self.before_patterns(window, call)?;
+        self.yield_to_user(call)
+    }
+
+    pub fn before_patterns(&self, window: Option<&WindowInfo>, call: &CallScope) -> Result<()> {
         self.check_running(call)?;
         if deckhand_desktop::secure_desktop_active() {
             return Err(Error::new(
@@ -133,7 +138,7 @@ impl Guard {
             self.check_window(window)?;
             self.check_elevation(window)?;
         }
-        self.yield_to_user(call)
+        Ok(())
     }
 
     fn check_elevation(&self, window: &WindowInfo) -> Result<()> {

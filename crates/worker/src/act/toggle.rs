@@ -1,28 +1,21 @@
-use deckhand_core::{Element, ElementRef, Error, Result, TargetSpec};
+use deckhand_core::{Element, ElementRef, Error, Result};
 
 use super::{
-    click_choice::ClickOptions,
-    done::Done,
-    locate::refreshed,
-    mouse_click::click_by_mouse,
-    settle,
-    target::{Prepared, prepare},
+    click_choice::ClickOptions, done::Done, locate::refreshed, mode::Mode, mouse_click::click_by_mouse, settle,
+    target::Prepared,
 };
 use crate::{call_scope::CallScope, engine::Engine};
 
-pub fn step(engine: &Engine, target: &TargetSpec, on: Option<bool>, call: &CallScope) -> Result<Done> {
-    let prepared = prepare(engine, target, call)?;
-    let element = prepared.require_element("toggle")?;
-    if let Some(wanted) = on {
-        require_readable(element.id, element.state.toggled)?;
-        if element.state.toggled == Some(wanted) {
-            return Ok(Done::noting(format!("already {}", state_word(Some(wanted)))));
-        }
+pub fn step(engine: &Engine, prepared: &Prepared, wanted: bool, mode: Mode, call: &CallScope) -> Result<Done> {
+    let element = prepared.require_element("set checked")?;
+    require_readable(element.id, element.state.toggled)?;
+    if element.state.toggled == Some(wanted) {
+        return Ok(Done::noting(format!("already {}", state_word(Some(wanted)))));
     }
-    let method = flip(engine, &prepared, element, call)?;
+    let method = flip(engine, prepared, element, mode, call)?;
     settle(engine, &prepared.window, call);
     let state = refreshed(engine, element.id)?.state.toggled;
-    check_state(element.id, on, state)?;
+    check_state(element.id, Some(wanted), state)?;
     Ok(Done::by(method).with_note(Some(format!("now {}", state_word(state)))))
 }
 
@@ -52,10 +45,16 @@ pub const fn state_word(state: Option<bool>) -> &'static str {
     }
 }
 
-fn flip(engine: &Engine, prepared: &Prepared, element: &Element, call: &CallScope) -> Result<&'static str> {
+fn flip(engine: &Engine, prepared: &Prepared, element: &Element, mode: Mode, call: &CallScope) -> Result<&'static str> {
     if element.patterns.toggle {
         let id = element.id;
         return engine.uia.run(move |uia| uia.toggle(id)).map(|_| "toggle");
+    }
+    if mode == Mode::Background {
+        return Err(Error::unsupported(format!(
+            "{} has no toggle pattern, so background mode can't check or uncheck it",
+            element.id
+        )));
     }
     click_by_mouse(engine, prepared, ClickOptions::default(), call).map(|_| "mouse")
 }

@@ -33,7 +33,7 @@ pub fn choose(candidates: Vec<Candidate>, foreground: Option<WindowRef>) -> Opti
 }
 
 fn is_usable(candidate: &Candidate) -> bool {
-    !candidate.host && candidate.window.state != WindowState::Minimized
+    !candidate.host && candidate.window.state != WindowState::Minimized && candidate.window.on_current_desktop
 }
 
 #[cfg(test)]
@@ -71,6 +71,15 @@ mod tests {
         assert_eq!(chosen(vec![minimized, plain(4)], Some(3)), Some(4));
         assert_eq!(chosen(vec![plain(4)], Some(99)), Some(4));
         assert_eq!(chosen(vec![plain(4)], None), Some(4));
+    }
+
+    #[test]
+    fn windows_on_other_desktops_are_never_the_default() {
+        let mut elsewhere = plain(1);
+        elsewhere.window.on_current_desktop = false;
+        elsewhere.window.desktop = Some(2);
+        assert_eq!(chosen(vec![elsewhere.clone(), plain(2)], Some(1)), Some(2));
+        assert_eq!(chosen(vec![elsewhere], None), None);
     }
 
     #[test]

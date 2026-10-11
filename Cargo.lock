@@ -142,6 +142,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "deckhand-core",
+ "deckhand-fixture",
  "deckhand-worker",
  "embed-resource",
  "parking_lot",
@@ -212,6 +213,7 @@ name = "deckhand-uia"
 version = "0.1.0"
 dependencies = [
  "deckhand-core",
+ "deckhand-fixture",
  "parking_lot",
  "windows",
  "windows-core",
@@ -226,6 +228,7 @@ dependencies = [
  "deckhand-capture",
  "deckhand-core",
  "deckhand-desktop",
+ "deckhand-fixture",
  "deckhand-input",
  "deckhand-uia",
  "parking_lot",

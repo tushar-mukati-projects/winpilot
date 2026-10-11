@@ -10,6 +10,8 @@ fast_image_resize = "6.1.0"
 jpeg-encoder = { version = "0.7.1", features = ["simd"] }
 xcap = "0.9.8"
 windows-capture = "2.0.1"
+deckhand-core = { path = "../../crates/core" }
+toml = "1.1.8"
 
 [dependencies.windows]
 version = "0.62.2"

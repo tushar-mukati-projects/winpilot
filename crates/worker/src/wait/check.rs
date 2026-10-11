@@ -1,7 +1,8 @@
 use std::time::Instant;
 
-use deckhand_core::{Element, Error, ErrorCode, Result, Target, WindowInfo, format::window_line, protocol::WaitReport};
+use deckhand_core::{Element, Error, ErrorCode, Result, Target, WindowInfo, format::window_line};
 
+use super::WaitReport;
 use crate::engine::duration_ms;
 
 const INCOMPLETE: &str = "the window has more elements than one snapshot reads, so its absence is not proven";
@@ -141,6 +142,8 @@ mod tests {
             state: WindowState::Normal,
             foreground: false,
             elevated: false,
+            desktop: None,
+            on_current_desktop: true,
         }
     }
 

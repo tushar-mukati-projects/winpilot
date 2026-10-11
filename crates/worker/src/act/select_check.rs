@@ -54,6 +54,14 @@ pub fn item_outcome(element: &Element) -> Result<Option<String>> {
     Ok((!name.is_empty()).then(|| format!("selected {}", quoted(name, NOTE_LIMIT))))
 }
 
+pub fn deselected_outcome(element: &Element) -> Result<Option<String>> {
+    if element.state.selected == Some(true) {
+        return Err(Error::unsupported(format!("{} is still selected", element.id)));
+    }
+    let name = element.name.trim();
+    Ok((!name.is_empty()).then(|| format!("deselected {}", quoted(name, NOTE_LIMIT))))
+}
+
 fn shows_option(value: &str, option: &str) -> bool {
     let value = value.trim().to_lowercase();
     let option = option.trim().to_lowercase();
@@ -127,6 +135,14 @@ mod tests {
     fn a_selected_item_is_named() {
         assert_eq!(item_outcome(&element("Item 3", None, Some(true))).unwrap().as_deref(), Some("selected \"Item 3\""));
         assert_eq!(item_outcome(&element(" ", None, None)).unwrap(), None);
+    }
+
+    #[test]
+    fn a_deselected_item_is_named_and_one_still_selected_is_an_error() {
+        let note = deselected_outcome(&element("Item 3", None, Some(false))).unwrap();
+        assert_eq!(note.as_deref(), Some("deselected \"Item 3\""));
+        let error = deselected_outcome(&element("Item 3", None, Some(true))).unwrap_err();
+        assert_eq!(error.message, "e7 is still selected");
     }
 
     #[test]

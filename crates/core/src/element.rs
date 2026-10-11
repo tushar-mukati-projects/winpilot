@@ -81,6 +81,14 @@ pub struct WindowInfo {
     pub state: WindowState,
     pub foreground: bool,
     pub elevated: bool,
+    #[serde(default)]
+    pub desktop: Option<u32>,
+    #[serde(default = "on_current_desktop")]
+    pub on_current_desktop: bool,
+}
+
+const fn on_current_desktop() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,6 +145,8 @@ pub(crate) mod fixtures {
             state: WindowState::Normal,
             foreground: true,
             elevated: false,
+            desktop: None,
+            on_current_desktop: true,
         }
     }
 
@@ -171,7 +181,7 @@ pub(crate) mod fixtures {
 
 #[cfg(test)]
 mod tests {
-    use super::fixtures::{element, snapshot};
+    use super::fixtures::{self, element, snapshot};
     use super::*;
 
     fn sample() -> Snapshot {
@@ -189,6 +199,17 @@ mod tests {
         let snap = sample();
         let names: Vec<&str> = snap.ancestors(3).iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, ["Notepad", "Application"]);
+    }
+
+    #[test]
+    fn windows_from_older_workers_count_as_on_the_current_desktop() {
+        let mut json = serde_json::to_value(fixtures::window("Notes")).unwrap();
+        let fields = json.as_object_mut().unwrap();
+        fields.remove("desktop");
+        fields.remove("on_current_desktop");
+        let window: WindowInfo = serde_json::from_value(json).unwrap();
+        assert!(window.on_current_desktop);
+        assert_eq!(window.desktop, None);
     }
 
     #[test]

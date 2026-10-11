@@ -1,16 +1,10 @@
-use std::{
-    path::PathBuf,
-    process::{Child, Command},
-    thread,
-    time::Duration,
-};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use deckhand_core::{Element, Error, Rect, Result, Snapshot, WindowInfo, WindowRef, WindowState};
+use deckhand_fixture::{FixtureProcess, Placement};
 use windows::Win32::{
     Foundation::HWND,
-    UI::WindowsAndMessaging::{
-        FindWindowExW, FindWindowW, GetClassNameW, GetForegroundWindow, GetWindowThreadProcessId,
-    },
+    UI::WindowsAndMessaging::{FindWindowW, GetClassNameW, GetForegroundWindow},
 };
 use windows_core::{PCWSTR, w};
 
@@ -35,6 +29,8 @@ pub(crate) fn window_info(window: WindowRef, class_name: &str) -> WindowInfo {
         state: WindowState::Normal,
         foreground: false,
         elevated: false,
+        desktop: None,
+        on_current_desktop: true,
     }
 }
 
@@ -58,47 +54,18 @@ fn class_of(hwnd: HWND) -> String {
 }
 
 pub(crate) struct Fixture {
-    child: Child,
+    _process: FixtureProcess,
     pub(crate) window: WindowInfo,
 }
 
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
 pub(crate) fn launch_fixture() -> Option<Fixture> {
-    let exe = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/deckhand-fixture.exe");
-    if !exe.exists() {
+    static NEXT: AtomicU32 = AtomicU32::new(1);
+    let Some(exe) = deckhand_fixture::fixture_exe() else {
         eprintln!("skipping: deckhand-fixture.exe is not built");
         return None;
-    }
-    let mut fixture = Fixture { child: Command::new(exe).spawn().ok()?, window: window_info(WindowRef(0), "") };
-    for _ in 0..50 {
-        if let Some(hwnd) = fixture_window(fixture.child.id()) {
-            fixture.window = window_info(win::window_ref(hwnd), &class_of(hwnd));
-            return Some(fixture);
-        }
-        thread::sleep(Duration::from_millis(100));
-    }
-    eprintln!("skipping: the fixture window never appeared");
-    None
-}
-
-fn fixture_window(pid: u32) -> Option<HWND> {
-    let mut after = None;
-    loop {
-        let found = unsafe { FindWindowExW(None, after, PCWSTR::null(), w!("Deckhand Fixture")) }.ok()?;
-        if found.is_invalid() {
-            return None;
-        }
-        let mut owner = 0u32;
-        unsafe { GetWindowThreadProcessId(found, Some(&raw mut owner)) };
-        if owner == pid {
-            return Some(found);
-        }
-        after = Some(found);
-    }
+    };
+    let title = format!("Deckhand Fixture Uia {}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed));
+    let process = FixtureProcess::launch(&exe, &title, Placement::OnScreen)?;
+    let hwnd = process.hwnd();
+    Some(Fixture { window: window_info(win::window_ref(hwnd), &class_of(hwnd)), _process: process })
 }

@@ -10,7 +10,7 @@ pub fn locate(engine: &Engine, target: &Target, scope: Option<&str>) -> Result<P
         Target::Element(id) => element(engine, *id),
         Target::Window(hwnd) => window(*hwnd),
         Target::Selector(selector) => selector_match(engine, selector, scope),
-        Target::Point { .. } => Err(Error::invalid("wait_for needs an element, a window or a selector, not a point")),
+        Target::Point { .. } => Err(Error::invalid("wait needs an element, a window or a selector, not a point")),
     }
 }
 

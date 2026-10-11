@@ -61,6 +61,7 @@ pub struct ActConfig {
     pub auto_wait_ms: u64,
     pub max_elements: usize,
     pub snapshot_budget_ms: u64,
+    pub background: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,6 +165,7 @@ impl Default for ActConfig {
             auto_wait_ms: 2000,
             max_elements: 3000,
             snapshot_budget_ms: 2500,
+            background: false,
         }
     }
 }
@@ -430,6 +432,14 @@ mod tests {
         assert_eq!(config.act.settle_quiet_ms, ActConfig::default().settle_quiet_ms);
         assert_eq!(config.screenshot, ScreenshotConfig::default());
         assert_eq!(config.record, RecordConfig::default());
+    }
+
+    #[test]
+    fn background_mode_is_off_unless_configured() {
+        assert!(!Config::default().act.background);
+        let on: Config = serde_json::from_str(r#"{"act":{"background":true}}"#).unwrap();
+        assert!(on.act.background);
+        assert_eq!(on.act.settle_max_ms, ActConfig::default().settle_max_ms);
     }
 
     #[test]

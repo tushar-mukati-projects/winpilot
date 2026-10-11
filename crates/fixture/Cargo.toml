@@ -6,6 +6,10 @@ rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
 
+[lib]
+name = "deckhand_fixture"
+path = "src/lib.rs"
+
 [[bin]]
 name = "deckhand-fixture"
 path = "src/main.rs"

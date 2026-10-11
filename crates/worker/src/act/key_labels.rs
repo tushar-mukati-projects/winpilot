@@ -6,6 +6,10 @@ pub fn chord_labels(chords: &[Chord]) -> Vec<Vec<String>> {
     chords.iter().take(MAX_CHORDS).map(chord_label).collect()
 }
 
+pub fn chord_text(chord: &Chord) -> String {
+    chord_label(chord).join("+")
+}
+
 fn chord_label(chord: &Chord) -> Vec<String> {
     let modifiers = chord.modifiers;
     let held = [(modifiers.ctrl, "Ctrl"), (modifiers.alt, "Alt"), (modifiers.shift, "Shift"), (modifiers.win, "Win")];
@@ -65,6 +69,12 @@ mod tests {
 
     fn labels(spec: &str) -> Vec<Vec<String>> {
         chord_labels(&parse_keys(spec).unwrap())
+    }
+
+    #[test]
+    fn chords_read_as_one_word() {
+        assert_eq!(chord_text(&deckhand_core::keys::parse_chord("ctrl+shift+a").unwrap()), "Ctrl+Shift+A");
+        assert_eq!(chord_text(&deckhand_core::keys::parse_chord("shift").unwrap()), "Shift");
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         OnceLock,
         atomic::{AtomicU32, Ordering},
@@ -11,27 +11,18 @@ use std::{
 use deckhand_core::{
     Config, Element, ElementRef, ElementState, Rect, Role, Snapshot, WindowInfo, WindowRef, WindowState,
 };
+use deckhand_fixture::{FixtureProcess, Placement};
 use windows::Win32::{
-    Foundation::{HANDLE, HWND, LPARAM, WAIT_OBJECT_0, WPARAM},
-    System::Threading::{
-        CreateProcessW, GetProcessId, PROCESS_CREATION_FLAGS, PROCESS_INFORMATION, STARTF_USESHOWWINDOW, STARTUPINFOW,
-        TerminateProcess, WaitForInputIdle, WaitForSingleObject,
-    },
-    UI::WindowsAndMessaging::{
-        GetDlgItem, GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
-        SMTO_ABORTIFHUNG, SW_SHOWNOACTIVATE, SendMessageTimeoutW, WM_GETTEXT,
-    },
+    Foundation::{LPARAM, WPARAM},
+    UI::WindowsAndMessaging::{GetDlgItem, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_GETTEXT},
 };
-use windows_core::{Owned, PCWSTR, PWSTR};
 
 use crate::engine::Engine;
 
 const PATIENCE: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(25);
 const QUIET: Duration = Duration::from_millis(200);
-const EXIT_WAIT_MS: u32 = 5000;
 const SEND_TIMEOUT_MS: u32 = 2000;
-const ON_SCREEN: (i32, i32) = (120, 120);
 
 pub fn engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
@@ -56,6 +47,8 @@ pub fn window(hwnd: i64, process: &str, title: &str, rect: Rect) -> WindowInfo {
         state: WindowState::Normal,
         foreground: false,
         elevated: false,
+        desktop: None,
+        on_current_desktop: true,
     }
 }
 
@@ -84,12 +77,11 @@ pub fn snapshot(title: &str, elements: Vec<Element>) -> Snapshot {
 }
 
 pub fn fixture_exe() -> Option<PathBuf> {
-    let exe = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/deckhand-fixture.exe");
-    if exe.exists() {
-        return Some(exe);
+    let found = deckhand_fixture::fixture_exe();
+    if found.is_none() {
+        eprintln!("skipping: deckhand-fixture.exe is not built (cargo build -p deckhand-fixture)");
     }
-    eprintln!("skipping: deckhand-fixture.exe is not built (cargo build -p deckhand-fixture)");
-    None
+    found
 }
 
 pub fn unique_title(kind: &str) -> String {
@@ -108,50 +100,32 @@ impl Drop for ClosesTitled {
     }
 }
 
-struct Process(Owned<HANDLE>);
-
-impl Drop for Process {
-    fn drop(&mut self) {
-        if unsafe { WaitForSingleObject(*self.0, EXIT_WAIT_MS) } != WAIT_OBJECT_0 {
-            let _terminated = unsafe { TerminateProcess(*self.0, 1) };
-        }
-    }
-}
-
 pub struct FixtureApp {
     pub window: WindowInfo,
     _closes: ClosesTitled,
-    _process: Process,
-}
-
-impl Drop for FixtureApp {
-    fn drop(&mut self) {
-        let _closed = deckhand_desktop::close_window(self.window.hwnd);
-    }
+    process: FixtureProcess,
 }
 
 impl FixtureApp {
     pub fn launch() -> Option<Self> {
-        Self::launch_at(unique_title("Worker"), beyond_the_virtual_screen())
+        Self::launch_at(unique_title("Worker"), Placement::OffScreen)
     }
 
     pub fn launch_titled(title: String) -> Option<Self> {
-        Self::launch_at(title, beyond_the_virtual_screen())
+        Self::launch_at(title, Placement::OffScreen)
     }
 
     pub fn launch_on_screen() -> Option<Self> {
-        Self::launch_at(unique_title("Worker"), ON_SCREEN)
+        Self::launch_at(unique_title("Worker"), Placement::OnScreen)
     }
 
-    fn launch_at(title: String, position: (i32, i32)) -> Option<Self> {
+    fn launch_at(title: String, placement: Placement) -> Option<Self> {
         let exe = fixture_exe()?;
-        let process = Process(spawn_without_activation(&exe, &title, position)?);
+        let process = FixtureProcess::launch(&exe, &title, placement)?;
         let closes = ClosesTitled(title);
-        let _idle = unsafe { WaitForInputIdle(*process.0, PATIENCE.as_millis() as u32) };
-        let pid = unsafe { GetProcessId(*process.0) };
-        let window = wait_for_window(pid, &closes.0)?;
-        engine().changes.wait_quiet(pid, QUIET, PATIENCE);
-        Some(Self { window, _closes: closes, _process: process })
+        let window = wait_for_window(process.pid(), &closes.0)?;
+        engine().changes.wait_quiet(process.pid(), QUIET, PATIENCE);
+        Some(Self { window, _closes: closes, process })
     }
 
     pub fn title(&self) -> &str {
@@ -171,8 +145,7 @@ impl FixtureApp {
     }
 
     pub fn text(&self, control: i32) -> String {
-        let hwnd = HWND(self.hwnd().0 as isize as *mut core::ffi::c_void);
-        let Ok(child) = (unsafe { GetDlgItem(Some(hwnd), control) }) else { return String::new() };
+        let Ok(child) = (unsafe { GetDlgItem(Some(self.process.hwnd()), control) }) else { return String::new() };
         let mut buffer = [0u16; 4096];
         let mut copied = 0usize;
         let sent = unsafe {
@@ -213,40 +186,4 @@ fn wait_for_window(pid: u32, title: &str) -> Option<WindowInfo> {
     }
     eprintln!("skipping: the fixture window never appeared");
     None
-}
-
-fn spawn_without_activation(exe: &Path, title: &str, (x, y): (i32, i32)) -> Option<Owned<HANDLE>> {
-    let command = format!("\"{}\" --title \"{title}\" --pos {x},{y}", exe.display());
-    let mut command: Vec<u16> = command.encode_utf16().chain(Some(0)).collect();
-    let startup = STARTUPINFOW {
-        cb: size_of::<STARTUPINFOW>() as u32,
-        dwFlags: STARTF_USESHOWWINDOW,
-        wShowWindow: SW_SHOWNOACTIVATE.0 as u16,
-        ..Default::default()
-    };
-    let mut info = PROCESS_INFORMATION::default();
-    let created = unsafe {
-        CreateProcessW(
-            PCWSTR::null(),
-            Some(PWSTR(command.as_mut_ptr())),
-            None,
-            None,
-            false,
-            PROCESS_CREATION_FLAGS(0),
-            None,
-            PCWSTR::null(),
-            &raw const startup,
-            &raw mut info,
-        )
-    };
-    created.ok()?;
-    drop(unsafe { Owned::new(info.hThread) });
-    Some(unsafe { Owned::new(info.hProcess) })
-}
-
-fn beyond_the_virtual_screen() -> (i32, i32) {
-    let right = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN) };
-    let top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
-    let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
-    (right.max(1).saturating_add(200), top.saturating_add(height / 8))
 }

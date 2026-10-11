@@ -1,5 +1,6 @@
 use deckhand_core::{Error, ErrorCode, Result, TargetSpec, WindowInfo};
 
+use super::mode::Mode;
 use crate::{
     call_scope::CallScope,
     default_window::default_window,
@@ -13,14 +14,14 @@ const FOREGROUND_MOVED: &str = "the foreground window changed while waiting for 
 
 pub type Prepared = Resolved;
 
-pub fn prepare(engine: &Engine, spec: &TargetSpec, call: &CallScope) -> Result<Prepared> {
+pub fn prepare(engine: &Engine, spec: &TargetSpec, mode: Mode, call: &CallScope) -> Result<Prepared> {
     let target = spec.parse()?;
     let resolved = resolve::target(engine, &target, call)?;
-    ready(engine, resolved, call)
+    ready(engine, resolved, mode, call)
 }
 
 pub fn prepare_default_window(engine: &Engine, call: &CallScope) -> Result<Prepared> {
-    ready(engine, Resolved { window: default_window(engine)?, reach: Reach::Window }, call)
+    ready(engine, Resolved { window: default_window(engine)?, reach: Reach::Window }, Mode::Foreground, call)
 }
 
 pub fn foreground_app(engine: &Engine, call: &CallScope) -> Result<WindowInfo> {
@@ -36,9 +37,13 @@ pub fn foreground_app(engine: &Engine, call: &CallScope) -> Result<WindowInfo> {
     Ok(window)
 }
 
-fn ready(engine: &Engine, resolved: Resolved, call: &CallScope) -> Result<Prepared> {
+fn ready(engine: &Engine, resolved: Resolved, mode: Mode, call: &CallScope) -> Result<Prepared> {
     engine.host.refuse(&resolved.window)?;
-    engine.guard.before_input(Some(&resolved.window), call)?;
+    if mode == Mode::Foreground && resolved.window.on_current_desktop {
+        engine.guard.before_input(Some(&resolved.window), call)?;
+    } else {
+        engine.guard.before_patterns(Some(&resolved.window), call)?;
+    }
     overlay::begin(engine, &resolved.window, call);
     Ok(resolved)
 }

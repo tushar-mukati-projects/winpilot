@@ -1,4 +1,4 @@
-use deckhand_core::{Element, ElementRef, ErrorCode, Result, TargetSpec, WindowInfo, keys::NamedKey};
+use deckhand_core::{Element, ElementRef, Error, ErrorCode, Result, WindowInfo, keys::NamedKey};
 
 use super::{
     chords::{named, with_ctrl},
@@ -6,24 +6,48 @@ use super::{
     done::{Done, via_focus_click},
     focus::focus_prepared,
     landing::ensure_keys_land,
+    mode::Mode,
     settle,
-    target::{Prepared, prepare},
+    target::Prepared,
 };
 use crate::{call_scope::CallScope, engine::Engine, overlay};
 
 const UNREADABLE: &str = "the field does not expose its value, so it was not read back";
 
-pub fn step(engine: &Engine, target: &TargetSpec, value: &str, call: &CallScope) -> Result<Done> {
-    let prepared = prepare(engine, target, call)?;
-    let element = prepared.require_element("set_value")?;
-    overlay::focus_field(engine, element.rect);
-    overlay::typing(engine, &prepared.window, value.chars().count());
+pub fn step(engine: &Engine, prepared: &Prepared, value: &str, mode: Mode, call: &CallScope) -> Result<Done> {
+    let element = prepared.require_element("set value")?;
+    if prepared.window.on_current_desktop {
+        overlay::focus_field(engine, element.rect);
+        overlay::typing(engine, &prepared.window, value.chars().count());
+    }
+    if mode == Mode::Background {
+        return set_in_background(engine, prepared, element, value, call);
+    }
     if is_writable(element)
         && let Some(done) = set_by_pattern(engine, &prepared.window, element.id, value, call)?
     {
         return Ok(done);
     }
-    set_by_keys(engine, &prepared, element.id, value, call)
+    set_by_keys(engine, prepared, element.id, value, call)
+}
+
+fn set_in_background(
+    engine: &Engine,
+    prepared: &Prepared,
+    element: &Element,
+    value: &str,
+    call: &CallScope,
+) -> Result<Done> {
+    if !is_writable(element) {
+        return Err(Error::unsupported(format!(
+            "{} has no writable value pattern, so background mode can't set it",
+            element.id
+        )));
+    }
+    let (id, text) = (element.id, value.to_string());
+    engine.uia.run(move |uia| uia.set_value(id, &text))?;
+    settle(engine, &prepared.window, call);
+    Ok(Done::by("value").with_note(mismatch_note(read_value(engine, id)?, value)))
 }
 
 pub fn value_matches(now: &str, wanted: &str) -> bool {

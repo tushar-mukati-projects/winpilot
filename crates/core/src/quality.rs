@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{config::ScreenshotConfig, protocol::ScreenshotArgs};
+use crate::{config::ScreenshotConfig, observe_request::ScreenshotRequest};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -47,7 +47,7 @@ impl Quality {
     }
 }
 
-pub fn screenshot_quality(args: &ScreenshotArgs, config: &ScreenshotConfig) -> ImageQuality {
+pub fn screenshot_quality(args: &ScreenshotRequest, config: &ScreenshotConfig) -> ImageQuality {
     let max_width = args
         .max_width
         .map(Some)
@@ -66,22 +66,22 @@ pub fn screenshot_quality(args: &ScreenshotArgs, config: &ScreenshotConfig) -> I
 mod tests {
     use super::*;
 
-    fn args(preset: Option<Quality>, max_width: Option<u32>, quality: Option<u8>) -> ScreenshotArgs {
-        ScreenshotArgs { preset, max_width, quality, ..ScreenshotArgs::default() }
+    fn args(preset: Option<Quality>, max_width: Option<u32>, quality: Option<u8>) -> ScreenshotRequest {
+        ScreenshotRequest { preset, max_width, quality, ..ScreenshotRequest::default() }
     }
 
     fn config(preset: Quality, max_width: Option<u32>, quality: Option<u8>) -> ScreenshotConfig {
         ScreenshotConfig { preset, max_width, quality }
     }
 
-    fn resolved(args: &ScreenshotArgs, config: &ScreenshotConfig) -> (Option<u32>, u8) {
+    fn resolved(args: &ScreenshotRequest, config: &ScreenshotConfig) -> (Option<u32>, u8) {
         let found = screenshot_quality(args, config);
         (found.max_width, found.quality)
     }
 
     #[test]
     fn built_in_default_is_the_medium_preset() {
-        assert_eq!(resolved(&ScreenshotArgs::default(), &ScreenshotConfig::default()), (Some(1280), 80));
+        assert_eq!(resolved(&ScreenshotRequest::default(), &ScreenshotConfig::default()), (Some(1280), 80));
     }
 
     #[test]
@@ -95,16 +95,16 @@ mod tests {
 
     #[test]
     fn config_preset_applies_when_nothing_else_is_set() {
-        assert_eq!(resolved(&ScreenshotArgs::default(), &config(Quality::High, None, None)), (Some(1600), 88));
-        assert_eq!(resolved(&ScreenshotArgs::default(), &config(Quality::Max, None, None)), (None, 95));
+        assert_eq!(resolved(&ScreenshotRequest::default(), &config(Quality::High, None, None)), (Some(1600), 88));
+        assert_eq!(resolved(&ScreenshotRequest::default(), &config(Quality::Max, None, None)), (None, 95));
     }
 
     #[test]
     fn explicit_config_keys_beat_the_config_preset() {
         let old_style = config(Quality::Max, Some(1024), Some(70));
-        assert_eq!(resolved(&ScreenshotArgs::default(), &old_style), (Some(1024), 70));
+        assert_eq!(resolved(&ScreenshotRequest::default(), &old_style), (Some(1024), 70));
         let width_only = config(Quality::Low, Some(2000), None);
-        assert_eq!(resolved(&ScreenshotArgs::default(), &width_only), (Some(2000), 60));
+        assert_eq!(resolved(&ScreenshotRequest::default(), &width_only), (Some(2000), 60));
     }
 
     #[test]

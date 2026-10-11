@@ -1,30 +1,41 @@
 mod after;
+mod append;
 mod buttons;
 mod chords;
 mod click;
 mod click_choice;
 mod clip;
+mod clipboard;
 mod done;
 mod expand;
 mod focus;
 mod focus_step;
+mod foreground;
+mod held;
 mod hit;
 mod key_labels;
 mod keys;
 mod landing;
+mod launch;
+mod launch_match;
 mod locate;
+mod mode;
 mod motion;
+mod mouse;
 mod mouse_click;
 mod mouse_select;
+mod notify;
 mod option_search;
 mod paste;
 mod pattern_click;
-mod pause;
 mod perform;
+mod pick;
 mod pointer;
+mod refusal;
 mod scroll;
 mod select;
 mod select_check;
+mod set;
 mod steps;
 mod summary;
 mod target;
@@ -44,10 +55,10 @@ use std::time::{Duration, Instant};
 
 use deckhand_core::{
     Error, Result, TargetSpec, WindowInfo,
-    protocol::{ActArgs, ActReport, After, AfterMode, StepOutcome},
+    protocol::{ActArgs, ActReport, After, AfterMode, Step, StepOutcome},
 };
 
-use self::{after::Baseline, click_choice::ClickOptions};
+use self::{after::Baseline, click_choice::ClickOptions, mode::Mode, steps::StepContext};
 use crate::{
     call_scope::CallScope,
     engine::{Engine, duration_ms},
@@ -68,16 +79,12 @@ pub fn run(engine: &Engine, args: &ActArgs, call: &CallScope) -> Result<ActRepor
     report
 }
 
-pub fn click_target(engine: &Engine, target: &TargetSpec, call: &CallScope) -> Result<WindowInfo> {
-    let clicked = target::prepare(engine, target, call).and_then(|prepared| {
-        click::click_prepared(engine, &prepared, ClickOptions::default(), call)?;
-        settle(engine, &prepared.window, call);
-        Ok(prepared.window)
-    });
-    if call.showed_overlay() {
-        overlay::end(engine);
-    }
-    clicked
+pub fn click_target(engine: &Engine, target: &TargetSpec, step: &Step, call: &CallScope) -> Result<WindowInfo> {
+    let prepared = target::prepare(engine, target, Mode::Foreground, call)?;
+    mode::for_window(Mode::Foreground, &prepared.window, step)?;
+    click::click_prepared(engine, &prepared, ClickOptions::default(), call)?;
+    settle(engine, &prepared.window, call);
+    Ok(prepared.window)
 }
 
 pub fn settle(engine: &Engine, window: &WindowInfo, call: &CallScope) {
@@ -93,8 +100,9 @@ fn run_holding_actor(engine: &Engine, args: &ActArgs, call: &CallScope, started:
     let _actor = if steps::needs_actor(&args.steps) { Some(engine.guard.acquire_actor(call)?) } else { None };
     let before = WindowsBefore::now(engine);
     let baseline = Baseline::capture(engine, args.after);
-    let mut outcomes = steps::run_all(engine, args, call, &before);
-    buttons::release_held(call, &mut outcomes);
+    let mode = Mode::requested(args.background.unwrap_or(engine.config.act.background));
+    let mut outcomes = steps::run_all(engine, args, &StepContext { call, before: &before, mode });
+    held::release_held(call, &mut outcomes);
     let after = after_or_note(engine, args.after, baseline.as_ref(), &mut outcomes, call)?;
     Ok(ActReport { steps: outcomes, total_steps: args.steps.len(), after, elapsed_ms: duration_ms(started.elapsed()) })
 }

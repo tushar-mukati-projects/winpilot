@@ -6,6 +6,9 @@ use deckhand_desktop::overlay::{CaptureHideGuard, Overlay};
 use crate::{call_scope::CallScope, engine::Engine};
 
 pub fn begin(engine: &Engine, window: &WindowInfo, call: &CallScope) {
+    if !window.on_current_desktop {
+        return;
+    }
     if let Some(overlay) = &engine.overlay {
         overlay.begin(window.rect);
         call.note_overlay_shown();
@@ -55,7 +58,8 @@ pub fn screenshot(engine: &Engine, rect: Rect) {
 }
 
 pub fn scan(engine: &Engine, window: &WindowInfo) {
-    let showing = engine.config.overlay.show_reads && window.state != WindowState::Minimized;
+    let showing =
+        engine.config.overlay.show_reads && window.state != WindowState::Minimized && window.on_current_desktop;
     if let Some(overlay) = engine.overlay.as_ref().filter(|_| showing) {
         overlay.scan(window.rect);
     }
@@ -63,33 +67,4 @@ pub fn scan(engine: &Engine, window: &WindowInfo) {
 
 pub fn hidden_for_capture(engine: &Engine) -> Option<CaptureHideGuard<'_>> {
     engine.overlay.as_deref().map(Overlay::hidden_for_capture)
-}
-
-pub struct Presence<'a> {
-    overlay: Option<&'a Overlay>,
-}
-
-impl Presence<'_> {
-    pub fn follow(&self, window: &WindowInfo) {
-        let visible = window.state != WindowState::Minimized && deckhand_desktop::is_window(window.hwnd);
-        if let Some(overlay) = self.overlay.filter(|_| visible) {
-            overlay.begin(window.rect);
-        }
-    }
-}
-
-impl Drop for Presence<'_> {
-    fn drop(&mut self) {
-        if let Some(overlay) = self.overlay {
-            overlay.end();
-        }
-    }
-}
-
-pub fn present<'a>(engine: &'a Engine, window: &WindowInfo) -> Presence<'a> {
-    let overlay = engine.overlay.as_deref();
-    if let Some(overlay) = overlay {
-        overlay.begin(window.rect);
-    }
-    Presence { overlay }
 }

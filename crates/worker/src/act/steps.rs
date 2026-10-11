@@ -5,17 +5,25 @@ use deckhand_core::{
 
 use super::{
     done::{Done, joined},
+    mode::Mode,
     perform::perform,
     summary::summarize,
 };
 use crate::{call_scope::CallScope, engine::Engine, wait::WindowsBefore};
 
-pub fn run_all(engine: &Engine, args: &ActArgs, call: &CallScope, before: &WindowsBefore) -> Vec<StepOutcome> {
+pub struct StepContext<'a> {
+    pub call: &'a CallScope,
+    pub before: &'a WindowsBefore,
+    pub mode: Mode,
+}
+
+pub fn run_all(engine: &Engine, args: &ActArgs, context: &StepContext<'_>) -> Vec<StepOutcome> {
     let mut outcomes = Vec::with_capacity(args.steps.len());
     for (index, step) in args.steps.iter().enumerate() {
-        let result = engine.guard.check_running(call).and_then(|()| perform(engine, step, call, before));
+        let result = engine.guard.check_running(context.call).and_then(|()| perform(engine, step, context));
         let outcome = outcome(index, summarize(step), result);
-        let stop = outcome.error.as_ref().is_some_and(|error| args.stop_on_error || halts(error) || call.expired());
+        let stop =
+            outcome.error.as_ref().is_some_and(|error| args.stop_on_error || halts(error) || context.call.expired());
         outcomes.push(outcome);
         if stop {
             break;
@@ -36,11 +44,7 @@ pub fn halts(error: &Error) -> bool {
 }
 
 pub fn needs_actor(steps: &[Step]) -> bool {
-    steps.iter().any(is_input_step)
-}
-
-fn is_input_step(step: &Step) -> bool {
-    !matches!(step, Step::Wait { .. } | Step::WaitFor(_))
+    steps.iter().any(Step::uses_input)
 }
 
 pub fn append_note(outcome: &mut StepOutcome, note: String) {
@@ -49,22 +53,10 @@ pub fn append_note(outcome: &mut StepOutcome, note: String) {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{
-        TargetSpec,
-        protocol::{Condition, Until},
-    };
-
     use super::*;
 
-    fn idle() -> Step {
-        Step::WaitFor(Condition {
-            until: Until::Idle,
-            target: None,
-            text: None,
-            window: None,
-            ms: None,
-            timeout_ms: None,
-        })
+    fn step(json: &str) -> Step {
+        serde_json::from_str(json).unwrap()
     }
 
     #[test]
@@ -93,11 +85,12 @@ mod tests {
     }
 
     #[test]
-    fn only_waiting_batches_skip_the_actor_lock() {
+    fn only_waits_and_notifications_skip_the_actor_lock() {
         assert!(!needs_actor(&[]));
-        assert!(!needs_actor(&[Step::Wait { ms: 10 }, idle()]));
-        let focus = Step::Focus { target: TargetSpec::Text("e1".to_string()) };
-        assert!(needs_actor(&[Step::Wait { ms: 10 }, focus]));
+        let quiet = [step(r#"{"do":"wait","ms":10}"#), step(r#"{"do":"notify","title":"a","message":"b"}"#)];
+        assert!(!needs_actor(&quiet));
+        assert!(needs_actor(&[step(r#"{"do":"wait","ms":10}"#), step(r#"{"do":"focus","target":"e1"}"#)]));
+        assert!(needs_actor(&[step(r#"{"do":"clipboard","text":"x"}"#)]));
     }
 
     #[test]

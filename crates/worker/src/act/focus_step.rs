@@ -1,10 +1,9 @@
-use deckhand_core::{Result, TargetSpec};
+use deckhand_core::Result;
 
-use super::{done::Done, focus::set_focus_verified, settle, target::prepare, window::bring_forward};
+use super::{done::Done, focus::set_focus_verified, foreground::bring_forward, settle, target::Prepared};
 use crate::{call_scope::CallScope, engine::Engine};
 
-pub fn step(engine: &Engine, target: &TargetSpec, call: &CallScope) -> Result<Done> {
-    let prepared = prepare(engine, target, call)?;
+pub fn step(engine: &Engine, prepared: &Prepared, call: &CallScope) -> Result<Done> {
     bring_forward(&prepared.window)?;
     let Some(element) = prepared.element() else {
         settle(engine, &prepared.window, call);

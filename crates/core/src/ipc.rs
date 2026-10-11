@@ -81,13 +81,13 @@ fn partial_header(filled: usize) -> io::Result<Option<[u8; 4]>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{ClipboardAction, ClipboardArgs};
+    use crate::protocol::{ObserveArgs, ObserveMode};
 
     #[test]
     fn frames_round_trip() {
         let mut buffer = Vec::new();
-        let call =
-            ToWorker::Call { id: 7, call: Call::Clipboard(ClipboardArgs { action: ClipboardAction::Get, text: None }) };
+        let clipboard = ObserveArgs { mode: ObserveMode::Clipboard, ..ObserveArgs::default() };
+        let call = ToWorker::Call { id: 7, call: Call::Observe(clipboard) };
         write_frame(&mut buffer, &call).unwrap();
         write_frame(&mut buffer, &ToWorker::Cancel { id: 7 }).unwrap();
         let mut reader = buffer.as_slice();

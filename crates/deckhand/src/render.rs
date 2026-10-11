@@ -28,18 +28,15 @@ pub fn failure(error: &Error) -> CallToolResult {
 
 fn contents(reply: Reply, extras: &Extras) -> Vec<ContentBlock> {
     match reply {
-        Reply::Observe(observation) => text(format::observation(&observation, &extras.observe)),
+        Reply::Observation(observation) => text(format::observation(&observation, &extras.observe)),
         Reply::Find(report) => text(format::find(&report)),
+        Reply::Text(report) => text(format::text(&report)),
         Reply::Screenshot(shot) => captioned(format::screenshot_caption(&shot), shot),
-        Reply::Act(report) => act(report),
-        Reply::WaitFor(report) => text(format::wait(&report)),
-        Reply::Windows(report) => text(format::windows(&report)),
-        Reply::PickFile(report) => text(format::pick(&report)),
-        Reply::ReadText(report) => text(format::text(&report)),
-        Reply::Clipboard(report) => text(format::clipboard(&report)),
-        Reply::Notify(report) => text(format::notify(&report)),
         Reply::Record(report) => text(format::record(&report)),
+        Reply::Windows(report) => text(format::windows(&report)),
+        Reply::Clipboard(report) => text(format::clipboard(&report)),
         Reply::Status(report) => text(status(report, extras)),
+        Reply::Act(report) => act(report),
     }
 }
 

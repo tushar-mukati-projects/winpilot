@@ -1,11 +1,11 @@
-use deckhand_core::{Element, ElementRef, Error, ErrorCode, Result, TargetSpec, WindowInfo};
+use deckhand_core::{Element, ElementRef, Error, ErrorCode, Result, WindowInfo};
 
 use super::{
     click_choice::ClickOptions,
+    foreground::bring_forward,
     landing::ensure_keys_land,
     mouse_click::click_by_mouse,
-    target::{Prepared, foreground_app, prepare},
-    window::bring_forward,
+    target::{Prepared, foreground_app},
 };
 use crate::{call_scope::CallScope, engine::Engine, wait::is_gone};
 
@@ -16,10 +16,10 @@ pub struct Focused {
     pub clicked: bool,
 }
 
-pub fn keyboard_target(engine: &Engine, target: Option<&TargetSpec>, call: &CallScope) -> Result<Focused> {
+pub fn keyboard_target(engine: &Engine, target: Option<&Prepared>, call: &CallScope) -> Result<Focused> {
     let focused = match target {
         None => Focused { window: foreground_app(engine, call)?, element: None, clicked: false },
-        Some(spec) => focus_prepared(engine, &prepare(engine, spec, call)?, call)?,
+        Some(prepared) => focus_prepared(engine, prepared, call)?,
     };
     ensure_keys_land(engine, &focused)?;
     Ok(focused)

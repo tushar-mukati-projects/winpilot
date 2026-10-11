@@ -67,6 +67,8 @@ mod tests {
             state: WindowState::Normal,
             foreground: true,
             elevated: false,
+            desktop: None,
+            on_current_desktop: true,
         }
     }
 

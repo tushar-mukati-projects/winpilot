@@ -4,10 +4,10 @@ use crate::{
     error::Error,
     geometry::{Point, Rect},
     matching::is_gap,
-    protocol::{
-        ActReport, After, AppInfo, AppKind, ClipboardReport, DialogKind, DiffReport, FindReport, Found, MonitorInfo,
-        NotifyReport, Observation, PickReport, RecordReport, RecordState, ScreenshotReport, StatusReport, StepOutcome,
-        TextReport, TextSource, Timing, WaitReport, WindowsReport,
+    recording::{RecordReport, RecordState},
+    reports::{
+        ActReport, After, AppInfo, AppKind, ClipboardReport, DiffReport, FindReport, Found, MonitorInfo, Observation,
+        ScreenshotReport, StatusReport, StepOutcome, TextReport, TextSource, Timing, WindowsReport,
     },
     role::Role,
 };
@@ -75,17 +75,9 @@ pub fn act(report: &ActReport) -> String {
     lines.join("\n")
 }
 
-pub fn wait(report: &WaitReport) -> String {
-    let verdict = if report.satisfied { "satisfied" } else { "timed out" };
-    let mut lines = vec![with_detail(format!("{verdict} after {} ms", report.elapsed_ms), &report.detail)];
-    lines.extend(report.element.as_ref().map(|element| element_line(element, false)));
-    lines.join("\n")
-}
-
 pub fn windows(report: &WindowsReport) -> String {
     let mut lines: Vec<String> = Vec::new();
-    lines.extend(windows_headline(report.window.as_ref(), report.note.as_deref()));
-    lines.extend(report.observation.as_ref().map(|found| observation(found, &ObserveFormat::default())));
+    lines.extend(report.note.clone());
     lines.extend(report.windows.iter().map(window_line));
     lines.extend(report.monitors.iter().map(monitor_line));
     lines.extend(report.apps.iter().map(app_line));
@@ -114,26 +106,6 @@ fn app_line(app: &AppInfo) -> String {
     format!("{} {kind} {}", quote(app.name.trim(), NAME_LIMIT), single_line(app.id.trim(), APP_ID_LIMIT))
 }
 
-pub fn notify(report: &NotifyReport) -> String {
-    match (report.shown, report.note.as_deref()) {
-        (true, None) => "notification sent".to_string(),
-        (true, Some(note)) => format!("notification {note}"),
-        (false, Some(note)) => format!("notification not shown: {note}"),
-        (false, None) => "notification not shown".to_string(),
-    }
-}
-
-pub fn pick(report: &PickReport) -> String {
-    let (dialog, shown): (&str, Vec<&str>) = match report.dialog {
-        DialogKind::Open => ("Open", report.files.iter().map(|path| base_name(path)).collect()),
-        DialogKind::Save => ("Save", report.files.iter().map(String::as_str).collect()),
-    };
-    let summary = format!("picked {} in the {dialog} dialog", count_noun(report.files.len(), "file"));
-    let mut lines = vec![with_detail(summary, &shown.join(", "))];
-    lines.extend(report.after.as_ref().map(|after| observation(after, &ObserveFormat::default())));
-    lines.join("\n")
-}
-
 pub fn text(report: &TextReport) -> String {
     let mut lines = Vec::new();
     if report.source == TextSource::Ocr {
@@ -148,9 +120,6 @@ pub fn text(report: &TextReport) -> String {
 
 pub fn clipboard(report: &ClipboardReport) -> String {
     let text = report.text.as_deref().unwrap_or_default();
-    if report.changed {
-        return format!("clipboard set ({})", count_noun(text.chars().count(), "char"));
-    }
     if text.is_empty() { "(clipboard has no text)".to_string() } else { text.to_string() }
 }
 
@@ -190,7 +159,9 @@ fn record_headline(report: &RecordReport) -> String {
     let path = report.path.as_deref().unwrap_or("(no file)");
     match report.state {
         RecordState::Idle => "not recording".to_string(),
-        RecordState::Starting => "the recording is starting; check again with record action status".to_string(),
+        RecordState::Starting => {
+            "the recording is starting; check again with observe mode=record action=status".to_string()
+        }
         RecordState::Recording => recording_line(report, path),
         RecordState::Finished => {
             let frames = frame_count(report.frames);
@@ -206,7 +177,7 @@ fn recording_line(report: &RecordReport, path: &str) -> String {
         parts.push(format!("{:.1} s", report.seconds));
         parts.push(frame_count(report.frames));
     }
-    parts.push("stop with record action stop".to_string());
+    parts.push("stop with observe mode=record action=stop".to_string());
     parts.join(" · ")
 }
 
@@ -232,7 +203,15 @@ pub fn error(error: &Error) -> String {
 pub fn window_line(window: &WindowInfo) -> String {
     let mut parts = vec![window_tag(window), quote(window.title.trim(), NAME_LIMIT)];
     parts.extend(window_flags(window).map(str::to_string));
+    parts.extend(other_desktop(window));
     parts.join(" ")
+}
+
+pub fn other_desktop(window: &WindowInfo) -> Option<String> {
+    if window.on_current_desktop {
+        return None;
+    }
+    Some(window.desktop.map_or_else(|| "another desktop".to_string(), |number| format!("desktop {number}")))
 }
 
 pub fn element_line(element: &Element, coords: bool) -> String {
@@ -531,27 +510,6 @@ fn option_change(before: Option<bool>, after: Option<bool>, words: [&'static str
     })
 }
 
-fn windows_headline(window: Option<&WindowInfo>, note: Option<&str>) -> Option<String> {
-    match (window, note) {
-        (Some(window), Some(note)) => Some(format!("{note}: {}", window_line(window))),
-        (Some(window), None) => Some(window_line(window)),
-        (None, Some(note)) => Some(note.to_string()),
-        (None, None) => None,
-    }
-}
-
-fn with_detail(head: String, detail: &str) -> String {
-    if detail.is_empty() {
-        return head;
-    }
-    format!("{head}: {detail}")
-}
-
-fn base_name(path: &str) -> &str {
-    let trimmed = path.trim_end_matches(['\\', '/']);
-    trimmed.rsplit(['\\', '/']).next().unwrap_or(trimmed)
-}
-
 fn count_noun(count: usize, noun: &str) -> String {
     if count == 1 { format!("1 {noun}") } else { format!("{count} {noun}s") }
 }
@@ -763,7 +721,7 @@ mod tests {
             secure_desktop: false,
             worker_restarts: 1,
             recent: vec![
-                Timing { tool: "find".to_string(), ms: 12, ok: true },
+                Timing { tool: "observe elements".to_string(), ms: 12, ok: true },
                 Timing { tool: "act".to_string(), ms: 340, ok: false },
             ],
         }
@@ -932,6 +890,20 @@ mod tests {
         assert_eq!(window_line(&app_window(5, "", "Title")), "w5 \"Title\"");
         assert_eq!(window_line(&app_window(5, "app.exe", "")), "w5 app.exe \"\"");
         assert_eq!(window_line(&app_window(5, "app.exe", "a\nb")), "w5 app.exe \"a b\"");
+    }
+
+    #[test]
+    fn windows_on_other_desktops_say_which_one() {
+        let elsewhere =
+            WindowInfo { desktop: Some(2), on_current_desktop: false, ..app_window(123, "notepad.exe", "Notes") };
+        assert_eq!(window_line(&elsewhere), "w123 notepad.exe \"Notes\" desktop 2");
+        let unnumbered = WindowInfo { desktop: None, ..elsewhere.clone() };
+        assert_eq!(window_line(&unnumbered), "w123 notepad.exe \"Notes\" another desktop");
+        let minimized = WindowInfo { state: WindowState::Minimized, ..elsewhere };
+        assert_eq!(window_line(&minimized), "w123 notepad.exe \"Notes\" minimized desktop 2");
+        let here = WindowInfo { desktop: Some(1), ..app_window(5, "app.exe", "Here") };
+        assert_eq!(window_line(&here), "w5 app.exe \"Here\"");
+        assert_eq!(other_desktop(&here), None);
     }
 
     #[test]
@@ -1289,47 +1261,9 @@ mod tests {
     }
 
     #[test]
-    fn wait_report_forms() {
-        let satisfied = WaitReport {
-            satisfied: true,
-            elapsed_ms: 340,
-            detail: "window \"Save As\" opened".to_string(),
-            element: None,
-        };
-        assert_eq!(wait(&satisfied), "satisfied after 340 ms: window \"Save As\" opened");
-        let timed_out = WaitReport {
-            satisfied: false,
-            elapsed_ms: 5000,
-            detail: "e3 still present".to_string(),
-            element: Some(element(3, 0, Role::Button, "Cancel")),
-        };
-        assert_eq!(wait(&timed_out), "timed out after 5000 ms: e3 still present\ne3 button \"Cancel\"");
-        let bare = WaitReport { satisfied: true, elapsed_ms: 0, detail: String::new(), element: None };
-        assert_eq!(wait(&bare), "satisfied after 0 ms");
-    }
-
-    #[test]
-    fn windows_report_with_note_and_observation() {
-        let report = WindowsReport {
-            windows: Vec::new(),
-            window: Some(notepad_window()),
-            observation: Some(plain_observation(vec![element(1, 0, Role::Button, "OK")])),
-            note: Some("launched".to_string()),
-            ..WindowsReport::default()
-        };
-        assert_eq!(
-            windows(&report),
-            format!("launched: w16 notepad.exe \"Untitled - Notepad\" foreground\n{HEADER}\ne1 button \"OK\"")
-        );
-    }
-
-    #[test]
     fn windows_report_list() {
         let report = WindowsReport {
             windows: vec![notepad_window(), app_window(2, "chrome.exe", "Inbox")],
-            window: None,
-            observation: None,
-            note: None,
             ..WindowsReport::default()
         };
         assert_eq!(windows(&report), "w16 notepad.exe \"Untitled - Notepad\" foreground\nw2 chrome.exe \"Inbox\"");
@@ -1343,10 +1277,8 @@ mod tests {
     fn windows_report_edge_forms() {
         let empty = empty_windows_report();
         assert_eq!(windows(&empty), "no windows");
-        let note_only = WindowsReport { note: Some("closed w5".to_string()), ..empty.clone() };
-        assert_eq!(windows(&note_only), "closed w5");
-        let window_only = WindowsReport { window: Some(app_window(5, "app.exe", "A")), ..empty };
-        assert_eq!(windows(&window_only), "w5 app.exe \"A\"");
+        let note_only = WindowsReport { note: Some("3 installed apps".to_string()), ..empty };
+        assert_eq!(windows(&note_only), "3 installed apps");
     }
 
     fn monitor(index: u32, rect: Rect, work_area: Rect, scale_percent: u32, primary: bool) -> MonitorInfo {
@@ -1395,54 +1327,6 @@ mod tests {
     }
 
     #[test]
-    fn notify_report_forms() {
-        let report = |shown: bool, note: Option<&str>| NotifyReport { shown, note: note.map(str::to_string) };
-        assert_eq!(notify(&report(true, None)), "notification sent");
-        assert_eq!(
-            notify(&report(false, Some("notifications are turned off by group policy"))),
-            "notification not shown: notifications are turned off by group policy"
-        );
-        assert_eq!(notify(&report(false, None)), "notification not shown");
-        assert_eq!(
-            notify(&report(true, Some("sent as a tray balloon; Windows may hold it back"))),
-            "notification sent as a tray balloon; Windows may hold it back"
-        );
-    }
-
-    #[test]
-    fn pick_report_forms() {
-        let open = PickReport {
-            dialog: DialogKind::Open,
-            files: vec!["C:\\Users\\me\\a.txt".to_string(), "C:/temp/b.txt".to_string()],
-            after: None,
-        };
-        assert_eq!(pick(&open), "picked 2 files in the Open dialog: a.txt, b.txt");
-        let save = PickReport { dialog: DialogKind::Save, files: vec!["C:\\temp\\out.txt".to_string()], after: None };
-        assert_eq!(pick(&save), "picked 1 file in the Save dialog: C:\\temp\\out.txt");
-        let none = PickReport { dialog: DialogKind::Open, files: Vec::new(), after: None };
-        assert_eq!(pick(&none), "picked 0 files in the Open dialog");
-    }
-
-    #[test]
-    fn pick_report_with_observation() {
-        let report = PickReport {
-            dialog: DialogKind::Open,
-            files: vec!["C:\\dir\\".to_string()],
-            after: Some(plain_observation(vec![element(1, 0, Role::Button, "Upload")])),
-        };
-        assert_eq!(pick(&report), format!("picked 1 file in the Open dialog: dir\n{HEADER}\ne1 button \"Upload\""));
-    }
-
-    #[test]
-    fn base_names() {
-        assert_eq!(base_name("C:\\a\\b.txt"), "b.txt");
-        assert_eq!(base_name("/tmp/c.txt"), "c.txt");
-        assert_eq!(base_name("plain.txt"), "plain.txt");
-        assert_eq!(base_name("C:\\dir\\\\"), "dir");
-        assert_eq!(base_name(""), "");
-    }
-
-    #[test]
     fn text_report_forms() {
         let uia = TextReport { text: "hello\nworld".to_string(), source: TextSource::Uia, truncated: false };
         assert_eq!(text(&uia), "hello\nworld");
@@ -1454,21 +1338,9 @@ mod tests {
 
     #[test]
     fn clipboard_report_forms() {
-        assert_eq!(clipboard(&ClipboardReport { text: Some("copied".to_string()), changed: false }), "copied");
-        assert_eq!(clipboard(&ClipboardReport { text: None, changed: false }), "(clipboard has no text)");
-        assert_eq!(
-            clipboard(&ClipboardReport { text: Some(String::new()), changed: false }),
-            "(clipboard has no text)"
-        );
-        assert_eq!(
-            clipboard(&ClipboardReport { text: Some("héllo".to_string()), changed: true }),
-            "clipboard set (5 chars)"
-        );
-        assert_eq!(
-            clipboard(&ClipboardReport { text: Some("x".to_string()), changed: true }),
-            "clipboard set (1 char)"
-        );
-        assert_eq!(clipboard(&ClipboardReport { text: None, changed: true }), "clipboard set (0 chars)");
+        assert_eq!(clipboard(&ClipboardReport { text: Some("copied".to_string()) }), "copied");
+        assert_eq!(clipboard(&ClipboardReport { text: None }), "(clipboard has no text)");
+        assert_eq!(clipboard(&ClipboardReport { text: Some(String::new()) }), "(clipboard has no text)");
     }
 
     #[test]
@@ -1482,7 +1354,7 @@ mod tests {
             "elevated: no",
             "secure desktop: no",
             "worker restarts: 1",
-            "recent: find 12 ms ok, act 340 ms err",
+            "recent: observe elements 12 ms ok, act 340 ms err",
         ];
         assert_eq!(status(&status_report()), expected.join("\n"));
     }
@@ -1559,16 +1431,18 @@ mod tests {
         assert_eq!(record(&RecordReport::idle()), "not recording");
         assert_eq!(
             record(&RecordReport::starting()),
-            "the recording is starting; check again with record action status"
+            "the recording is starting; check again with observe mode=record action=status"
         );
         assert_eq!(
             record(&recording(RecordState::Recording)),
-            "recording to C:\\Videos\\Deckhand\\deckhand-20261011-101500.mp4 · 1920x1200 @ 30 fps · stop with record action stop"
+            "recording to C:\\Videos\\Deckhand\\deckhand-20261011-101500.mp4 · 1920x1200 @ 30 fps · stop with observe mode=record action=stop"
         );
         let running = RecordReport { seconds: 4.25, frames: 128, ..recording(RecordState::Recording) };
         let text = record(&running);
         assert!(
-            text.ends_with(".mp4 · 1920x1200 @ 30 fps · 4.2 s · 128 frames · stop with record action stop"),
+            text.ends_with(
+                ".mp4 · 1920x1200 @ 30 fps · 4.2 s · 128 frames · stop with observe mode=record action=stop"
+            ),
             "{text}"
         );
         let saved = RecordReport {

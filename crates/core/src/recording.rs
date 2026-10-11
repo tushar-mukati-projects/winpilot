@@ -24,44 +24,18 @@ pub enum VideoFormat {
     Gif,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RecordArgs {
-    #[schemars(description = "start a recording, stop it and save the file, or report its status.")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordRequest {
     pub action: RecordAction,
-    #[serde(default)]
-    #[schemars(
-        description = "Window or element to record: a ref, title or selector. An element records its window cropped to it. Default: the foreground app window."
-    )]
     pub target: Option<String>,
-    #[serde(default)]
-    #[schemars(description = "Record this screen rectangle in physical pixels instead.")]
     pub region: Option<Rect>,
-    #[serde(default)]
-    #[schemars(description = "Record a whole monitor by index (0 = primary).")]
     pub monitor: Option<u32>,
-    #[serde(default)]
-    #[schemars(description = "mp4 (H.264, default) or gif.")]
     pub format: Option<VideoFormat>,
-    #[serde(default)]
-    #[schemars(description = "Frames per second: 1-60 for mp4, 1-20 for gif (default 30, gif 20).")]
     pub fps: Option<u32>,
-    #[serde(default)]
-    #[schemars(description = "low, medium, high (default) or max: bitrate for mp4, palette effort for gif.")]
     pub quality: Option<Quality>,
-    #[serde(default)]
-    #[schemars(description = "Stop and save automatically after this many seconds (1-1800, default 300).")]
     pub max_seconds: Option<u32>,
-    #[serde(default)]
-    #[schemars(description = "Show the mouse pointer (default true).")]
     pub cursor: Option<bool>,
-    #[serde(default)]
-    #[schemars(description = "Scale down to at most this width, 160-3840 (default 1920, gif 960).")]
     pub max_width: Option<u32>,
-    #[serde(default)]
-    #[schemars(
-        description = "Absolute output path ending in .mp4 or .gif; must not exist yet. Default: Videos\\Deckhand\\deckhand-<time>.mp4."
-    )]
     pub path: Option<String>,
 }
 
@@ -127,7 +101,7 @@ impl VideoFormat {
     }
 }
 
-impl RecordArgs {
+impl RecordRequest {
     pub const fn new(action: RecordAction) -> Self {
         Self {
             action,
@@ -151,7 +125,7 @@ impl RecordArgs {
             ("monitor", self.monitor.is_some()),
             ("format", self.format.is_some()),
             ("fps", self.fps.is_some()),
-            ("quality", self.quality.is_some()),
+            ("video_quality", self.quality.is_some()),
             ("max_seconds", self.max_seconds.is_some()),
             ("cursor", self.cursor.is_some()),
             ("max_width", self.max_width.is_some()),
@@ -191,17 +165,8 @@ mod tests {
     }
 
     #[test]
-    fn arguments_deserialize_and_reject_unknown_fields() {
-        let args: RecordArgs = serde_json::from_str(r#"{"action":"start","format":"gif","fps":10}"#).unwrap();
-        assert_eq!(args.action, RecordAction::Start);
-        assert_eq!((args.format, args.fps), (Some(VideoFormat::Gif), Some(10)));
-        assert!(serde_json::from_str::<RecordArgs>(r#"{"action":"start","fsp":10}"#).is_err());
-        assert!(serde_json::from_str::<RecordArgs>(r#"{"fps":10}"#).is_err());
-    }
-
-    #[test]
     fn start_options_lists_every_given_field_in_order() {
-        let mut args = RecordArgs::new(RecordAction::Stop);
+        let mut args = RecordRequest::new(RecordAction::Stop);
         assert!(args.start_options().is_empty());
         args.fps = Some(5);
         args.target = Some("w1".to_string());

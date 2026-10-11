@@ -1,6 +1,6 @@
 use deckhand_core::{Element, ElementRef, Error, ErrorCode, Point, Result, WindowInfo};
 
-use super::{settle, target::Prepared, window::bring_forward};
+use super::{foreground::bring_forward, settle, target::Prepared};
 use crate::{call_scope::CallScope, engine::Engine, on_screen::clickable_point, resolve::Reach};
 
 #[derive(Debug, Clone)]

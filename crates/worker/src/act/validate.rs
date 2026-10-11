@@ -5,6 +5,7 @@ use deckhand_core::{
 };
 
 use super::click_choice::parse_modifiers;
+use crate::window_spec;
 
 pub fn validate(args: &ActArgs) -> Result<()> {
     for (index, step) in args.steps.iter().enumerate() {
@@ -19,24 +20,23 @@ fn check_step(step: &Step) -> Result<()> {
             target.parse()?;
             modifiers.as_deref().map(parse_modifiers).transpose().map(drop)
         }
-        Step::Hover { target, .. }
-        | Step::Move { to: target, .. }
-        | Step::MouseDown { target, .. }
-        | Step::SetValue { target, .. }
-        | Step::Select { target, .. }
-        | Step::Toggle { target, .. }
-        | Step::Expand { target }
-        | Step::Collapse { target }
-        | Step::Focus { target } => target.parse().map(drop),
-        Step::Type { target, .. } | Step::Scroll { target, .. } | Step::MouseUp { target, .. } => {
-            parse_optional(target.as_ref())
-        }
+        Step::Set { target, .. } | Step::Focus { target } => target.parse().map(drop),
+        Step::Type { target, .. } => parse_optional(target.as_ref()),
+        Step::Window { target, .. } => target.as_ref().map_or(Ok(()), parse_window),
+        Step::Mouse { target, to, .. } => parse_optional(target.as_ref()).and_then(|()| parse_optional(to.as_ref())),
         Step::Key { keys, target, .. } => {
             parse_keys(keys)?;
             parse_optional(target.as_ref())
         }
-        Step::Drag { from, to, .. } => from.parse().and_then(|_| to.parse()).map(drop),
-        Step::WaitFor(_) | Step::Wait { .. } => Ok(()),
+        Step::Pick { open_with, .. } => parse_optional(open_with.as_ref()),
+        Step::Wait(_) | Step::Clipboard { .. } | Step::Notify { .. } => Ok(()),
+    }
+}
+
+fn parse_window(target: &TargetSpec) -> Result<()> {
+    match target {
+        TargetSpec::Text(text) => window_spec::parse(text).map(drop),
+        TargetSpec::Point(_) => target.parse().map(drop),
     }
 }
 
@@ -46,59 +46,46 @@ fn parse_optional(target: Option<&TargetSpec>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{
-        ErrorCode,
-        protocol::{AfterMode, ClickHow, MouseButton},
-    };
+    use deckhand_core::{ErrorCode, protocol::AfterMode};
 
     use super::*;
 
-    fn args(steps: Vec<Step>) -> ActArgs {
-        ActArgs { steps, after: AfterMode::None, stop_on_error: true }
-    }
-
-    fn text(target: &str) -> TargetSpec {
-        TargetSpec::Text(target.to_string())
-    }
-
-    fn click_with(modifiers: Option<&str>) -> Step {
-        Step::Click {
-            target: text("e1"),
-            button: MouseButton::Left,
-            count: 1,
-            modifiers: modifiers.map(str::to_string),
-            how: ClickHow::Auto,
-            glide_ms: None,
-        }
+    fn args(steps: &[&str]) -> ActArgs {
+        let steps = steps.iter().map(|json| serde_json::from_str(json).unwrap()).collect();
+        ActArgs { steps, after: AfterMode::None, stop_on_error: true, background: None }
     }
 
     #[test]
     fn empty_and_simple_batches_pass() {
-        assert!(validate(&args(Vec::new())).is_ok());
-        let steps = vec![
-            Step::Key { keys: "ctrl+s".to_string(), target: None, repeat: 1 },
-            Step::Wait { ms: 100 },
-            Step::Drag { from: text("e1"), to: text("role:button name:OK"), glide_ms: None },
-            click_with(Some("ctrl+shift")),
+        assert!(validate(&args(&[])).is_ok());
+        let steps = [
+            r#"{"do":"key","keys":"ctrl+s"}"#,
+            r#"{"do":"wait","ms":100}"#,
+            r#"{"do":"mouse","action":"drag","target":"e1","to":"role:button name:OK"}"#,
+            r#"{"do":"click","target":"e1","modifiers":"ctrl+shift"}"#,
+            r#"{"do":"window","action":"close","target":"process:notepad"}"#,
+            r#"{"do":"window","action":"close","target":"C:\\a.txt - Notepad"}"#,
         ];
-        assert!(validate(&args(steps)).is_ok());
+        assert!(validate(&args(&steps)).is_ok());
     }
 
     #[test]
     fn a_bad_step_is_named_by_its_number() {
-        let steps = vec![Step::Wait { ms: 1 }, Step::Key { keys: "ctrl+".to_string(), target: None, repeat: 1 }];
-        let error = validate(&args(steps)).unwrap_err();
+        let error = validate(&args(&[r#"{"do":"wait","ms":1}"#, r#"{"do":"key","keys":"ctrl+"}"#])).unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidArgument);
         assert!(error.message.starts_with("step 2: "), "{}", error.message);
     }
 
     #[test]
     fn targets_keys_and_modifiers_are_checked() {
-        let empty_target = Step::Focus { target: text("  ") };
-        let bad_drag = Step::Drag { from: text("e1"), to: text(""), glide_ms: None };
-        let bad_keys = Step::Key { keys: "ctrl+nope".to_string(), target: None, repeat: 1 };
-        for step in [empty_target, click_with(Some("ctrl+x")), bad_drag, bad_keys] {
-            assert!(validate(&args(vec![step.clone()])).is_err(), "{step:?}");
+        for json in [
+            r#"{"do":"focus","target":"  "}"#,
+            r#"{"do":"click","target":"e1","modifiers":"ctrl+x"}"#,
+            r#"{"do":"mouse","action":"drag","target":"e1","to":""}"#,
+            r#"{"do":"key","keys":"ctrl+nope"}"#,
+            r#"{"do":"pick","paths":["C:\\a.txt"],"open_with":"role:gizmo"}"#,
+        ] {
+            assert!(validate(&args(&[json])).is_err(), "{json}");
         }
     }
 }

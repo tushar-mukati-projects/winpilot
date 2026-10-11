@@ -1,6 +1,6 @@
-use deckhand_core::{Result, TargetSpec};
+use deckhand_core::Result;
 
-use super::{done::Done, settle, target::prepare};
+use super::{done::Done, settle, target::Prepared};
 use crate::{call_scope::CallScope, engine::Engine};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,6 +10,10 @@ pub enum Expansion {
 }
 
 impl Expansion {
+    pub const fn wanted(expanded: bool) -> Self {
+        if expanded { Self::Expand } else { Self::Collapse }
+    }
+
     pub const fn name(self) -> &'static str {
         match self {
             Self::Expand => "expand",
@@ -18,13 +22,23 @@ impl Expansion {
     }
 }
 
-pub fn step(engine: &Engine, target: &TargetSpec, expansion: Expansion, call: &CallScope) -> Result<Done> {
-    let prepared = prepare(engine, target, call)?;
-    let id = prepared.require_element(expansion.name())?.id;
+pub fn step(engine: &Engine, prepared: &Prepared, expansion: Expansion, call: &CallScope) -> Result<Done> {
+    let id = prepared.require_element("set expanded")?.id;
     engine.uia.run(move |uia| match expansion {
         Expansion::Expand => uia.expand(id),
         Expansion::Collapse => uia.collapse(id),
     })?;
     settle(engine, &prepared.window, call);
     Ok(Done::by(expansion.name()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_wish_picks_the_pattern_call() {
+        assert_eq!(Expansion::wanted(true), Expansion::Expand);
+        assert_eq!(Expansion::wanted(false).name(), "collapse");
+    }
 }

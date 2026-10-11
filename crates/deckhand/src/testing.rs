@@ -12,7 +12,7 @@ use std::{
 use deckhand_core::{
     Context, Result,
     ipc::{FromWorker, ToWorker, read_frame, write_frame},
-    protocol::{Call, ClipboardAction, ClipboardArgs, ClipboardReport, Reply, StatusReport},
+    protocol::{ActArgs, AfterMode, Call, ClipboardReport, Reply, StatusReport, Step},
 };
 
 use crate::{
@@ -118,17 +118,23 @@ pub fn echo_after_handshake(mut worker: FakeWorker) {
 }
 
 pub fn echo(call: &Call) -> Reply {
-    match call {
-        Call::Status => Reply::Status(status_report()),
-        Call::Clipboard(ClipboardArgs { text, .. }) => {
-            Reply::Clipboard(ClipboardReport { text: text.clone(), changed: true })
-        }
-        other => Reply::Clipboard(ClipboardReport { text: Some(other.name().to_string()), changed: false }),
+    if call.is_status() {
+        return Reply::Status(status_report());
     }
+    Reply::Clipboard(ClipboardReport { text: Some(clipboard_text(call).unwrap_or_else(|| call.label().to_string())) })
+}
+
+pub fn clipboard_text(call: &Call) -> Option<String> {
+    let Call::Act(args) = call else { return None };
+    args.steps.iter().find_map(|step| match step {
+        Step::Clipboard { text } => Some(text.clone()),
+        _ => None,
+    })
 }
 
 pub fn set_clipboard(text: &str) -> Call {
-    Call::Clipboard(ClipboardArgs { action: ClipboardAction::Set, text: Some(text.to_string()) })
+    let steps = vec![Step::Clipboard { text: text.to_string() }];
+    Call::Act(ActArgs { steps, after: AfterMode::None, stop_on_error: true, background: None })
 }
 
 pub fn status_report() -> StatusReport {

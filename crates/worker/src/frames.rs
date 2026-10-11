@@ -1,7 +1,7 @@
 use deckhand_capture::{Frame, FrameSource};
-use deckhand_core::{Error, Rect, Result, WindowInfo, WindowRef, WindowState};
+use deckhand_core::{Error, Rect, Result, WindowInfo, WindowRef, WindowState, format::other_desktop};
 
-use crate::{blackout, engine::Engine, overlay};
+use crate::{blackout, engine::Engine, overlay, uniform_frame::is_uniform};
 
 pub fn region(engine: &Engine, rect: Rect) -> Result<Frame> {
     screened(engine, None, || engine.capturer.screen(rect))
@@ -23,7 +23,13 @@ pub fn element(engine: &Engine, window: &WindowInfo, rect: Rect) -> Result<Frame
 fn capture_window(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> Result<Frame> {
     engine.guard.check_window(window)?;
     if window.state == WindowState::Minimized {
-        return Err(Error::invalid(format!("{} is minimized; restore it first (windows action restore)", window.hwnd)));
+        return Err(Error::invalid(format!(
+            "{} is minimized; restore it first (act window action=restore)",
+            window.hwnd
+        )));
+    }
+    if !window.on_current_desktop {
+        return elsewhere(engine, window, area);
     }
     if window.foreground {
         let rect = area.unwrap_or(window.rect);
@@ -41,6 +47,24 @@ fn capture_window(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> R
         return Ok(frame);
     }
     blacked_out(engine, frame, Some(window.hwnd), Vec::new())
+}
+
+fn elsewhere(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> Result<Frame> {
+    let printed = engine.capturer.window(window.hwnd).ok();
+    let drawn = printed.filter(|frame| frame.source == FrameSource::Window && !is_uniform(&frame.bgra));
+    let frame = drawn.ok_or_else(|| not_drawn(window))?;
+    match area {
+        Some(area) => frame.crop(area).ok_or_else(outside_window),
+        None => Ok(frame),
+    }
+}
+
+pub fn not_drawn(window: &WindowInfo) -> Error {
+    let desktop = other_desktop(window).unwrap_or_else(|| "another desktop".to_string());
+    Error::unsupported(format!(
+        "{} is on {desktop}; Windows doesn't draw it there, so try observe mode=text or move it to this desktop",
+        window.hwnd
+    ))
 }
 
 fn screened(engine: &Engine, above: Option<WindowRef>, capture: impl FnOnce() -> Result<Frame>) -> Result<Frame> {

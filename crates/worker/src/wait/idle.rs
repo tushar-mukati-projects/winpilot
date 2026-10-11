@@ -1,8 +1,8 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Result, WindowInfo, format::window_line, protocol::WaitReport};
+use deckhand_core::{Result, WindowInfo, format::window_line};
 
-use super::check::Check;
+use super::{WaitReport, check::Check};
 use crate::{
     call_scope::CallScope,
     default_window::default_window,
@@ -54,6 +54,8 @@ mod tests {
             state: WindowState::Normal,
             foreground: false,
             elevated: false,
+            desktop: None,
+            on_current_desktop: true,
         };
         let calm = quiet_check(&window, Duration::from_millis(300), true);
         assert!(calm.met);

@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Error, Result, protocol::MouseButton};
+use deckhand_core::{Error, Result, keys::Chord, protocol::MouseButton};
 use parking_lot::Mutex;
 
 use crate::cancel::Cancel;
@@ -18,6 +18,7 @@ pub struct CallScope {
     acting: AtomicBool,
     overlay_shown: AtomicBool,
     held: Mutex<Vec<MouseButton>>,
+    held_keys: Mutex<Vec<Chord>>,
 }
 
 impl CallScope {
@@ -28,6 +29,7 @@ impl CallScope {
             acting: AtomicBool::new(false),
             overlay_shown: AtomicBool::new(false),
             held: Mutex::new(Vec::new()),
+            held_keys: Mutex::new(Vec::new()),
         }
     }
 
@@ -44,6 +46,21 @@ impl CallScope {
 
     pub fn take_held(&self) -> Vec<MouseButton> {
         std::mem::take(&mut *self.held.lock())
+    }
+
+    pub fn note_held_keys(&self, chord: Chord) {
+        let mut held = self.held_keys.lock();
+        if !held.contains(&chord) {
+            held.push(chord);
+        }
+    }
+
+    pub fn note_released_keys(&self, chord: Chord) {
+        self.held_keys.lock().retain(|held| *held != chord);
+    }
+
+    pub fn take_held_keys(&self) -> Vec<Chord> {
+        std::mem::take(&mut *self.held_keys.lock())
     }
 
     pub fn check(&self) -> Result<()> {
@@ -140,6 +157,19 @@ mod tests {
         scope.note_released(MouseButton::Right);
         assert_eq!(scope.take_held(), vec![MouseButton::Left]);
         assert!(scope.take_held().is_empty());
+    }
+
+    #[test]
+    fn held_keys_are_tracked_until_released_or_taken() {
+        let scope = CallScope::relaxed();
+        let shift = deckhand_core::keys::parse_chord("shift").unwrap();
+        let ctrl_a = deckhand_core::keys::parse_chord("ctrl+a").unwrap();
+        scope.note_held_keys(shift);
+        scope.note_held_keys(shift);
+        scope.note_held_keys(ctrl_a);
+        scope.note_released_keys(ctrl_a);
+        assert_eq!(scope.take_held_keys(), vec![shift]);
+        assert!(scope.take_held_keys().is_empty());
     }
 
     #[test]

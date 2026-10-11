@@ -2,6 +2,7 @@ mod capture;
 mod encode;
 mod enumwin;
 mod ocr;
+mod privacy;
 mod uia;
 mod util;
 
@@ -56,15 +57,6 @@ fn probe() {
     }
 }
 
-fn deny_titles(args: &[String]) -> Vec<String> {
-    args.windows(2).filter(|pair| pair[0] == "--deny-title").map(|pair| pair[1].to_lowercase()).collect()
-}
-
-fn title_denied(w: &WinInfo, deny: &[String]) -> bool {
-    let title = w.title.to_lowercase();
-    deny.iter().any(|text| !text.is_empty() && title.contains(text.as_str()))
-}
-
 fn pick<'a>(wins: &'a [WinInfo], f: impl Fn(&WinInfo) -> bool) -> Option<&'a WinInfo> {
     wins.iter().filter(|w| w.is_app_window() && f(w)).min_by_key(|w| (w.minimized, w.z))
 }
@@ -80,13 +72,20 @@ fn main() {
         return;
     }
     let has = |s: &str| args.iter().any(|a| a == s);
-    let deny = deny_titles(&args);
+    let privacy = match privacy::PrivacyGuard::load(&args) {
+        Ok(guard) => guard,
+        Err(problem) => {
+            eprintln!("deskbench: {problem}");
+            std::process::exit(2);
+        }
+    };
     let main_entry = ms_since_process_start();
     set_dpi_aware();
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
     }
     println!("deskbench: read-only desktop-control benchmark (process entry {main_entry:.1} ms after creation)");
+    println!("privacy guard: windows matching {} are never snapshotted or captured", privacy.origin());
 
     println!("\n[1] Window enumeration (EnumWindows, visible, title+class+process+rect+z), {RUNS} runs");
     let mut cold_cache = Vec::new();
@@ -108,17 +107,17 @@ fn main() {
     println!("  fresh pid->name cache: median {} ms (min {})   warm pid cache: median {} ms (min {})", fmt_ms(median(&cold_cache)), fmt_ms(min(&cold_cache)), fmt_ms(median(&warm_cache)), fmt_ms(min(&warm_cache)));
     println!("  app-like windows (z, process, class, flags), titles intentionally not printed:");
     for w in wins.iter().filter(|w| w.is_app_window()) {
-        println!("    z={:<4} {:<28} {:<36} {}{}", w.z, w.process, w.class, if w.minimized { "min " } else { "" }, if title_denied(w, &deny) { "[deny-title]" } else { "" });
+        println!("    z={:<4} {:<28} {:<36} {}{}", w.z, w.process, w.class, if w.minimized { "min " } else { "" }, if privacy.denies(w) { "[denied]" } else { "" });
     }
 
     let fg = enumwin::foreground();
     let fg_info = wins.iter().find(|w| w.hwnd == fg.0 as isize).cloned();
-    let denied_on_screen = wins.iter().any(|w| w.is_app_window() && !w.minimized && title_denied(w, &deny));
+    let denied_on_screen = wins.iter().any(|w| w.is_app_window() && !w.minimized && privacy.denies(w));
     let mut targets: Vec<uia::Target> = Vec::new();
     let mut add = |label: &str, w: Option<&WinInfo>| {
         if let Some(w) = w {
-            if title_denied(w, &deny) {
-                println!("  skipping {label} target: its title matches a --deny-title entry (privacy guard)");
+            if privacy.denies(w) {
+                println!("  skipping {label} target: it matches the privacy guard's deny list");
                 return;
             }
             if targets.iter().any(|t| t.hwnd == w.hwnd) {
@@ -177,7 +176,7 @@ fn main() {
     let mut frame_for_encode: Option<(String, Frame)> = None;
     let mut dxgi_keep: Option<capture::Dupl> = None;
     if denied_on_screen {
-        println!("\n[3-5] skipped: a visible window title matches a --deny-title entry (privacy guard)");
+        println!("\n[3-5] skipped: a visible window matches the privacy guard's deny list");
     } else if !has("--skip-capture") {
         let mon = capture::primary_monitor();
         println!("\n[3] Screen capture, primary monitor {}x{} (physical px); frames kept in memory only, never written to disk", mon.width(), mon.height());

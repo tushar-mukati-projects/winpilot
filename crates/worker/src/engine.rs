@@ -19,15 +19,17 @@ use parking_lot::Mutex;
 
 use crate::{
     act,
+    app_catalog::AppCatalog,
     call_scope::{CallScope, working_deadline},
     cancel::Cancel,
-    clipboard_tool, epoch, find,
+    epoch,
     guard::Guard,
     host::HostProcesses,
     images::ImageStore,
-    notify_tool, observe, pick_file, read_text,
-    record::{self, RecordingSlot},
-    screenshot, status, wait, window_tool,
+    observe::{
+        self,
+        record::{self, RecordingSlot},
+    },
 };
 
 const RECENT_TIMINGS: usize = 8;
@@ -42,7 +44,7 @@ pub struct Engine {
     pub notifier: Notifier,
     pub images: Mutex<ImageStore>,
     pub host: HostProcesses,
-    pub apps: window_tool::AppCatalog,
+    pub apps: AppCatalog,
     pub recording: Mutex<RecordingSlot>,
     timings: Mutex<VecDeque<Timing>>,
     started: Instant,
@@ -66,36 +68,26 @@ impl Engine {
             notifier: Notifier::new(),
             images: Mutex::new(ImageStore::starting_at(first_ref)),
             host: HostProcesses::detect(),
-            apps: window_tool::AppCatalog::default(),
+            apps: AppCatalog::default(),
             recording: Mutex::new(RecordingSlot::default()),
             timings: Mutex::new(VecDeque::with_capacity(RECENT_TIMINGS)),
             started: Instant::now(),
         })
     }
 
-    pub fn handle(&self, call: Call, cancel: &Cancel) -> Result<Reply> {
+    pub fn handle(&self, call: &Call, cancel: &Cancel) -> Result<Reply> {
         let started = Instant::now();
-        let tool = call.name();
+        let label = call.label();
         let scope = CallScope::new(cancel.clone(), working_deadline(started, call.deadline()));
         let result = self.dispatch(call, &scope);
-        self.record(tool, started.elapsed(), result.is_ok());
+        self.record(label, started.elapsed(), result.is_ok());
         result
     }
 
-    fn dispatch(&self, call: Call, scope: &CallScope) -> Result<Reply> {
+    fn dispatch(&self, call: &Call, scope: &CallScope) -> Result<Reply> {
         match call {
-            Call::Observe(args) => observe::run(self, &args).map(Reply::Observe),
-            Call::Find(args) => find::run(self, &args, scope).map(Reply::Find),
-            Call::Screenshot(args) => screenshot::run(self, &args, scope).map(Reply::Screenshot),
-            Call::Act(args) => act::run(self, &args, scope).map(Reply::Act),
-            Call::WaitFor(condition) => wait::run(self, &condition, scope).map(Reply::WaitFor),
-            Call::Windows(args) => window_tool::run(self, &args, scope).map(Reply::Windows),
-            Call::PickFile(args) => pick_file::run(self, &args, scope).map(Reply::PickFile),
-            Call::ReadText(args) => read_text::run(self, &args, scope).map(Reply::ReadText),
-            Call::Clipboard(args) => clipboard_tool::run(self, &args, scope).map(Reply::Clipboard),
-            Call::Notify(args) => notify_tool::run(self, &args, scope).map(Reply::Notify),
-            Call::Record(args) => record::run(self, &args, scope).map(Reply::Record),
-            Call::Status => Ok(Reply::Status(status::report(self))),
+            Call::Observe(args) => observe::run(self, args, scope),
+            Call::Act(args) => act::run(self, args, scope).map(Reply::Act),
         }
     }
 

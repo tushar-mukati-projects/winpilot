@@ -1,5 +1,6 @@
 mod check;
 mod idle;
+mod pause;
 mod presence;
 mod text;
 mod windows;
@@ -9,10 +10,7 @@ mod fixture_tests;
 
 use std::time::{Duration, Instant};
 
-use deckhand_core::{
-    Result,
-    protocol::{Condition, WaitCondition, WaitReport},
-};
+use deckhand_core::{Element, Result, protocol::WaitCondition};
 
 use self::check::{Check, appears, disappears, target_label};
 pub use self::{
@@ -21,9 +19,12 @@ pub use self::{
 };
 use crate::{call_scope::CallScope, engine::Engine, watch::Watch};
 
-pub fn run(engine: &Engine, condition: &Condition, call: &CallScope) -> Result<WaitReport> {
-    let parsed = condition.validate()?;
-    until(engine, &parsed, condition.timeout(), &WindowsBefore::now(engine), call)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WaitReport {
+    pub satisfied: bool,
+    pub elapsed_ms: u64,
+    pub detail: String,
+    pub element: Option<Element>,
 }
 
 pub fn until(
@@ -34,6 +35,7 @@ pub fn until(
     call: &CallScope,
 ) -> Result<WaitReport> {
     match condition {
+        WaitCondition::Time { wanted } => pause::pause(engine, *wanted, call),
         WaitCondition::Appears { target, window } => {
             let (label, scope) = (target_label(target), window.as_deref());
             poll(engine, timeout, &presence::watch(engine, target, scope), call, || {

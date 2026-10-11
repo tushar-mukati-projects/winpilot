@@ -23,21 +23,45 @@ function Remove-RetiredCopies {
     }
 }
 
+function Restore-Retired($retired) {
+    if (Test-Path $installed) { Remove-Item $installed -Force -ErrorAction SilentlyContinue }
+    if (-not $retired) { return }
+    try {
+        Move-Item $retired $installed -Force
+    }
+    catch {
+        throw "the previous deckhand.exe could not be put back; it is at $retired ($_)"
+    }
+    Write-Warning "the new build was not installed; the previous deckhand.exe was put back"
+}
+
+function Copy-Verified {
+    Copy-Item $built $installed
+    $expected = (Get-FileHash $built -Algorithm SHA256).Hash
+    $actual = (Get-FileHash $installed -Algorithm SHA256).Hash
+    if ($expected -ne $actual) { throw "the installed copy does not match the build ($actual vs $expected)" }
+    return $actual
+}
+
 function Install-Binary {
     $retired = $null
     if (Test-Path $installed) {
         $retired = Join-Path $installDir ("deckhand.old-{0}.exe" -f (Get-Date -Format "yyyyMMdd-HHmmss-fff"))
         Move-Item $installed $retired
     }
-    Copy-Item $built $installed
-    $expected = (Get-FileHash $built -Algorithm SHA256).Hash
-    $actual = (Get-FileHash $installed -Algorithm SHA256).Hash
-    if ($expected -ne $actual) {
-        Remove-Item $installed
-        if ($retired) { Move-Item $retired $installed }
-        throw "the installed copy does not match the build ($actual vs $expected); the previous version was restored"
+    $verified = $false
+    try {
+        $hash = Copy-Verified
+        $verified = $true
+        return $hash
     }
-    return $actual
+    finally {
+        if (-not $verified) { Restore-Retired $retired }
+    }
+}
+
+function Test-ClaudeCli {
+    return [bool](Get-Command claude -ErrorAction SilentlyContinue)
 }
 
 function Register-AppIdentity {
@@ -47,9 +71,17 @@ function Register-AppIdentity {
     New-ItemProperty -Path $appIdKey -Name "IconUri" -Value $installedIcon -PropertyType String -Force | Out-Null
 }
 
-function Uninstall-Deckhand {
+function Remove-McpRegistration {
+    if (-not (Test-ClaudeCli)) {
+        Write-Output "the claude CLI was not found, so the MCP registration was left alone; remove it with: claude mcp remove deckhand -s user"
+        return
+    }
     claude mcp remove deckhand -s user 2>$null | Out-Null
     Write-Output "removed the 'deckhand' MCP registration (if it existed)"
+}
+
+function Uninstall-Deckhand {
+    Remove-McpRegistration
     if (Test-Path $appIdKey) { Remove-Item $appIdKey -Recurse -Force }
     Write-Output "removed the $appId notification identity"
     if (Test-Path $installDir) {
@@ -105,6 +137,9 @@ Write-Output "installed $installed (sha256 $hash)"
 Write-Output "registered the $appId notification identity with the icon $installedIcon"
 
 if ($Register) {
+    if (-not (Test-ClaudeCli)) {
+        throw "the claude CLI was not found, so Deckhand is installed but not registered; install Claude Code, then run: claude mcp add -s user deckhand -- `"$installed`" mcp"
+    }
     claude mcp remove deckhand -s user 2>$null | Out-Null
     claude mcp add -s user deckhand -- $installed mcp
     if ($LASTEXITCODE -ne 0) { throw "claude mcp add failed" }

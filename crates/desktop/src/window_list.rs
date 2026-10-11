@@ -12,10 +12,11 @@ use windows::{
 
 use crate::{
     process::ProcessLookup,
+    virtual_desktops::{DesktopLookup, Placement},
     window_foreground::{Foreground, current_foreground},
     window_geometry::visible_rect,
     window_identity::{class_name, hwnd_of, is_live, live_hwnd, owning_pid, ref_of, title},
-    window_visibility::{is_cloaked, is_tool_window, is_visible, show_state},
+    window_visibility::{is_tool_window, is_visible, show_state},
 };
 
 const DIALOG_CLASS: &str = "#32770";
@@ -28,30 +29,45 @@ struct Candidate {
     title: String,
     class_name: String,
     rect: Rect,
+    placement: Placement,
+}
+
+struct Lookups {
+    foreground: Foreground,
+    processes: ProcessLookup,
+    desktops: DesktopLookup,
 }
 
 pub fn windows() -> Result<Vec<WindowInfo>> {
     let own_pid = std::process::id();
-    let foreground = Foreground::now();
-    let mut processes = ProcessLookup::new();
-    let infos = top_level_windows()?
-        .into_iter()
-        .filter_map(|hwnd| app_window(hwnd, own_pid))
-        .map(|candidate| describe(candidate, foreground, &mut processes))
-        .collect();
-    Ok(infos)
+    let mut lookups = Lookups::new();
+    let candidates: Vec<Candidate> =
+        top_level_windows()?.into_iter().filter_map(|hwnd| app_window(hwnd, own_pid, &mut lookups.desktops)).collect();
+    Ok(candidates.into_iter().map(|candidate| describe(candidate, &mut lookups)).collect())
 }
 
 pub fn window(hwnd: WindowRef) -> Result<WindowInfo> {
     let handle = live_hwnd(hwnd)?;
+    let mut lookups = Lookups::new();
+    let placement = match lookups.desktops.placement(handle) {
+        Placement::Hidden => Placement::Current,
+        found => found,
+    };
     let candidate = Candidate {
         hwnd: handle,
         pid: owning_pid(handle),
         title: title(handle),
         class_name: class_name(handle),
         rect: visible_rect(handle).unwrap_or_default(),
+        placement,
     };
-    Ok(describe(candidate, Foreground::now(), &mut ProcessLookup::new()))
+    Ok(describe(candidate, &mut lookups))
+}
+
+impl Lookups {
+    fn new() -> Self {
+        Self { foreground: Foreground::now(), processes: ProcessLookup::new(), desktops: DesktopLookup::new() }
+    }
 }
 
 pub fn is_window(hwnd: WindowRef) -> bool {
@@ -85,13 +101,13 @@ unsafe extern "system" fn collect_window(hwnd: HWND, handles: LPARAM) -> BOOL {
     BOOL::from(true)
 }
 
-fn app_window(hwnd: HWND, own_pid: u32) -> Option<Candidate> {
+fn app_window(hwnd: HWND, own_pid: u32, desktops: &mut DesktopLookup) -> Option<Candidate> {
     if !is_visible(hwnd) {
         return None;
     }
     let class_name = class_name(hwnd);
     let popup_menu = class_name == POPUP_MENU_CLASS;
-    if (!popup_menu && is_tool_window(hwnd)) || is_cloaked(hwnd) {
+    if !popup_menu && is_tool_window(hwnd) {
         return None;
     }
     let pid = owning_pid(hwnd);
@@ -103,15 +119,23 @@ fn app_window(hwnd: HWND, own_pid: u32) -> Option<Candidate> {
         return None;
     }
     let rect = visible_rect(hwnd).filter(|rect| !rect.is_empty())?;
-    Some(Candidate { hwnd, pid, title, class_name, rect })
+    let placement = desktops.placement(hwnd);
+    if placement == Placement::Hidden {
+        return None;
+    }
+    Some(Candidate { hwnd, pid, title, class_name, rect, placement })
 }
 
 fn may_be_untitled(class_name: &str) -> bool {
     matches!(class_name, DIALOG_CLASS | POPUP_MENU_CLASS)
 }
 
-fn describe(candidate: Candidate, foreground: Foreground, processes: &mut ProcessLookup) -> WindowInfo {
-    let facts = processes.facts(candidate.pid);
+fn describe(candidate: Candidate, lookups: &mut Lookups) -> WindowInfo {
+    let facts = lookups.processes.facts(candidate.pid);
+    let (desktop, on_current_desktop) = match candidate.placement {
+        Placement::Elsewhere(number) => (number, false),
+        Placement::Current | Placement::Hidden => (lookups.desktops.current_number(), true),
+    };
     WindowInfo {
         hwnd: ref_of(candidate.hwnd),
         title: candidate.title,
@@ -120,8 +144,10 @@ fn describe(candidate: Candidate, foreground: Foreground, processes: &mut Proces
         class_name: candidate.class_name,
         rect: candidate.rect,
         state: show_state(candidate.hwnd),
-        foreground: foreground.includes(candidate.hwnd),
+        foreground: lookups.foreground.includes(candidate.hwnd),
         elevated: facts.elevated,
+        desktop,
+        on_current_desktop,
     }
 }
 
@@ -138,6 +164,15 @@ mod tests {
         assert!(list.iter().all(|info| !info.rect.is_empty()));
         assert!(list.iter().all(|info| info.pid != std::process::id()));
         assert!(list.iter().all(|info| !info.process.is_empty()));
+    }
+
+    #[test]
+    fn listed_windows_say_where_they_are() {
+        let list = windows().unwrap();
+        assert!(list.iter().any(|info| info.on_current_desktop));
+        assert!(list.iter().filter(|info| info.foreground).all(|info| info.on_current_desktop));
+        let current = DesktopLookup::new().current_number();
+        assert!(list.iter().filter(|info| info.on_current_desktop).all(|info| info.desktop == current));
     }
 
     #[test]

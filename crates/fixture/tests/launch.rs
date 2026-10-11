@@ -1,28 +1,24 @@
 #![cfg(windows)]
 
+use std::path::Path;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, RECT, WAIT_OBJECT_0, WPARAM};
-use windows::Win32::System::Threading::{
-    CreateProcessW, GetExitCodeProcess, PROCESS_CREATION_FLAGS, PROCESS_INFORMATION, STARTF_USESHOWWINDOW,
-    STARTUPINFOW, TerminateProcess, WaitForInputIdle, WaitForSingleObject,
-};
+use deckhand_fixture::{FixtureProcess, Placement};
+use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::UI::HiDpi::{
     AreDpiAwarenessContextsEqual, DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForWindow,
     GetWindowDpiAwarenessContext, SetThreadDpiAwarenessContext,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::VK_F5;
 use windows::Win32::UI::WindowsAndMessaging::{
-    BM_SETCHECK, CB_GETCOUNT, CB_SETCURSEL, FindWindowW, GetClassNameW, GetClientRect, GetDlgItem, GetForegroundWindow,
-    GetSystemMetrics, GetWindowTextW, IsWindowVisible, LB_GETCOUNT, LB_SETCURSEL, PostMessageW, SM_CXVIRTUALSCREEN,
-    SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SMTO_ABORTIFHUNG, SW_SHOWNOACTIVATE, SendMessageTimeoutW,
-    WM_CLOSE, WM_COMMAND, WM_GETFONT, WM_KEYDOWN,
+    BM_SETCHECK, CB_GETCOUNT, CB_SETCURSEL, GetClassNameW, GetClientRect, GetDlgItem, GetForegroundWindow,
+    GetWindowTextW, IsWindowVisible, LB_GETCOUNT, LB_SETCURSEL, PostMessageW, SMTO_ABORTIFHUNG, SendMessageTimeoutW,
+    WM_COMMAND, WM_GETFONT, WM_KEYDOWN,
 };
-use windows::core::{HSTRING, Owned, PCWSTR, PWSTR, Result, w};
+use windows::core::Result;
 
 const FIXTURE_EXE: &str = env!("CARGO_BIN_EXE_deckhand-fixture");
-const CLASS_NAME: PCWSTR = w!("DeckhandFixtureWindow");
 const PATIENCE: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(25);
 const SEND_TIMEOUT_MS: u32 = 5000;
@@ -73,20 +69,17 @@ const INITIAL_TEXTS: [(i32, &str); 13] = [
 ];
 
 struct Fixture {
-    process: Owned<HANDLE>,
+    process: FixtureProcess,
     window: HWND,
 }
 
 impl Fixture {
     fn launch_without_activation() -> Self {
         let title = format!("Deckhand Fixture Test {}", std::process::id());
-        let process = spawn_hidden_from_user(&title);
-        let wait = unsafe { WaitForInputIdle(*process, PATIENCE.as_millis() as u32) };
-        assert_eq!(wait, 0, "fixture never became idle");
-        let title = HSTRING::from(title);
-        let found = wait_for(|| unsafe { FindWindowW(CLASS_NAME, &title) }.ok());
-        let Some(window) = found else { panic!("fixture window not found") };
-        Self { process, window }
+        let Some(process) = FixtureProcess::launch(Path::new(FIXTURE_EXE), &title, Placement::OffScreen) else {
+            panic!("fixture window not found")
+        };
+        Self { window: process.hwnd(), process }
     }
 
     fn control(&self, id: i32) -> HWND {
@@ -108,57 +101,9 @@ impl Fixture {
     }
 
     fn close_and_wait(&self) -> u32 {
-        succeeded(unsafe { PostMessageW(Some(self.window), WM_CLOSE, WPARAM(0), LPARAM(0)) }, "posting WM_CLOSE");
-        let wait = unsafe { WaitForSingleObject(*self.process, PATIENCE.as_millis() as u32) };
-        assert_eq!(wait, WAIT_OBJECT_0, "fixture did not exit after WM_CLOSE");
-        let mut code = u32::MAX;
-        succeeded(unsafe { GetExitCodeProcess(*self.process, &raw mut code) }, "reading the exit code");
+        let Some(code) = self.process.close() else { panic!("fixture did not exit after WM_CLOSE") };
         code
     }
-}
-
-impl Drop for Fixture {
-    fn drop(&mut self) {
-        if unsafe { WaitForSingleObject(*self.process, 0) } != WAIT_OBJECT_0 {
-            let _terminated = unsafe { TerminateProcess(*self.process, 1) };
-        }
-    }
-}
-
-fn spawn_hidden_from_user(title: &str) -> Owned<HANDLE> {
-    let (x, y) = beyond_the_virtual_screen();
-    let command = format!("\"{FIXTURE_EXE}\" --title \"{title}\" --pos {x},{y}");
-    let mut command: Vec<u16> = command.encode_utf16().chain(Some(0)).collect();
-    let startup = STARTUPINFOW {
-        cb: size_of::<STARTUPINFOW>() as u32,
-        dwFlags: STARTF_USESHOWWINDOW,
-        wShowWindow: SW_SHOWNOACTIVATE.0 as u16,
-        ..Default::default()
-    };
-    let mut info = PROCESS_INFORMATION::default();
-    let created = unsafe {
-        CreateProcessW(
-            PCWSTR::null(),
-            Some(PWSTR(command.as_mut_ptr())),
-            None,
-            None,
-            false,
-            PROCESS_CREATION_FLAGS(0),
-            None,
-            PCWSTR::null(),
-            &raw const startup,
-            &raw mut info,
-        )
-    };
-    succeeded(created, "starting the fixture");
-    drop(unsafe { Owned::new(info.hThread) });
-    unsafe { Owned::new(info.hProcess) }
-}
-
-fn beyond_the_virtual_screen() -> (i32, i32) {
-    let right = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN) };
-    let bottom = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) + GetSystemMetrics(SM_CYVIRTUALSCREEN) };
-    (right.max(1).saturating_mul(4), bottom.max(1).saturating_mul(4))
 }
 
 fn succeeded(result: Result<()>, action: &str) {

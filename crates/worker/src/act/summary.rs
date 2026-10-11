@@ -1,6 +1,6 @@
 use deckhand_core::{
     TargetSpec,
-    protocol::{Condition, Direction, MouseButton, Step, Until},
+    protocol::{KeyAction, MouseAction, MouseButton, SetChange, Step, Until, WaitArgs, WindowAction},
 };
 
 use super::clip::{clipped, quoted};
@@ -13,28 +13,27 @@ pub fn summarize(step: &Step) -> String {
         Step::Click { target, button, count, modifiers, .. } => {
             click_summary(target, *button, *count, modifiers.as_deref())
         }
-        Step::Hover { target, .. } => format!("hover {}", label(target)),
-        Step::Move { to, .. } => format!("move to {}", label(to)),
-        Step::MouseDown { target, button, .. } => format!("{} {}", press_verb(*button, "down"), label(target)),
-        Step::MouseUp { target: Some(target), button, .. } => {
-            format!("{} at {}", press_verb(*button, "up"), label(target))
-        }
-        Step::MouseUp { target: None, button, .. } => press_verb(*button, "up"),
         Step::Type { target, text, enter, .. } => type_summary(target.as_ref(), text, *enter),
-        Step::SetValue { target, value } => format!("set {} to {}", label(target), quoted(value, TEXT_LIMIT)),
-        Step::Key { keys, target, repeat } => key_summary(keys, target.as_ref(), *repeat),
-        Step::Scroll { target, direction, amount, .. } => scroll_summary(target.as_ref(), *direction, *amount),
-        Step::Drag { from, to, .. } => format!("drag {} to {}", label(from), label(to)),
-        Step::Select { target, option: Some(option) } => {
-            format!("select {} in {}", quoted(option, TEXT_LIMIT), label(target))
+        Step::Key { keys, target, repeat, action } => key_summary(keys, target.as_ref(), *repeat, *action),
+        Step::Mouse { action, target, to, button, direction, amount, .. } => {
+            let place = target.as_ref().map(|target| format!(" at {}", label(target))).unwrap_or_default();
+            match action {
+                MouseAction::Scroll => scroll_summary(*direction, amount.unwrap_or(3), &place),
+                MouseAction::Drag => drag_summary(target.as_ref(), to.as_ref()),
+                MouseAction::Move | MouseAction::Down | MouseAction::Up => {
+                    format!("{}{place}", mouse_verb(*action, button.unwrap_or_default()))
+                }
+            }
         }
-        Step::Select { target, option: None } => format!("select {}", label(target)),
-        Step::Toggle { target, on } => toggle_summary(target, *on),
-        Step::Expand { target } => format!("expand {}", label(target)),
-        Step::Collapse { target } => format!("collapse {}", label(target)),
+        Step::Set { target, .. } => {
+            step.set_change().map_or_else(|_| format!("set {}", label(target)), |change| set_summary(target, &change))
+        }
         Step::Focus { target } => format!("focus {}", label(target)),
-        Step::WaitFor(condition) => wait_for_summary(condition),
-        Step::Wait { ms } => format!("wait {ms} ms"),
+        Step::Window { action, target, app, .. } => window_summary(*action, target.as_ref(), app.as_deref()),
+        Step::Pick { paths, .. } => format!("pick {}", file_count(paths.len())),
+        Step::Wait(args) => wait_summary(args),
+        Step::Clipboard { text } => format!("set the clipboard to {}", quoted(text, TEXT_LIMIT)),
+        Step::Notify { title, .. } => format!("notify {}", quoted(title, TEXT_LIMIT)),
     }
 }
 
@@ -42,11 +41,11 @@ fn label(target: &TargetSpec) -> String {
     clipped(&target.to_string(), TARGET_LIMIT)
 }
 
-fn press_verb(button: MouseButton, direction: &str) -> String {
-    match button {
-        MouseButton::Left => format!("mouse {direction}"),
-        MouseButton::Right => format!("right mouse {direction}"),
-        MouseButton::Middle => format!("middle mouse {direction}"),
+fn mouse_verb(action: MouseAction, button: MouseButton) -> String {
+    match (action, button) {
+        (MouseAction::Move, _) => "mouse move".to_string(),
+        (_, MouseButton::Left) => format!("mouse {}", action.name()),
+        (_, button) => format!("{} mouse {}", button.name(), action.name()),
     }
 }
 
@@ -76,166 +75,165 @@ fn type_summary(target: Option<&TargetSpec>, text: &str, enter: bool) -> String 
     format!("type {}{into}{enter}", quoted(text, TEXT_LIMIT))
 }
 
-fn key_summary(keys: &str, target: Option<&TargetSpec>, repeat: u32) -> String {
+fn key_summary(keys: &str, target: Option<&TargetSpec>, repeat: u32, action: KeyAction) -> String {
+    let verb = match action {
+        KeyAction::Press => "key",
+        KeyAction::Down => "key down",
+        KeyAction::Up => "key up",
+    };
     let inside = target.map(|target| format!(" in {}", label(target))).unwrap_or_default();
     let times = if repeat > 1 { format!(" ×{repeat}") } else { String::new() };
-    format!("key {}{inside}{times}", clipped(keys.trim(), TARGET_LIMIT))
+    format!("{verb} {}{inside}{times}", clipped(keys.trim(), TARGET_LIMIT))
 }
 
-fn scroll_summary(target: Option<&TargetSpec>, direction: Direction, amount: u32) -> String {
-    let summary = format!("scroll {} {amount}", direction_word(direction));
-    match target {
-        Some(target) => format!("{summary} at {}", label(target)),
-        None => summary,
+fn scroll_summary(direction: Option<deckhand_core::protocol::Direction>, amount: u32, place: &str) -> String {
+    let direction = direction.map_or("", |direction| direction.name());
+    format!("scroll {direction} {amount}{place}")
+}
+
+fn drag_summary(from: Option<&TargetSpec>, to: Option<&TargetSpec>) -> String {
+    let end = |target: Option<&TargetSpec>| target.map_or_else(|| "?".to_string(), label);
+    format!("drag {} to {}", end(from), end(to))
+}
+
+fn set_summary(target: &TargetSpec, change: &SetChange) -> String {
+    let target = label(target);
+    match change {
+        SetChange::Value(value) => format!("set {target} to {}", quoted(value, TEXT_LIMIT)),
+        SetChange::Option(option) => format!("choose {} in {target}", quoted(option, TEXT_LIMIT)),
+        SetChange::Checked(checked) => format!("{} {target}", if *checked { "check" } else { "uncheck" }),
+        SetChange::Expanded(expanded) => format!("{} {target}", if *expanded { "expand" } else { "collapse" }),
+        SetChange::Selected(selected) => format!("{} {target}", if *selected { "select" } else { "deselect" }),
     }
 }
 
-fn toggle_summary(target: &TargetSpec, on: Option<bool>) -> String {
-    match on {
-        Some(true) => format!("toggle {} on", label(target)),
-        Some(false) => format!("toggle {} off", label(target)),
-        None => format!("toggle {}", label(target)),
+fn window_summary(action: WindowAction, target: Option<&TargetSpec>, app: Option<&str>) -> String {
+    match (action, target) {
+        (WindowAction::Launch, _) => format!("launch {}", clipped(app.unwrap_or_default().trim(), TARGET_LIMIT)),
+        (_, Some(target)) => format!("{} {}", action.name(), label(target)),
+        (_, None) => action.name().to_string(),
     }
 }
 
-fn wait_for_summary(condition: &Condition) -> String {
+fn file_count(count: usize) -> String {
+    if count == 1 { "1 file".to_string() } else { format!("{count} files") }
+}
+
+fn wait_summary(args: &WaitArgs) -> String {
     let field = |value: &Option<String>| clipped(value.as_deref().unwrap_or_default().trim(), TARGET_LIMIT);
-    match condition.until {
-        Until::Appears => format!("wait_for appears {}", field(&condition.target)),
-        Until::Disappears => format!("wait_for disappears {}", field(&condition.target)),
-        Until::Window => format!("wait_for window {}", field(&condition.window)),
-        Until::WindowClosed => format!("wait_for window_closed {}", field(&condition.window)),
-        Until::Text => format!("wait_for text {}", quoted(condition.text.as_deref().unwrap_or_default(), TEXT_LIMIT)),
-        Until::Idle => match condition.ms {
-            Some(ms) => format!("wait_for idle {ms} ms"),
-            None => "wait_for idle".to_string(),
+    match args.until() {
+        Until::Time => format!("wait {} ms", args.ms.unwrap_or(0)),
+        Until::Appears => format!("wait until {} appears", field(&args.target)),
+        Until::Disappears => format!("wait until {} disappears", field(&args.target)),
+        Until::Window => format!("wait for window {}", field(&args.window)),
+        Until::WindowClosed => format!("wait for window {} to close", field(&args.window)),
+        Until::Text => format!("wait for text {}", quoted(args.text.as_deref().unwrap_or_default(), TEXT_LIMIT)),
+        Until::Idle => match args.ms {
+            Some(ms) => format!("wait until idle for {ms} ms"),
+            None => "wait until idle".to_string(),
         },
-    }
-}
-
-const fn direction_word(direction: Direction) -> &'static str {
-    match direction {
-        Direction::Up => "up",
-        Direction::Down => "down",
-        Direction::Left => "left",
-        Direction::Right => "right",
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{
-        protocol::{ClickHow, TypeHow},
-        target::PointSpec,
-    };
-
     use super::*;
 
-    fn text(target: &str) -> TargetSpec {
-        TargetSpec::Text(target.to_string())
-    }
-
-    fn click(button: MouseButton, count: u8, modifiers: Option<&str>) -> Step {
-        Step::Click {
-            target: text("e12"),
-            button,
-            count,
-            modifiers: modifiers.map(str::to_string),
-            how: ClickHow::Auto,
-            glide_ms: None,
-        }
-    }
-
-    fn condition(until: Until) -> Condition {
-        Condition { until, target: None, text: None, window: None, ms: None, timeout_ms: None }
+    fn summary(json: &str) -> String {
+        summarize(&serde_json::from_str(json).unwrap())
     }
 
     #[test]
     fn clicks_name_button_count_and_modifiers() {
-        assert_eq!(summarize(&click(MouseButton::Left, 1, None)), "click e12");
-        assert_eq!(summarize(&click(MouseButton::Left, 2, None)), "double-click e12");
-        assert_eq!(summarize(&click(MouseButton::Left, 3, None)), "triple-click e12");
-        assert_eq!(summarize(&click(MouseButton::Right, 1, None)), "right-click e12");
-        assert_eq!(summarize(&click(MouseButton::Middle, 2, None)), "middle-double-click e12");
-        assert_eq!(summarize(&click(MouseButton::Left, 1, Some("ctrl+shift"))), "click e12 with ctrl+shift");
-        assert_eq!(summarize(&click(MouseButton::Left, 1, Some(" "))), "click e12");
+        assert_eq!(summary(r#"{"do":"click","target":"e12"}"#), "click e12");
+        assert_eq!(summary(r#"{"do":"click","target":"e12","count":2}"#), "double-click e12");
+        assert_eq!(summary(r#"{"do":"click","target":"e12","count":3}"#), "triple-click e12");
+        assert_eq!(summary(r#"{"do":"click","target":"e12","button":"right"}"#), "right-click e12");
+        assert_eq!(summary(r#"{"do":"click","target":"e12","button":"middle","count":2}"#), "middle-double-click e12");
+        assert_eq!(summary(r#"{"do":"click","target":"e12","modifiers":"ctrl+shift"}"#), "click e12 with ctrl+shift");
+        assert_eq!(summary(r#"{"do":"click","target":"e12","modifiers":" "}"#), "click e12");
     }
 
     #[test]
     fn point_targets_are_shown_as_coordinates() {
-        let point = TargetSpec::Point(PointSpec { x: 640, y: 360, img: Some("i3".to_string()) });
-        assert_eq!(summarize(&Step::Hover { target: point, glide_ms: None }), "hover 640,360@i3");
+        assert_eq!(
+            summary(r#"{"do":"mouse","action":"move","target":{"x":640,"y":360,"img":"i3"}}"#),
+            "mouse move at 640,360@i3"
+        );
     }
 
     #[test]
     fn typed_text_is_clipped_to_24_characters() {
-        let step = Step::Type {
-            target: Some(text("e3")),
-            text: "hello world, this is a long sentence".to_string(),
-            enter: false,
-            how: TypeHow::Auto,
-        };
-        assert_eq!(summarize(&step), "type \"hello world, this is a l…\" into e3");
-        let short = Step::Type { target: None, text: "hi\nthere".to_string(), enter: true, how: TypeHow::Keys };
-        assert_eq!(summarize(&short), "type \"hi\\nthere\" + enter");
-    }
-
-    #[test]
-    fn set_value_select_and_toggle() {
-        let set = Step::SetValue { target: text("e3"), value: "C:\\temp\\a.txt".to_string() };
-        assert_eq!(summarize(&set), "set e3 to \"C:\\\\temp\\\\a.txt\"");
-        let pick = Step::Select { target: text("e7"), option: Some("Blue".to_string()) };
-        assert_eq!(summarize(&pick), "select \"Blue\" in e7");
-        assert_eq!(summarize(&Step::Select { target: text("e7"), option: None }), "select e7");
-        assert_eq!(summarize(&Step::Toggle { target: text("e5"), on: Some(true) }), "toggle e5 on");
-        assert_eq!(summarize(&Step::Toggle { target: text("e5"), on: Some(false) }), "toggle e5 off");
-        assert_eq!(summarize(&Step::Toggle { target: text("e5"), on: None }), "toggle e5");
-    }
-
-    #[test]
-    fn keys_scroll_and_drag() {
-        assert_eq!(summarize(&Step::Key { keys: "ctrl+s".to_string(), target: None, repeat: 1 }), "key ctrl+s");
-        let repeated = Step::Key { keys: "down".to_string(), target: Some(text("e9")), repeat: 5 };
-        assert_eq!(summarize(&repeated), "key down in e9 ×5");
-        let scroll = Step::Scroll { target: Some(text("e5")), direction: Direction::Down, amount: 3, glide_ms: None };
-        assert_eq!(summarize(&scroll), "scroll down 3 at e5");
         assert_eq!(
-            summarize(&Step::Scroll { target: None, direction: Direction::Up, amount: 1, glide_ms: None }),
-            "scroll up 1"
+            summary(r#"{"do":"type","target":"e3","text":"hello world, this is a long sentence"}"#),
+            "type \"hello world, this is a l…\" into e3"
         );
-        assert_eq!(summarize(&Step::Drag { from: text("e1"), to: text("e2"), glide_ms: None }), "drag e1 to e2");
+        assert_eq!(summary(r#"{"do":"type","text":"hi\nthere","enter":true}"#), "type \"hi\\nthere\" + enter");
     }
 
     #[test]
-    fn simple_target_steps() {
-        assert_eq!(summarize(&Step::Expand { target: text("e3") }), "expand e3");
-        assert_eq!(summarize(&Step::Collapse { target: text("e3") }), "collapse e3");
-        assert_eq!(summarize(&Step::Focus { target: text("w42") }), "focus w42");
-        assert_eq!(summarize(&Step::Wait { ms: 500 }), "wait 500 ms");
+    fn set_steps_say_what_they_change() {
+        assert_eq!(
+            summary(r#"{"do":"set","target":"e3","value":"C:\\temp\\a.txt"}"#),
+            "set e3 to \"C:\\\\temp\\\\a.txt\""
+        );
+        assert_eq!(summary(r#"{"do":"set","target":"e7","option":"Blue"}"#), "choose \"Blue\" in e7");
+        assert_eq!(summary(r#"{"do":"set","target":"e5","checked":true}"#), "check e5");
+        assert_eq!(summary(r#"{"do":"set","target":"e5","checked":false}"#), "uncheck e5");
+        assert_eq!(summary(r#"{"do":"set","target":"e5","expanded":false}"#), "collapse e5");
+        assert_eq!(summary(r#"{"do":"set","target":"e5","selected":true}"#), "select e5");
+        assert_eq!(summary(r#"{"do":"set","target":"e5"}"#), "set e5");
+    }
+
+    #[test]
+    fn keys_and_mouse_actions() {
+        assert_eq!(summary(r#"{"do":"key","keys":"ctrl+s"}"#), "key ctrl+s");
+        assert_eq!(summary(r#"{"do":"key","keys":"down","target":"e9","repeat":5}"#), "key down in e9 ×5");
+        assert_eq!(summary(r#"{"do":"key","keys":"shift","action":"down"}"#), "key down shift");
+        assert_eq!(summary(r#"{"do":"key","keys":"shift","action":"up"}"#), "key up shift");
+        assert_eq!(
+            summary(r#"{"do":"mouse","action":"scroll","target":"e5","direction":"down"}"#),
+            "scroll down 3 at e5"
+        );
+        assert_eq!(summary(r#"{"do":"mouse","action":"scroll","direction":"up","amount":1}"#), "scroll up 1");
+        assert_eq!(summary(r#"{"do":"mouse","action":"drag","target":"e1","to":"e2"}"#), "drag e1 to e2");
+        assert_eq!(
+            summary(r#"{"do":"mouse","action":"down","target":"e4","button":"right"}"#),
+            "right mouse down at e4"
+        );
+        assert_eq!(summary(r#"{"do":"mouse","action":"up"}"#), "mouse up");
+    }
+
+    #[test]
+    fn window_pick_clipboard_notify_and_focus() {
+        assert_eq!(summary(r#"{"do":"window","action":"launch","app":"Notepad"}"#), "launch Notepad");
+        assert_eq!(summary(r#"{"do":"window","action":"close","target":"w42"}"#), "close w42");
+        assert_eq!(summary(r#"{"do":"pick","paths":["C:\\a.txt","C:\\b.txt"]}"#), "pick 2 files");
+        assert_eq!(summary(r#"{"do":"clipboard","text":"copied"}"#), "set the clipboard to \"copied\"");
+        assert_eq!(summary(r#"{"do":"notify","title":"Export done","message":"m"}"#), "notify \"Export done\"");
+        assert_eq!(summary(r#"{"do":"focus","target":"w42"}"#), "focus w42");
     }
 
     #[test]
     fn long_selectors_are_clipped() {
-        let long = format!("name:\"{}\"", "x".repeat(100));
-        let summary = summarize(&Step::Focus { target: text(&long) });
-        assert_eq!(summary.chars().count(), "focus ".len() + 61);
-        assert!(summary.ends_with('…'));
+        let long = format!(r#"{{"do":"focus","target":"name:{}"}}"#, "x".repeat(100));
+        let text = summary(&long);
+        assert_eq!(text.chars().count(), "focus ".len() + 61);
+        assert!(text.ends_with('…'));
     }
 
     #[test]
-    fn wait_for_names_its_condition() {
-        let appears = Condition { target: Some("name:Done".to_string()), ..condition(Until::Appears) };
-        assert_eq!(summarize(&Step::WaitFor(appears)), "wait_for appears name:Done");
-        let gone = Condition { target: Some("e4".to_string()), ..condition(Until::Disappears) };
-        assert_eq!(summarize(&Step::WaitFor(gone)), "wait_for disappears e4");
-        let window = Condition { window: Some("Save As".to_string()), ..condition(Until::Window) };
-        assert_eq!(summarize(&Step::WaitFor(window)), "wait_for window Save As");
-        let closed = Condition { window: Some("Save As".to_string()), ..condition(Until::WindowClosed) };
-        assert_eq!(summarize(&Step::WaitFor(closed)), "wait_for window_closed Save As");
-        let shown = Condition { text: Some("Saved".to_string()), ..condition(Until::Text) };
-        assert_eq!(summarize(&Step::WaitFor(shown)), "wait_for text \"Saved\"");
-        assert_eq!(summarize(&Step::WaitFor(condition(Until::Idle))), "wait_for idle");
-        let idle = Condition { ms: Some(300), ..condition(Until::Idle) };
-        assert_eq!(summarize(&Step::WaitFor(idle)), "wait_for idle 300 ms");
+    fn waits_name_their_condition() {
+        assert_eq!(summary(r#"{"do":"wait","ms":500}"#), "wait 500 ms");
+        assert_eq!(summary(r#"{"do":"wait","until":"appears","target":"name:Done"}"#), "wait until name:Done appears");
+        assert_eq!(summary(r#"{"do":"wait","until":"disappears","target":"e4"}"#), "wait until e4 disappears");
+        assert_eq!(summary(r#"{"do":"wait","until":"window","window":"Save As"}"#), "wait for window Save As");
+        assert_eq!(
+            summary(r#"{"do":"wait","until":"window_closed","window":"Save As"}"#),
+            "wait for window Save As to close"
+        );
+        assert_eq!(summary(r#"{"do":"wait","until":"text","text":"Saved"}"#), "wait for text \"Saved\"");
+        assert_eq!(summary(r#"{"do":"wait","until":"idle"}"#), "wait until idle");
+        assert_eq!(summary(r#"{"do":"wait","until":"idle","ms":300}"#), "wait until idle for 300 ms");
     }
 }

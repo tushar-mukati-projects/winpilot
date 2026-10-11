@@ -2,7 +2,7 @@ use deckhand_core::{ElementRef, Error, Result};
 
 use super::{
     focus::{Focused, focus_is_inside},
-    window::require_foreground,
+    foreground::require_foreground,
 };
 use crate::{engine::Engine, window_classes::is_popup};
 
@@ -19,7 +19,7 @@ pub fn ensure_keys_land(engine: &Engine, focused: &Focused) -> Result<()> {
 
 fn focus_missed(id: ElementRef) -> Error {
     Error::unsupported(format!(
-        "keyboard focus did not move into {id}, so no keys were sent; click it first or use set_value"
+        "keyboard focus did not move into {id}, so no keys were sent; click it first or use set"
     ))
 }
 

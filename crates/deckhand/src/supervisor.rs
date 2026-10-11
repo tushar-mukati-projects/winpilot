@@ -63,7 +63,7 @@ impl Supervisor {
     }
 
     async fn call_within(&self, call: Call, budget: Duration, cancelled: impl Future<Output = ()>) -> Result<Reply> {
-        let deadline = Deadline::from_now(call.name(), budget);
+        let deadline = Deadline::from_now(call.label(), budget);
         let mut cancelled = pin!(cancelled);
         let link = tokio::select! {
             biased;
@@ -171,14 +171,15 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use deckhand_core::protocol::{ClipboardArgs, ClipboardReport};
+    use deckhand_core::protocol::ClipboardReport;
     use tokio::sync::oneshot;
 
     use super::*;
     use crate::{
         death::seconds,
         testing::{
-            FakeSpawner, FakeWorker, drain, echo, echo_after_handshake, echo_worker, hang_worker, set_clipboard,
+            FakeSpawner, FakeWorker, clipboard_text as call_text, drain, echo, echo_after_handshake, echo_worker,
+            hang_worker, set_clipboard,
         },
     };
 
@@ -194,7 +195,7 @@ mod tests {
     }
 
     async fn timed_call(supervisor: &Supervisor, budget: Duration, started: Instant) -> (Result<Reply>, Duration) {
-        let outcome = call(supervisor, Call::Status, budget).await;
+        let outcome = call(supervisor, Call::status(), budget).await;
         (outcome, started.elapsed())
     }
 
@@ -211,14 +212,7 @@ mod tests {
 
     fn clipboard_text(reply: &Result<Reply>) -> Option<String> {
         match reply {
-            Ok(Reply::Clipboard(ClipboardReport { text, .. })) => text.clone(),
-            _ => None,
-        }
-    }
-
-    fn call_text(call: &Call) -> Option<String> {
-        match call {
-            Call::Clipboard(ClipboardArgs { text, .. }) => text.clone(),
+            Ok(Reply::Clipboard(ClipboardReport { text })) => text.clone(),
             _ => None,
         }
     }
@@ -262,7 +256,7 @@ mod tests {
                 worker.reply(id, Err(Error::not_found("no such window")));
             }
         });
-        let error = call(&supervisor, Call::Status, LONG).await.unwrap_err();
+        let error = call(&supervisor, Call::status(), LONG).await.unwrap_err();
         assert_eq!(error, Error::not_found("no such window"));
     }
 
@@ -274,7 +268,7 @@ mod tests {
                 let _ = sender.send(*config);
             }
         });
-        let _ = call(&supervisor, Call::Status, LONG).await;
+        let _ = call(&supervisor, Call::status(), LONG).await;
         assert_eq!(configs.recv_timeout(LONG).unwrap(), Config::default());
     }
 
@@ -327,7 +321,7 @@ mod tests {
         for ((outcome, elapsed), budget) in [a, b, c].into_iter().zip(budgets) {
             let error = outcome.unwrap_err();
             assert_eq!(error.code, ErrorCode::TargetNotResponding);
-            let expected = format!("still starting when status reached its {} deadline", seconds(budget));
+            let expected = format!("still starting when observe status reached its {} deadline", seconds(budget));
             assert!(error.message.contains(&expected), "{}", error.message);
             assert!(elapsed >= budget, "{elapsed:?} < {budget:?}");
             assert!(elapsed < budget + Duration::from_millis(300), "{elapsed:?} is far past {budget:?}");
@@ -342,7 +336,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(100));
         });
         let (a, b, c) = tokio::join!(
-            call(&supervisor, Call::Status, LONG),
+            call(&supervisor, Call::status(), LONG),
             call(&supervisor, set_clipboard("b"), LONG),
             call(&supervisor, set_clipboard("c"), LONG)
         );
@@ -374,7 +368,7 @@ mod tests {
     #[tokio::test]
     async fn failed_startup_backs_off_and_fails_fast_in_the_window() {
         let (supervisor, spawner) = supervisor(|_, worker| drop(worker));
-        let first = call(&supervisor, Call::Status, LONG).await.unwrap_err();
+        let first = call(&supervisor, Call::status(), LONG).await.unwrap_err();
         assert_eq!(first.code, ErrorCode::TargetNotResponding);
         assert_eq!(
             first.message,
@@ -382,13 +376,13 @@ mod tests {
              retrying in 0.5 s"
         );
         let started = Instant::now();
-        let fast = call(&supervisor, Call::Status, LONG).await.unwrap_err();
+        let fast = call(&supervisor, Call::status(), LONG).await.unwrap_err();
         assert!(started.elapsed() < Duration::from_millis(100));
         assert!(fast.message.starts_with("the desktop worker failed to start: it exited during startup"));
         assert!(fast.message.contains("; retrying in 0."), "{}", fast.message);
         assert_eq!(spawner.spawned(), 1);
         tokio::time::sleep(Duration::from_millis(600)).await;
-        let retried = call(&supervisor, Call::Status, LONG).await.unwrap_err();
+        let retried = call(&supervisor, Call::status(), LONG).await.unwrap_err();
         assert!(retried.message.ends_with("; retrying in 1 s"), "{}", retried.message);
         assert_eq!(spawner.spawned(), 2);
         assert_eq!(supervisor.restarts(), 0);
@@ -399,7 +393,7 @@ mod tests {
         let spawner = FakeSpawner::new(|_, worker| drain(worker));
         let supervisor =
             Supervisor::with_ready_timeout(Box::new(spawner), Config::default(), Duration::from_millis(200));
-        let error = call(&supervisor, Call::Status, LONG).await.unwrap_err();
+        let error = call(&supervisor, Call::status(), LONG).await.unwrap_err();
         assert_eq!(error.code, ErrorCode::TargetNotResponding);
         assert_eq!(
             error.message,
@@ -414,7 +408,7 @@ mod tests {
             worker.handshake_as("0.0.0-old");
             drain(worker);
         });
-        let error = call(&supervisor, Call::Status, LONG).await.unwrap_err();
+        let error = call(&supervisor, Call::status(), LONG).await.unwrap_err();
         assert_eq!(error.code, ErrorCode::TargetNotResponding);
         let expected = format!(
             "worker version 0.0.0-old does not match server version {}; restart Claude Code to load the new \
@@ -431,12 +425,12 @@ mod tests {
             supervisor(|index, worker| if index == 0 { hang_worker(worker) } else { echo_worker(worker) });
         let started = Instant::now();
         let (hung, bystander) = tokio::join!(
-            call(&supervisor, Call::Status, Duration::from_millis(200)),
+            call(&supervisor, Call::status(), Duration::from_millis(200)),
             call(&supervisor, set_clipboard("bystander"), LONG)
         );
         assert!(started.elapsed() < Duration::from_secs(5));
-        assert_restart_error(&hung, "did not answer status within 0.2 s");
-        assert_restart_error(&bystander, "did not answer status within 0.2 s");
+        assert_restart_error(&hung, "did not answer observe status within 0.2 s");
+        assert_restart_error(&bystander, "did not answer observe status within 0.2 s");
         assert_eq!(supervisor.restarts(), 1);
         assert!(spawns_reach(&spawner, 2).await, "the replacement worker was not started eagerly");
         let after = call(&supervisor, set_clipboard("again"), LONG).await;
@@ -453,7 +447,7 @@ mod tests {
             worker.handshake();
             let _ = worker.receive();
         });
-        let outcome = call(&supervisor, Call::Status, LONG).await;
+        let outcome = call(&supervisor, Call::status(), LONG).await;
         assert_restart_error(&outcome, "exited unexpectedly");
         assert_eq!(supervisor.restarts(), 1);
         assert!(spawns_reach(&spawner, 2).await, "the replacement worker was not started eagerly");
@@ -492,7 +486,7 @@ mod tests {
             worker.handshake();
             std::thread::sleep(Duration::from_millis(100));
         });
-        let early = call(&supervisor, Call::Status, Duration::from_millis(50)).await.unwrap_err();
+        let early = call(&supervisor, Call::status(), Duration::from_millis(50)).await.unwrap_err();
         assert!(early.message.contains("still starting"), "{}", early.message);
         tokio::time::sleep(Duration::from_millis(600)).await;
         assert_eq!(spawner.spawned(), 1);
@@ -512,7 +506,7 @@ mod tests {
             worker.write_raw(&frame);
             drain(worker);
         });
-        let outcome = call(&supervisor, Call::Status, LONG).await;
+        let outcome = call(&supervisor, Call::status(), LONG).await;
         assert_restart_error(&outcome, "unreadable message");
         assert_eq!(supervisor.restarts(), 1);
     }
@@ -525,7 +519,7 @@ mod tests {
             worker.write_raw(&u32::MAX.to_le_bytes());
             drain(worker);
         });
-        let outcome = call(&supervisor, Call::Status, LONG).await;
+        let outcome = call(&supervisor, Call::status(), LONG).await;
         assert_restart_error(&outcome, "too large");
     }
 
@@ -546,7 +540,7 @@ mod tests {
         });
         call(&supervisor, set_clipboard("warm"), LONG).await.unwrap();
         let cancelled = tokio::time::sleep(Duration::from_millis(50));
-        let error = supervisor.call_within(Call::Status, LONG, cancelled).await.unwrap_err();
+        let error = supervisor.call_within(Call::status(), LONG, cancelled).await.unwrap_err();
         assert_eq!(error.code, ErrorCode::Cancelled);
         let (id, cancelled_id) = seen.recv_timeout(LONG).unwrap();
         assert_eq!(id, cancelled_id);
@@ -587,12 +581,12 @@ mod tests {
             worker.answer(&warm_up);
             let Some(ToWorker::Call { id, .. }) = worker.receive() else { return };
             let _ = worker.receive();
-            worker.reply(id, Ok(Reply::Clipboard(ClipboardReport { text: None, changed: false })));
+            worker.reply(id, Ok(Reply::Clipboard(ClipboardReport { text: None })));
             echo_after_handshake(worker);
         });
         call(&supervisor, set_clipboard("warm"), LONG).await.unwrap();
         let cancelled = tokio::time::sleep(Duration::from_millis(50));
-        let first = supervisor.call_within(Call::Status, LONG, cancelled).await;
+        let first = supervisor.call_within(Call::status(), LONG, cancelled).await;
         assert_eq!(first.unwrap_err().code, ErrorCode::Cancelled);
         let second = call(&supervisor, set_clipboard("next"), LONG).await;
         assert_eq!(clipboard_text(&second).as_deref(), Some("next"));
@@ -602,7 +596,7 @@ mod tests {
     async fn reply_wins_when_it_and_the_deadline_are_both_ready() {
         for _ in 0..64 {
             let (sender, mut reply) = oneshot::channel::<Result<Reply>>();
-            let _ = sender.send(Ok(echo(&Call::Status)));
+            let _ = sender.send(Ok(echo(&Call::status())));
             let settled = first_of(&mut reply, pin!(std::future::ready(())), std::future::ready(())).await;
             assert!(matches!(settled, Settled::Replied(Ok(Ok(Reply::Status(_))))));
         }
@@ -629,7 +623,7 @@ mod tests {
         call(&supervisor, set_clipboard("warm"), LONG).await.unwrap();
         supervisor.shutdown_handle().shut_down();
         saw_end.recv_timeout(Duration::from_secs(5)).unwrap();
-        let refused = call(&supervisor, Call::Status, LONG).await.unwrap_err();
+        let refused = call(&supervisor, Call::status(), LONG).await.unwrap_err();
         assert_eq!(refused.code, ErrorCode::Cancelled);
     }
 
@@ -649,10 +643,10 @@ mod tests {
             }
             supervisor.lifecycle.shut_down();
         };
-        let (outcome, ()) = tokio::join!(call(&supervisor, Call::Status, LONG), shut_down);
+        let (outcome, ()) = tokio::join!(call(&supervisor, Call::status(), LONG), shut_down);
         assert_eq!(outcome.unwrap_err().code, ErrorCode::Cancelled);
         assert_eq!(supervisor.restarts(), 0);
-        let refused = call(&supervisor, Call::Status, LONG).await.unwrap_err();
+        let refused = call(&supervisor, Call::status(), LONG).await.unwrap_err();
         assert_eq!(refused.code, ErrorCode::Cancelled);
     }
 }

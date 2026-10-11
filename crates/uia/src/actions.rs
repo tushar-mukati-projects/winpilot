@@ -22,6 +22,12 @@ impl Uia {
         unsafe { pattern.Select() }.uia(&target.doing("selecting"))
     }
 
+    pub fn deselect(&mut self, id: ElementRef) -> Result<()> {
+        let target = self.resolve(id)?;
+        let pattern: IUIAutomationSelectionItemPattern = target.pattern(UIA_SelectionItemPatternId, "SelectionItem")?;
+        unsafe { pattern.RemoveFromSelection() }.uia(&target.doing("deselecting"))
+    }
+
     pub fn expand(&mut self, id: ElementRef) -> Result<()> {
         let target = self.resolve(id)?;
         let pattern: IUIAutomationExpandCollapsePattern =

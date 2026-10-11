@@ -15,11 +15,15 @@ pub(crate) fn is_visible(hwnd: HWND) -> bool {
 }
 
 pub(crate) fn is_cloaked(hwnd: HWND) -> bool {
+    cloak_flags(hwnd) != 0
+}
+
+pub(crate) fn cloak_flags(hwnd: HWND) -> u32 {
     let mut cloaked = 0u32;
     let read = unsafe {
         DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, ptr::from_mut(&mut cloaked).cast(), size_of::<u32>() as u32)
     };
-    read.is_ok() && cloaked != 0
+    if read.is_ok() { cloaked } else { 0 }
 }
 
 pub(crate) fn is_tool_window(hwnd: HWND) -> bool {

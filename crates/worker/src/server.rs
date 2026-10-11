@@ -57,7 +57,7 @@ fn start_call(id: u64, call: Call, engine: &Arc<Engine>, outbox: &Outbox, pendin
     let thread_pending = Arc::clone(pending);
     let spawned = thread::Builder::new().name(format!("deckhand-call-{id}")).spawn(move || {
         let _com = ComGuard::multithreaded();
-        let result = engine.handle(call, &cancel);
+        let result = engine.handle(&call, &cancel);
         thread_pending.lock().remove(&id);
         reply(&thread_outbox, id, result);
     });

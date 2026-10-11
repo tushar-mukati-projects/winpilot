@@ -6,7 +6,7 @@ use deckhand_core::{
     protocol::{After, AfterMode, DiffReport},
 };
 
-use crate::{app_windows::app_windows, default_window::default_window, engine::Engine, observe, screenshot};
+use crate::{app_windows::app_windows, default_window::default_window, engine::Engine, observe};
 
 pub struct Baseline {
     window: WindowInfo,
@@ -40,7 +40,7 @@ impl Baseline {
 pub fn report(engine: &Engine, mode: AfterMode, baseline: Option<&Baseline>) -> Result<After> {
     match mode {
         AfterMode::None => Ok(After::None),
-        AfterMode::Screenshot => screenshot::of_window(engine, &default_window(engine)?).map(After::Screenshot),
+        AfterMode::Screenshot => observe::of_window(engine, &default_window(engine)?).map(After::Screenshot),
         AfterMode::Observe => observe::observe_window(engine, &default_window(engine)?).map(After::Observation),
         AfterMode::Diff => diff_or_observe(engine, baseline),
     }
@@ -79,6 +79,8 @@ mod tests {
             state: WindowState::Normal,
             foreground: false,
             elevated: false,
+            desktop: None,
+            on_current_desktop: true,
         }
     }
 

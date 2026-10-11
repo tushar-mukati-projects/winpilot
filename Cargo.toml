@@ -17,6 +17,7 @@ deckhand-capture = { path = "crates/capture" }
 deckhand-input = { path = "crates/input" }
 deckhand-desktop = { path = "crates/desktop" }
 deckhand-worker = { path = "crates/worker" }
+deckhand-fixture = { path = "crates/fixture" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "1"

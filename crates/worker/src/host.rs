@@ -224,6 +224,8 @@ mod tests {
             state: WindowState::Normal,
             foreground: true,
             elevated: false,
+            desktop: None,
+            on_current_desktop: true,
         };
         let error = host.refuse(&window).unwrap_err();
         assert_eq!(error.code, ErrorCode::Denied);

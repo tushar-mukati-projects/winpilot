@@ -80,6 +80,8 @@ mod tests {
             state: WindowState::Normal,
             foreground: false,
             elevated: false,
+            desktop: None,
+            on_current_desktop: true,
         };
         Snapshot { window, elements, focused: None, truncated: false }
     }

@@ -1,142 +1,167 @@
-use std::{
-    thread,
-    time::{Duration, Instant},
+use std::time::Duration;
+
+use deckhand_core::{
+    Error, ErrorCode, Rect, Result, TargetSpec, WindowInfo, WindowState,
+    format::window_line,
+    protocol::{Step, WindowAction},
 };
 
-use deckhand_core::{Error, ErrorCode, Result, WindowInfo, WindowRef};
+use super::{
+    done::Done,
+    launch,
+    mode::{Mode, for_window},
+    settle,
+    steps::StepContext,
+};
+use crate::{call_scope::CallScope, engine::Engine, overlay, resolve, until::until, watch::Watch};
 
-use crate::window_classes::is_popup;
+const CLOSE_WAIT: Duration = Duration::from_secs(3);
+const LISTED_MATCHES: usize = 8;
 
-const FOREGROUND_SETTLE: Duration = Duration::from_millis(200);
-const FOREGROUND_POLL: Duration = Duration::from_millis(10);
-const MAX_OWNERS: usize = 8;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Seen {
-    pub foreground: Option<WindowRef>,
-    pub owners_of_foreground: Vec<WindowRef>,
-    pub target_enabled: bool,
+pub struct WindowRequest<'a> {
+    pub action: WindowAction,
+    pub target: Option<&'a TargetSpec>,
+    pub app: Option<&'a str>,
+    pub args: Option<&'a str>,
+    pub rect: Option<Rect>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Front {
-    Target,
-    DialogOnTop,
-    Elsewhere(Option<WindowRef>),
-}
-
-pub fn bring_forward(window: &WindowInfo) -> Result<WindowInfo> {
-    let current = deckhand_desktop::window(window.hwnd)?;
-    if is_popup(&current) {
-        return Ok(current);
+pub fn step(engine: &Engine, request: &WindowRequest<'_>, step: &Step, context: &StepContext<'_>) -> Result<Done> {
+    let call = context.call;
+    if request.action == WindowAction::Launch {
+        let app = request.app.ok_or_else(|| Error::invalid("window action=launch needs \"app\""))?;
+        return launch::launch(engine, app, request.args, call);
     }
-    let behind = deckhand_desktop::foreground_window() != Some(current.hwnd);
-    if behind && deckhand_desktop::is_enabled(current.hwnd) {
-        deckhand_desktop::focus_window(current.hwnd)?;
+    let target = request.target.ok_or_else(|| Error::invalid("this window action needs \"target\""))?;
+    let window = target_window(engine, target, call)?;
+    let mode = for_window(context.mode, &window, step)?;
+    guard(engine, &window, mode, call)?;
+    overlay::begin(engine, &window, call);
+    let done = perform(engine, request, &window, call)?;
+    let after = deckhand_desktop::window(window.hwnd).ok();
+    if let Some(after) = after.filter(|after| after.state != WindowState::Minimized) {
+        overlay::begin(engine, &after, call);
     }
-    require_foreground(current.hwnd)?;
-    deckhand_desktop::window(window.hwnd)
+    Ok(done)
 }
 
-pub fn require_foreground(target: WindowRef) -> Result<()> {
-    let foreground = settled_foreground(target);
-    let seen = Seen {
-        foreground,
-        owners_of_foreground: owner_chain(foreground),
-        target_enabled: deckhand_desktop::is_enabled(target),
+fn perform(engine: &Engine, request: &WindowRequest<'_>, window: &WindowInfo, call: &CallScope) -> Result<Done> {
+    match request.action {
+        WindowAction::Close => close(engine, window, call),
+        WindowAction::Minimize => change_state(engine, window, WindowState::Minimized, call),
+        WindowAction::Maximize => change_state(engine, window, WindowState::Maximized, call),
+        WindowAction::Restore => change_state(engine, window, WindowState::Normal, call),
+        WindowAction::Move => {
+            let rect = request.rect.ok_or_else(|| Error::invalid("window action=move needs \"rect\""))?;
+            move_to(engine, window, rect, call)
+        }
+        WindowAction::Launch => Err(Error::invalid("window action=launch takes app, not a target")),
+    }
+}
+
+fn guard(engine: &Engine, window: &WindowInfo, mode: Mode, call: &CallScope) -> Result<()> {
+    match mode {
+        Mode::Foreground => engine.guard.before_input(Some(window), call),
+        Mode::Background => engine.guard.before_patterns(Some(window), call),
+    }
+}
+
+fn target_window(engine: &Engine, target: &TargetSpec, call: &CallScope) -> Result<WindowInfo> {
+    let window = match target {
+        TargetSpec::Text(spec) => single_window(spec.trim(), resolve::windows_matching(engine, spec.trim())?)?,
+        TargetSpec::Point(_) => resolve::target(engine, &target.parse()?, call)?.window,
     };
-    match front(target, &seen) {
-        Front::Target => Ok(()),
-        Front::DialogOnTop => Err(Error::new(
-            ErrorCode::NeedsUser,
-            format!("a dialog is open on top of {target}; handle it first (observe shows it)"),
-        )),
-        Front::Elsewhere(other) => Err(Error::new(ErrorCode::NeedsUser, elsewhere_message(target, other))),
+    engine.guard.check_window(&window)?;
+    engine.host.refuse(&window)?;
+    Ok(window)
+}
+
+fn close(engine: &Engine, window: &WindowInfo, call: &CallScope) -> Result<Done> {
+    deckhand_desktop::close_window(window.hwnd)?;
+    let hwnd = window.hwnd;
+    let closed = until(engine, call, CLOSE_WAIT, &Watch::window(window), || {
+        Ok((!deckhand_desktop::is_window(hwnd)).then_some(()))
+    })?;
+    if closed.is_some() {
+        return Ok(Done::noting(format!("closed {}", window_line(window))));
+    }
+    Ok(Done::noting(format!("{} is still open; it may be asking something", window.hwnd)))
+}
+
+fn change_state(engine: &Engine, window: &WindowInfo, state: WindowState, call: &CallScope) -> Result<Done> {
+    deckhand_desktop::set_window_state(window.hwnd, state)?;
+    settle(engine, window, call);
+    let after = deckhand_desktop::window(window.hwnd)?;
+    Ok(Done::noting(format!("{} {}", state_word(state), window_line(&after))))
+}
+
+const fn state_word(state: WindowState) -> &'static str {
+    match state {
+        WindowState::Minimized => "minimized",
+        WindowState::Maximized => "maximized",
+        WindowState::Normal => "restored",
     }
 }
 
-pub fn front(target: WindowRef, seen: &Seen) -> Front {
-    if !seen.target_enabled {
-        return Front::DialogOnTop;
-    }
-    match seen.foreground {
-        Some(front) if front == target => Front::Target,
-        Some(_) if seen.owners_of_foreground.contains(&target) => Front::DialogOnTop,
-        other => Front::Elsewhere(other),
+fn move_to(engine: &Engine, window: &WindowInfo, rect: Rect, call: &CallScope) -> Result<Done> {
+    deckhand_desktop::move_window(window.hwnd, rect)?;
+    settle(engine, window, call);
+    let after = deckhand_desktop::window(window.hwnd)?;
+    Ok(Done::noting(format!("moved {}", window_line(&after))))
+}
+
+pub fn single_window(spec: &str, found: Vec<WindowInfo>) -> Result<WindowInfo> {
+    let count = found.len();
+    let mut found = found.into_iter();
+    match (found.next(), count) {
+        (None, _) => Err(Error::not_found(format!("no open window matches {spec}"))),
+        (Some(only), 1) => Ok(only),
+        (Some(first), _) => Err(ambiguous(spec, count, std::iter::once(first).chain(found))),
     }
 }
 
-fn elsewhere_message(target: WindowRef, other: Option<WindowRef>) -> String {
-    match other {
-        Some(other) => format!("{target} is not in the foreground ({other} is); bring it forward or try again"),
-        None => format!("{target} is not in the foreground; bring it forward or try again"),
+fn ambiguous(spec: &str, count: usize, windows: impl Iterator<Item = WindowInfo>) -> Error {
+    let mut lines: Vec<String> = windows.take(LISTED_MATCHES).map(|window| window_line(&window)).collect();
+    if count > LISTED_MATCHES {
+        lines.push("…".to_string());
     }
-}
-
-fn settled_foreground(target: WindowRef) -> Option<WindowRef> {
-    let started = Instant::now();
-    loop {
-        let foreground = deckhand_desktop::foreground_window();
-        if foreground == Some(target) || started.elapsed() >= FOREGROUND_SETTLE {
-            return foreground;
-        }
-        thread::sleep(FOREGROUND_POLL);
-    }
-}
-
-fn owner_chain(window: Option<WindowRef>) -> Vec<WindowRef> {
-    let mut chain = Vec::new();
-    let mut current = window;
-    while let Some(owner) = current.and_then(deckhand_desktop::owner_of) {
-        if chain.contains(&owner) || chain.len() >= MAX_OWNERS {
-            break;
-        }
-        chain.push(owner);
-        current = Some(owner);
-    }
-    chain
+    let listed = lines.join("; ");
+    Error::new(ErrorCode::Ambiguous, format!("{count} windows match {spec}: {listed}; pass one window ref"))
 }
 
 #[cfg(test)]
 mod tests {
+    use deckhand_core::WindowRef;
+
     use super::*;
+    use crate::test_fixture::window;
 
-    const TARGET: WindowRef = WindowRef(10);
-
-    fn seen(foreground: Option<i64>, owners: &[i64], target_enabled: bool) -> Seen {
-        Seen {
-            foreground: foreground.map(WindowRef),
-            owners_of_foreground: owners.iter().copied().map(WindowRef).collect(),
-            target_enabled,
-        }
+    #[test]
+    fn only_a_single_matching_window_can_be_controlled() {
+        let first = window(1, "chrome.exe", "Inbox", Rect::new(0, 0, 10, 10));
+        let second = window(2, "chrome.exe", "Docs", Rect::new(0, 0, 10, 10));
+        assert_eq!(single_window("process:chrome", vec![first.clone()]).unwrap().hwnd, WindowRef(1));
+        let error = single_window("process:chrome", vec![first, second]).unwrap_err();
+        assert_eq!(error.code, ErrorCode::Ambiguous);
+        assert!(
+            error.message.starts_with("2 windows match process:chrome: w1 chrome.exe \"Inbox\"; w2"),
+            "{}",
+            error.message
+        );
+        assert_eq!(single_window("Nothing", Vec::new()).unwrap_err().code, ErrorCode::NotFound);
     }
 
     #[test]
-    fn the_target_itself_in_front_is_fine() {
-        assert_eq!(front(TARGET, &seen(Some(10), &[], true)), Front::Target);
+    fn long_ambiguity_lists_are_capped() {
+        let many: Vec<WindowInfo> = (1..=10).map(|hwnd| window(hwnd, "app.exe", "A", Rect::default())).collect();
+        let message = single_window("A", many).unwrap_err().message;
+        assert!(message.contains("w8 app.exe \"A\"; …; pass one window ref"), "{message}");
+        assert!(!message.contains("w9 "));
     }
 
     #[test]
-    fn an_owned_window_in_front_is_a_dialog_on_top() {
-        assert_eq!(front(TARGET, &seen(Some(20), &[10], true)), Front::DialogOnTop);
-        assert_eq!(front(TARGET, &seen(Some(30), &[20, 10], true)), Front::DialogOnTop);
-    }
-
-    #[test]
-    fn a_disabled_target_has_a_modal_dialog_even_when_activated() {
-        assert_eq!(front(TARGET, &seen(Some(10), &[], false)), Front::DialogOnTop);
-    }
-
-    #[test]
-    fn an_unrelated_window_in_front_is_elsewhere() {
-        assert_eq!(front(TARGET, &seen(Some(20), &[5], true)), Front::Elsewhere(Some(WindowRef(20))));
-        assert_eq!(front(TARGET, &seen(None, &[], true)), Front::Elsewhere(None));
-        assert!(elsewhere_message(TARGET, Some(WindowRef(20))).contains("(w20 is)"));
-    }
-
-    #[test]
-    fn missing_windows_have_no_owners() {
-        assert!(owner_chain(None).is_empty());
-        assert!(owner_chain(Some(WindowRef(0))).is_empty());
+    fn state_changes_are_named() {
+        assert_eq!(state_word(WindowState::Minimized), "minimized");
+        assert_eq!(state_word(WindowState::Normal), "restored");
     }
 }
