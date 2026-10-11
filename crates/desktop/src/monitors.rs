@@ -69,7 +69,7 @@ unsafe extern "system" fn collect_monitor(monitor: HMONITOR, _dc: HDC, _bounds: 
     BOOL::from(true)
 }
 
-fn describe_monitor(monitor: HMONITOR) -> Option<Monitor> {
+pub(crate) fn describe_monitor(monitor: HMONITOR) -> Option<Monitor> {
     let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..MONITORINFO::default() };
     if !unsafe { GetMonitorInfoW(monitor, &raw mut info) }.as_bool() {
         return None;

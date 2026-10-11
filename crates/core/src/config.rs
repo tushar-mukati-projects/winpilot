@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    agent,
     error::Result,
     matching::{contains_folded, same_process},
     path_guard,
@@ -208,8 +209,8 @@ impl OverlayConfig {
     }
 
     pub fn display_label(&self, agent: &str) -> String {
-        let configured = self.label.as_deref().map(str::trim).filter(|label| !label.is_empty());
-        configured.map_or_else(|| crate::agent::agent_label(agent), str::to_string)
+        let configured = self.label.as_deref().map(agent::sanitized_label).filter(|label| !label.is_empty());
+        configured.unwrap_or_else(|| agent::agent_label(agent))
     }
 }
 
@@ -407,6 +408,11 @@ mod tests {
         assert_eq!(named.overlay.display_label("claude-code"), "Helper");
         let blank: Config = serde_json::from_str(r#"{"overlay":{"label":"  "}}"#).unwrap();
         assert_eq!(blank.overlay.display_label("codex"), "Codex");
+        let hidden: Config = serde_json::from_str("{\"overlay\":{\"label\":\"\u{202e}\u{200b}\"}}").unwrap();
+        assert_eq!(hidden.overlay.display_label("codex"), "Codex");
+        let tricky: Config =
+            serde_json::from_str("{\"overlay\":{\"label\":\" My\u{202e}Helper\\n with a very long name \"}}").unwrap();
+        assert_eq!(tricky.overlay.display_label("codex"), "MyHelper with a very lo\u{2026}");
     }
 
     #[test]

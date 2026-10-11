@@ -59,8 +59,8 @@ impl Notifier {
         while showing.len() >= MAX_SHOWING {
             showing.remove(0);
         }
-        let (balloon, ()) = MessageThread::spawn_within("deckhand-notify", BALLOON_STARTUP, move || {
-            Balloon::show(&text).map(|shown| (shown, ()))
+        let (balloon, ()) = MessageThread::spawn_within("deckhand-notify", BALLOON_STARTUP, move |cancel| {
+            Balloon::show(&text, cancel).map(|shown| (shown, ()))
         })?;
         showing.push(balloon);
         Ok(())

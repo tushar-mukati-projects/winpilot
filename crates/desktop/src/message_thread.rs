@@ -5,6 +5,8 @@ use std::{
 };
 
 use deckhand_core::{Context, Error, Result};
+
+use crate::startup_cancel::StartupCancel;
 use windows::Win32::{
     Foundation::{LPARAM, WPARAM},
     System::Threading::GetCurrentThreadId,
@@ -35,19 +37,21 @@ impl MessageThread {
         R: Send + 'static,
         F: FnOnce() -> Result<(S, R)> + Send + 'static,
     {
-        Self::spawn_within(name, STARTUP_TIMEOUT, setup)
+        Self::spawn_within(name, STARTUP_TIMEOUT, move |_: &StartupCancel| setup())
     }
 
     pub(crate) fn spawn_within<S, R, F>(name: &str, startup: Duration, setup: F) -> Result<(Self, R)>
     where
         S: ThreadMessages,
         R: Send + 'static,
-        F: FnOnce() -> Result<(S, R)> + Send + 'static,
+        F: FnOnce(&StartupCancel) -> Result<(S, R)> + Send + 'static,
     {
         let (ready_sender, ready) = mpsc::channel::<Startup<R>>();
+        let cancel = StartupCancel::default();
+        let thread_cancel = cancel.clone();
         let handle = thread::Builder::new()
             .name(name.to_string())
-            .spawn(move || run(setup, &ready_sender))
+            .spawn(move || run(setup, &ready_sender, &thread_cancel))
             .context(&format!("starting the {name} thread"))?;
         match ready.recv_timeout(startup) {
             Ok(Ok((thread_id, value))) => Ok((Self { thread_id, handle: Some(handle) }, value)),
@@ -55,7 +59,10 @@ impl MessageThread {
                 let _ = handle.join();
                 Err(error)
             }
-            Err(_) => Err(Error::internal(format!("the {name} thread did not start"))),
+            Err(_) => {
+                cancel.cancel();
+                Err(Error::internal(format!("the {name} thread did not start")))
+            }
         }
     }
 
@@ -83,16 +90,16 @@ impl Drop for MessageThread {
     }
 }
 
-fn run<S, R, F>(setup: F, ready: &Sender<Startup<R>>)
+fn run<S, R, F>(setup: F, ready: &Sender<Startup<R>>, cancel: &StartupCancel)
 where
     S: ThreadMessages,
-    F: FnOnce() -> Result<(S, R)>,
+    F: FnOnce(&StartupCancel) -> Result<(S, R)>,
 {
     ensure_message_queue();
-    match setup() {
+    match setup(cancel) {
         Ok((mut state, value)) => {
             let thread_id = unsafe { GetCurrentThreadId() };
-            if ready.send(Ok((thread_id, value))).is_ok() {
+            if !cancel.is_cancelled() && ready.send(Ok((thread_id, value))).is_ok() {
                 pump_messages(&mut state);
             }
         }
@@ -202,6 +209,22 @@ mod tests {
             thread::sleep(Duration::from_millis(5));
         }
         assert!(thread.is_finished());
+    }
+
+    #[test]
+    fn a_thread_that_starts_too_late_is_told_to_give_up() {
+        let (report, reports) = mpsc::channel();
+        let flag = Arc::new(AtomicBool::new(false));
+        let torn_down = Arc::clone(&flag);
+        let outcome = MessageThread::spawn_within("test-late", Duration::from_millis(50), move |cancel| {
+            thread::sleep(Duration::from_millis(250));
+            report.send(cancel.is_cancelled()).unwrap();
+            cancel.check()?;
+            Ok((Idle(torn_down), ()))
+        });
+        assert!(outcome.is_err());
+        assert_eq!(reports.recv_timeout(Duration::from_secs(5)), Ok(true));
+        assert!(!flag.load(Ordering::SeqCst));
     }
 
     #[test]

@@ -1,12 +1,13 @@
 use std::{thread, time::Duration};
 
-use deckhand_core::{Point, Result, glide::glide_path, protocol::MouseButton};
+use deckhand_core::{Point, Result, protocol::MouseButton};
 
 use crate::{
     event::InputEvent,
     mouse::{ButtonTransition, button_event, move_event},
     physical_button::PhysicalButton,
     send::send,
+    timed_moves::{move_plan, play},
     virtual_desktop::VirtualDesktop,
 };
 
@@ -21,126 +22,159 @@ struct DragPlan {
     duration: Duration,
 }
 
-pub fn drag(from: Point, to: Point, button: MouseButton, duration: Duration) -> Result<()> {
+struct DragIo<Sleep, Send, Guard> {
+    sleep: Sleep,
+    send: Send,
+    guard: Guard,
+}
+
+pub fn drag_guarded(
+    from: Point,
+    to: Point,
+    button: MouseButton,
+    duration: Duration,
+    guard: impl FnMut() -> Result<()>,
+) -> Result<()> {
     let desktop = VirtualDesktop::current()?;
     let plan = DragPlan { desktop, from, to, button: PhysicalButton::current(button), duration };
-    drag_with(plan, thread::sleep, send)
+    drag_with(plan, DragIo { sleep: thread::sleep, send, guard })
+}
+
+pub fn drag(from: Point, to: Point, button: MouseButton, duration: Duration) -> Result<()> {
+    drag_guarded(from, to, button, duration, || Ok(()))
 }
 
 fn drag_with(
     plan: DragPlan,
-    mut sleep: impl FnMut(Duration),
-    mut send: impl FnMut(&[InputEvent]) -> Result<()>,
+    mut io: DragIo<impl FnMut(Duration), impl FnMut(&[InputEvent]) -> Result<()>, impl FnMut() -> Result<()>>,
 ) -> Result<()> {
-    let outcome = perform_drag(plan, &mut sleep, &mut send);
+    (io.guard)()?;
+    let outcome = perform_drag(plan, &mut io);
     if outcome.is_err() {
-        let _ = send(&[button_event(plan.button, ButtonTransition::Release)]);
+        let _ = (io.send)(&[button_event(plan.button, ButtonTransition::Release)]);
     }
     outcome
 }
 
 fn perform_drag(
     plan: DragPlan,
-    sleep: &mut impl FnMut(Duration),
-    send: &mut impl FnMut(&[InputEvent]) -> Result<()>,
+    io: &mut DragIo<impl FnMut(Duration), impl FnMut(&[InputEvent]) -> Result<()>, impl FnMut() -> Result<()>>,
 ) -> Result<()> {
-    send(&[move_event(plan.desktop, plan.from), button_event(plan.button, ButtonTransition::Press)])?;
-    let path = drag_path(plan.from, plan.to, plan.duration);
-    let delay = step_delay(plan.duration, path.len());
-    for point in path {
-        sleep(delay);
-        send(&[move_event(plan.desktop, point)])?;
-    }
-    sleep(delay);
-    send(&[move_event(plan.desktop, plan.to), button_event(plan.button, ButtonTransition::Release)])
-}
-
-fn drag_path(from: Point, to: Point, duration: Duration) -> Vec<Point> {
-    let mut path = glide_path(from, to, duration.max(SHORTEST_DRAG));
-    path.pop();
-    path
-}
-
-fn step_delay(duration: Duration, moves: usize) -> Duration {
-    let steps = u32::try_from(moves).unwrap_or(u32::MAX).saturating_add(1);
-    duration.max(SHORTEST_DRAG) / steps
+    (io.send)(&[move_event(plan.desktop, plan.from), button_event(plan.button, ButtonTransition::Press)])?;
+    let moves = move_plan(plan.desktop, plan.from, plan.to, plan.duration.max(SHORTEST_DRAG));
+    play(&moves, &mut io.sleep, &mut io.send, &mut io.guard)?;
+    (io.send)(&[button_event(plan.button, ButtonTransition::Release)])
 }
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Error;
+    use deckhand_core::{Error, ErrorCode};
 
     use super::*;
 
     const DESKTOP: VirtualDesktop = VirtualDesktop { x: 0, y: 0, width: 2560, height: 1600 };
+    const FROM: Point = Point::new(10, 10);
+    const TO: Point = Point::new(200, 300);
 
     fn plan(button: PhysicalButton) -> DragPlan {
-        DragPlan {
-            desktop: DESKTOP,
-            from: Point::new(10, 10),
-            to: Point::new(200, 300),
-            button,
-            duration: Duration::ZERO,
-        }
+        DragPlan { desktop: DESKTOP, from: FROM, to: TO, button, duration: Duration::ZERO }
     }
 
-    fn recorded_drag(button: PhysicalButton, fail_on_call: Option<usize>) -> (Result<()>, Vec<Vec<InputEvent>>) {
+    fn recorded_drag(
+        button: PhysicalButton,
+        fail_on_call: Option<usize>,
+        abort_on_check: Option<usize>,
+    ) -> (Result<()>, Vec<Vec<InputEvent>>) {
         let mut calls: Vec<Vec<InputEvent>> = Vec::new();
-        let outcome = drag_with(
-            plan(button),
-            |_| {},
-            |events: &[InputEvent]| {
-                calls.push(events.to_vec());
-                if Some(calls.len()) == fail_on_call { Err(Error::internal("blocked")) } else { Ok(()) }
-            },
-        );
+        let mut checks = 0;
+        let send = |events: &[InputEvent]| {
+            calls.push(events.to_vec());
+            if Some(calls.len()) == fail_on_call { Err(Error::internal("blocked")) } else { Ok(()) }
+        };
+        let guard = || {
+            checks += 1;
+            if Some(checks) == abort_on_check { Err(Error::new(ErrorCode::StoppedByUser, "stopped")) } else { Ok(()) }
+        };
+        let outcome = drag_with(plan(button), DragIo { sleep: |_| {}, send, guard });
         (outcome, calls)
     }
 
+    fn release(button: PhysicalButton) -> Vec<InputEvent> {
+        vec![button_event(button, ButtonTransition::Release)]
+    }
+
+    fn path_moves() -> usize {
+        move_plan(DESKTOP, FROM, TO, SHORTEST_DRAG).len()
+    }
+
     #[test]
-    fn successful_drag_presses_moves_and_releases() {
-        let (outcome, calls) = recorded_drag(PhysicalButton::Left, None);
+    fn successful_drag_presses_glides_to_the_target_and_releases() {
+        let (outcome, calls) = recorded_drag(PhysicalButton::Left, None, None);
         assert!(outcome.is_ok());
-        assert_eq!(calls.len(), drag_path(Point::new(10, 10), Point::new(200, 300), Duration::ZERO).len() + 2);
-        assert_eq!(calls[0][1], button_event(PhysicalButton::Left, ButtonTransition::Press));
-        let last = calls.last().unwrap();
-        assert_eq!(last[1], button_event(PhysicalButton::Left, ButtonTransition::Release));
+        assert_eq!(calls.len(), path_moves() + 2);
+        assert_eq!(
+            calls[0],
+            vec![move_event(DESKTOP, FROM), button_event(PhysicalButton::Left, ButtonTransition::Press)]
+        );
+        assert_eq!(calls[calls.len() - 2], vec![move_event(DESKTOP, TO)]);
+        assert_eq!(calls.last(), Some(&release(PhysicalButton::Left)));
     }
 
     #[test]
     fn failed_intermediate_move_still_releases_the_button() {
-        let (outcome, calls) = recorded_drag(PhysicalButton::Right, Some(4));
+        let (outcome, calls) = recorded_drag(PhysicalButton::Right, Some(4), None);
         assert!(outcome.is_err());
         assert_eq!(calls.len(), 5);
-        assert_eq!(calls[4], vec![button_event(PhysicalButton::Right, ButtonTransition::Release)]);
+        assert_eq!(calls[4], release(PhysicalButton::Right));
     }
 
     #[test]
     fn failed_press_still_sends_a_release() {
-        let (outcome, calls) = recorded_drag(PhysicalButton::Left, Some(1));
+        let (outcome, calls) = recorded_drag(PhysicalButton::Left, Some(1), None);
         assert!(outcome.is_err());
-        assert_eq!(calls.last().unwrap(), &vec![button_event(PhysicalButton::Left, ButtonTransition::Release)]);
+        assert_eq!(calls.last(), Some(&release(PhysicalButton::Left)));
     }
 
     #[test]
-    fn the_drag_path_eases_and_takes_at_least_a_tenth_of_a_second() {
-        let quick = drag_path(Point::new(0, 0), Point::new(100, 0), Duration::ZERO);
-        assert_eq!(quick.len(), 11);
-        assert!(quick[1].x - quick[0].x < quick[6].x - quick[5].x);
-        assert_eq!(drag_path(Point::new(0, 0), Point::new(100, 0), Duration::from_millis(500)).len(), 59);
-        assert_eq!(step_delay(Duration::ZERO, 11), Duration::from_millis(100) / 12);
+    fn an_abort_mid_drag_stops_moving_and_releases_the_button() {
+        let (outcome, calls) = recorded_drag(PhysicalButton::Left, None, Some(5));
+        assert_eq!(outcome.unwrap_err().code, ErrorCode::StoppedByUser);
+        assert_eq!(calls.len(), 1 + 3 + 1);
+        assert!(calls.len() < path_moves() + 2);
+        assert_eq!(calls.last(), Some(&release(PhysicalButton::Left)));
     }
 
     #[test]
-    fn zero_length_drag_stays_put() {
-        let path = drag_path(Point::new(5, 5), Point::new(5, 5), Duration::ZERO);
-        assert!(path.iter().all(|point| *point == Point::new(5, 5)));
+    fn an_abort_before_the_press_sends_nothing() {
+        let (outcome, calls) = recorded_drag(PhysicalButton::Left, None, Some(1));
+        assert_eq!(outcome.unwrap_err().code, ErrorCode::StoppedByUser);
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn a_drag_takes_at_least_a_tenth_of_a_second_and_eases() {
+        let quick = move_plan(DESKTOP, Point::new(0, 0), Point::new(100, 0), SHORTEST_DRAG);
+        assert_eq!(quick.len(), 12);
+        assert_eq!(quick.last().map(|step| step.after), Some(SHORTEST_DRAG));
+        let slow = move_plan(DESKTOP, Point::new(0, 0), Point::new(100, 0), Duration::from_millis(500));
+        assert_eq!(slow.len(), 60);
     }
 
     #[test]
     fn extreme_coordinates_do_not_overflow() {
-        let path = drag_path(Point::new(i32::MIN, i32::MAX), Point::new(i32::MAX, i32::MIN), Duration::ZERO);
-        assert_eq!(path.len(), 11);
-        assert!(path[0].x < 0 && path[10].x > 0);
+        let plan = DragPlan {
+            desktop: DESKTOP,
+            from: Point::new(i32::MIN, i32::MAX),
+            to: Point::new(i32::MAX, i32::MIN),
+            button: PhysicalButton::Left,
+            duration: Duration::ZERO,
+        };
+        let mut sent = 0;
+        let counting = |_: &[InputEvent]| {
+            sent += 1;
+            Ok(())
+        };
+        assert!(drag_with(plan, DragIo { sleep: |_| {}, send: counting, guard: || Ok(()) }).is_ok());
+        assert_eq!(sent, path_moves() + 2);
     }
 }

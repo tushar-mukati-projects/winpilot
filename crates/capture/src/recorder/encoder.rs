@@ -58,6 +58,7 @@ impl EncoderThread {
             Ok(()) => Ok(Self { input, recycled, handle }),
             Err(error) => {
                 drop(started);
+                drop(input);
                 join_within(handle, ABANDON_GRACE);
                 Err(error)
             }

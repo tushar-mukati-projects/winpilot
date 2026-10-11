@@ -43,6 +43,10 @@ impl NamedMutex {
         }
     }
 
+    pub fn try_lock_abandoned(&self) -> Result<Option<NamedMutexGuard<'_>>> {
+        Ok(self.lock(Duration::ZERO)?.filter(NamedMutexGuard::was_abandoned))
+    }
+
     fn guard(&self, abandoned: bool) -> NamedMutexGuard<'_> {
         NamedMutexGuard { mutex: self, abandoned, _owned_by_this_thread: PhantomData }
     }
@@ -154,6 +158,35 @@ mod tests {
         drop(guard);
         let again = mutex.lock(Duration::from_millis(100)).unwrap().unwrap();
         assert!(!again.was_abandoned());
+    }
+
+    #[test]
+    fn only_an_abandoned_mutex_is_claimed_for_recovery() {
+        let name = unique_name("recover");
+        let mutex = NamedMutex::create(&name).unwrap();
+        assert!(mutex.try_lock_abandoned().unwrap().is_none());
+        assert!(mutex.lock(Duration::from_millis(100)).unwrap().is_some_and(|guard| !guard.was_abandoned()));
+        let holder = thread::spawn(move || {
+            let same = NamedMutex::create(&name).unwrap();
+            std::mem::forget(same.lock(Duration::from_millis(100)).unwrap().unwrap());
+        });
+        holder.join().unwrap();
+        let recovering = mutex.try_lock_abandoned().unwrap();
+        assert!(recovering.as_ref().is_some_and(NamedMutexGuard::was_abandoned));
+        drop(recovering);
+        assert!(mutex.try_lock_abandoned().unwrap().is_none());
+    }
+
+    #[test]
+    fn a_live_holder_is_never_claimed_for_recovery() {
+        let name = unique_name("live");
+        let mutex = NamedMutex::create(&name).unwrap();
+        let _held = mutex.lock(Duration::from_millis(100)).unwrap().unwrap();
+        let contender = thread::spawn(move || {
+            let same = NamedMutex::create(&name).unwrap();
+            same.try_lock_abandoned().unwrap().is_none()
+        });
+        assert!(contender.join().unwrap());
     }
 
     #[test]

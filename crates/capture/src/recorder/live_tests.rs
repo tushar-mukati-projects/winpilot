@@ -30,15 +30,17 @@ use crate::frame::Frame;
 const OUTPUT_FOLDER_VARIABLE: &str = "DECKHAND_RECORD_TEST_DIR";
 const START_PATIENCE: Duration = Duration::from_secs(10);
 
+static NEXT_SCRATCH: AtomicUsize = AtomicUsize::new(0);
+
 struct Scratch {
     folder: PathBuf,
 }
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let root = std::env::var_os(OUTPUT_FOLDER_VARIABLE)
-            .map_or_else(|| std::env::temp_dir().join("deckhand-record-tests"), PathBuf::from);
-        let folder = root.join(name);
+        let root = std::env::var_os(OUTPUT_FOLDER_VARIABLE).map_or_else(std::env::temp_dir, PathBuf::from);
+        let serial = NEXT_SCRATCH.fetch_add(1, Ordering::Relaxed);
+        let folder = root.join(format!("deckhand-record-test-{name}-{}-{serial}", std::process::id()));
         fs::create_dir_all(&folder).unwrap();
         Self { folder }
     }

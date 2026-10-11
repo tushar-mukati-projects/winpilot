@@ -1,0 +1,138 @@
+use std::{
+    sync::mpsc::{self, Receiver, Sender},
+    time::Duration,
+};
+
+use deckhand_core::{Point, Rect, Result};
+
+use super::{
+    capture_hide::CaptureHideGuard,
+    chip_text::ChipText,
+    command::OverlayCommand,
+    options::OverlayOptions,
+    render_thread::{OverlaySettings, OverlayThread, WAKE_OVERLAY},
+    wake_flag::WakeFlag,
+};
+use crate::message_thread::MessageThread;
+
+const CONCEAL_TIMEOUT: Duration = Duration::from_millis(250);
+
+pub struct Overlay {
+    commands: Sender<OverlayCommand>,
+    wake: WakeFlag,
+    thread: MessageThread,
+    every_layer_excluded: bool,
+}
+
+impl Overlay {
+    pub fn spawn(options: OverlayOptions) -> Result<Self> {
+        let (commands, receiver) = mpsc::channel();
+        let wake = WakeFlag::default();
+        let OverlayOptions { animations, capturable, kill_hotkey, label, palette } = options;
+        let settings = OverlaySettings { animations, capturable, kill_hotkey, label, palette };
+        let thread_wake = wake.clone();
+        let (thread, every_layer_excluded) =
+            MessageThread::spawn("deckhand-overlay", move || OverlayThread::create(receiver, thread_wake, settings))?;
+        Ok(Self { commands, wake, thread, every_layer_excluded })
+    }
+
+    pub fn begin(&self, rect: Rect) {
+        self.send(OverlayCommand::Begin(rect));
+    }
+
+    pub fn end(&self) {
+        self.send(OverlayCommand::End);
+    }
+
+    pub fn click(&self, point: Point, count: u8) {
+        self.send(OverlayCommand::Click(point, count));
+    }
+
+    pub fn glide(&self, from: Point, to: Point, duration: Duration) {
+        self.send(OverlayCommand::Glide(from, to, duration));
+    }
+
+    pub fn focus_field(&self, rect: Rect) {
+        self.send(OverlayCommand::FocusField(rect));
+    }
+
+    pub fn stopped(&self) {
+        self.send(OverlayCommand::Stopped);
+    }
+
+    pub fn resumed(&self) {
+        self.send(OverlayCommand::Resumed);
+    }
+
+    pub fn recording(&self, rect: Rect) {
+        self.send(OverlayCommand::Recording(rect));
+    }
+
+    pub fn recording_stopped(&self) {
+        self.send(OverlayCommand::RecordingStopped);
+    }
+
+    pub fn screenshot(&self, rect: Rect) {
+        self.send(OverlayCommand::Screenshot(rect));
+    }
+
+    pub fn keys(&self, rect: Rect, chords: Vec<Vec<String>>) {
+        let text = ChipText::keys(chords);
+        if !text.is_empty() {
+            self.send(OverlayCommand::Keystrokes(rect, text));
+        }
+    }
+
+    pub fn keystrokes(&self, rect: Rect, chords: Vec<Vec<String>>) {
+        self.keys(rect, chords);
+    }
+
+    pub fn typing(&self, rect: Rect, _characters: usize) {
+        self.send(OverlayCommand::Keystrokes(rect, ChipText::typing()));
+    }
+
+    pub fn scan(&self, rect: Rect) {
+        self.send(OverlayCommand::Scan(rect));
+    }
+
+    pub fn hidden_for_capture(&self) -> CaptureHideGuard<'_> {
+        if self.every_layer_excluded {
+            return CaptureHideGuard::not_needed();
+        }
+        let (confirm, confirmed) = mpsc::channel();
+        if self.commands.send(OverlayCommand::Conceal(confirm)).is_err() {
+            return CaptureHideGuard::not_needed();
+        }
+        self.wake();
+        let confirmed = waited_for(&confirmed) || (self.thread.post(WAKE_OVERLAY) && waited_for(&confirmed));
+        CaptureHideGuard::hiding(self, confirmed)
+    }
+
+    pub(crate) fn unconceal(&self) {
+        self.send(OverlayCommand::Unconceal);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn thread_id(&self) -> u32 {
+        self.thread.thread_id()
+    }
+
+    fn send(&self, command: OverlayCommand) -> bool {
+        self.commands.send(command).is_ok() && self.wake()
+    }
+
+    fn wake(&self) -> bool {
+        if !self.wake.claim() {
+            return true;
+        }
+        let posted = self.thread.post(WAKE_OVERLAY);
+        if !posted {
+            self.wake.give_back();
+        }
+        posted
+    }
+}
+
+fn waited_for(confirmed: &Receiver<()>) -> bool {
+    confirmed.recv_timeout(CONCEAL_TIMEOUT).is_ok()
+}

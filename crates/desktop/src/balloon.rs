@@ -7,6 +7,7 @@ use crate::{
     balloon_text::BalloonText,
     balloon_window::{BALLOON_CALLBACK, BalloonWindow},
     message_thread::ThreadMessages,
+    startup_cancel::StartupCancel,
     timeouts::finite_millis,
     tray_icon::TrayIcon,
     window_timer::WindowTimer,
@@ -37,9 +38,11 @@ pub(crate) struct Balloon {
 }
 
 impl Balloon {
-    pub(crate) fn show(text: &BalloonText) -> Result<Self> {
+    pub(crate) fn show(text: &BalloonText, cancel: &StartupCancel) -> Result<Self> {
         let lifetime = BalloonLifetime::start(BALLOON_LIFETIME)?;
+        cancel.check()?;
         let icon = TrayIcon::add(lifetime.window.hwnd(), BALLOON_CALLBACK)?;
+        cancel.check()?;
         icon.show_balloon(text)?;
         Ok(Self { _icon: icon, _lifetime: lifetime })
     }

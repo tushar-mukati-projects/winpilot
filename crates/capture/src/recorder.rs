@@ -1,6 +1,7 @@
 mod bitrate;
 mod changed_area;
 mod clock;
+mod cover_hold;
 mod encoder;
 mod gif_writer;
 mod gpu;
@@ -9,10 +10,10 @@ mod media_foundation;
 mod media_type;
 mod monitor_area;
 mod mp4;
-mod mta_usage;
 mod nv12;
 mod outcome;
 mod output_file;
+mod process_mta_anchor;
 mod sampler;
 mod scaler;
 mod source;
@@ -33,12 +34,13 @@ use std::time::{Duration, Instant};
 
 use deckhand_core::{Context, Error, Result};
 
+pub use cover_hold::{COVER_HOLD, CoverHold};
 pub use outcome::{EndReason, Finished, Progress, Started};
 pub use output_file::OutputFile;
 pub use spec::{RecordingSource, RecordingSpec, Redact, Redactor, StopCheck, VideoSettings};
 
-use mta_usage::keep_mta_for_process;
 use outcome::Counters;
+use process_mta_anchor::anchor_mta_for_process_lifetime;
 use sampler::SamplerInput;
 use thread_join::join_within;
 
@@ -55,7 +57,7 @@ pub struct Recorder {
 
 impl Recorder {
     pub fn start(spec: RecordingSpec, patience: Duration) -> Result<Self> {
-        keep_mta_for_process()?;
+        anchor_mta_for_process_lifetime()?;
         let RecordingSpec { source, output, video, redactor, kill_switch, stop } = spec;
         let (ready, started) = mpsc::channel();
         let mut recorder = Self {
