@@ -1,0 +1,284 @@
+#![cfg(test)]
+
+use std::{
+    fs,
+    io::{BufRead, BufReader, Write},
+    path::{Path, PathBuf},
+    process::{Child, ChildStdin, ChildStdout, Command, Stdio},
+    time::{Duration, Instant},
+};
+
+use serde_json::{Value, json};
+
+struct Mcp {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: BufReader<ChildStdout>,
+    next_id: u64,
+    timings: Vec<(String, Duration)>,
+    _home: TempDir,
+}
+
+struct Reply {
+    text: String,
+    images: usize,
+    is_error: bool,
+}
+
+struct TempDir(PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+impl TempDir {
+    fn new(name: &str) -> Self {
+        let path = std::env::temp_dir().join(format!("deckhand-e2e-{name}-{}", std::process::id()));
+        fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+}
+
+impl Mcp {
+    fn start() -> Self {
+        let home = TempDir::new("home");
+        let mut child = Command::new(env!("CARGO_BIN_EXE_deckhand"))
+            .arg("mcp")
+            .env("APPDATA", home.0.join("roaming"))
+            .env("LOCALAPPDATA", home.0.join("local"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let stdin = child.stdin.take().unwrap();
+        let stdout = BufReader::new(child.stdout.take().unwrap());
+        let mut mcp = Self { child, stdin, stdout, next_id: 0, timings: Vec::new(), _home: home };
+        mcp.request(
+            "initialize",
+            &json!({
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": { "name": "deckhand-e2e", "version": "0" }
+            }),
+        );
+        mcp.notify("notifications/initialized");
+        mcp
+    }
+
+    fn notify(&mut self, method: &str) {
+        let message = json!({ "jsonrpc": "2.0", "method": method });
+        writeln!(self.stdin, "{message}").unwrap();
+        self.stdin.flush().unwrap();
+    }
+
+    fn request(&mut self, method: &str, params: &Value) -> Value {
+        self.next_id += 1;
+        let id = self.next_id;
+        let message = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
+        writeln!(self.stdin, "{message}").unwrap();
+        self.stdin.flush().unwrap();
+        loop {
+            let mut line = String::new();
+            assert!(self.stdout.read_line(&mut line).unwrap() > 0, "the server closed stdout");
+            let reply: Value = serde_json::from_str(&line).unwrap();
+            if reply["id"] == json!(id) {
+                assert!(reply.get("error").is_none(), "protocol error: {reply}");
+                return reply["result"].clone();
+            }
+        }
+    }
+
+    fn call(&mut self, tool: &str, arguments: &Value) -> Reply {
+        let started = Instant::now();
+        let result = self.request("tools/call", &json!({ "name": tool, "arguments": *arguments }));
+        self.timings.push((tool.to_string(), started.elapsed()));
+        let content = result["content"].as_array().cloned().unwrap_or_default();
+        let text = content.iter().filter_map(|block| block["text"].as_str()).collect::<Vec<_>>().join("\n");
+        let images = content.iter().filter(|block| block["type"] == "image").count();
+        Reply { text, images, is_error: result["isError"] == json!(true) }
+    }
+
+    fn ok(&mut self, tool: &str, arguments: &Value) -> String {
+        let reply = self.call(tool, arguments);
+        assert!(!reply.is_error, "{tool} failed:\n{}", reply.text);
+        reply.text
+    }
+
+    fn report_timings(&self) {
+        for (tool, took) in &self.timings {
+            eprintln!("{tool:>10} {:>6} ms", took.as_millis());
+        }
+    }
+}
+
+impl Drop for Mcp {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+struct Fixture {
+    child: Child,
+    title: String,
+}
+
+impl Fixture {
+    fn launch(tag: &str) -> Option<Self> {
+        let exe = fixture_exe();
+        if !exe.exists() {
+            eprintln!("skipping: build the fixture first (cargo build -p deckhand-fixture)");
+            return None;
+        }
+        let title = format!("Deckhand Fixture {tag} {}", std::process::id());
+        let child = Command::new(exe).args(["--title", &title, "--pos", "120,120"]).spawn().unwrap();
+        Some(Self { child, title })
+    }
+
+    fn window(&self) -> String {
+        format!("window:\"{}\"", self.title)
+    }
+
+    fn target(&self, element: &str) -> String {
+        format!("{} >> {element}", self.window())
+    }
+}
+
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+fn fixture_exe() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("target")
+        .join("debug")
+        .join("deckhand-fixture.exe")
+}
+
+fn wait_for_window(mcp: &mut Mcp, fixture: &Fixture) {
+    mcp.ok("wait_for", &json!({ "until": "window", "window": fixture.title, "timeout_ms": 10000 }));
+}
+
+fn status(mcp: &mut Mcp, fixture: &Fixture, id: u32) -> String {
+    mcp.ok("read_text", &json!({ "target": fixture.target(&format!("id:{id}")), "method": "uia" }))
+}
+
+#[test]
+#[ignore = "drives the real desktop through the fixture app"]
+fn lists_ten_tools_and_reports_status() {
+    let mut mcp = Mcp::start();
+    let tools = mcp.request("tools/list", &json!({}));
+    assert_eq!(tools["tools"].as_array().map(Vec::len), Some(10), "{tools}");
+    let status = mcp.ok("status", &json!({}));
+    assert!(status.starts_with("version: "), "{status}");
+}
+
+#[test]
+#[ignore = "drives the real desktop through the fixture app"]
+fn batch_of_clicks_typing_toggle_select_and_keys() {
+    let Some(fixture) = Fixture::launch("batch") else { return };
+    let mut mcp = Mcp::start();
+    wait_for_window(&mut mcp, &fixture);
+    let observed = mcp.ok("observe", &json!({ "window": fixture.title }));
+    assert!(observed.contains("\"Click me\""), "{observed}");
+    let report = mcp.ok(
+        "act",
+        &json!({ "steps": [
+            { "do": "click", "target": fixture.target("name:\"Click me\""), "how": "mouse" },
+            { "do": "click", "target": fixture.target("name:\"Click me\""), "how": "mouse" },
+            { "do": "set_value", "target": fixture.target("id:2001"), "value": "Ada Lovelace" },
+            { "do": "type", "target": fixture.target("id:2002"), "text": "line one\nline two" },
+            { "do": "toggle", "target": fixture.target("id:2005"), "on": true },
+            { "do": "select", "target": fixture.target("id:2007"), "option": "Blue" },
+            { "do": "key", "target": fixture.target("id:2002"), "keys": "f5" }
+        ] }),
+    );
+    assert!(!report.contains('✗'), "{report}");
+    assert!(status(&mut mcp, &fixture, 2004).contains("Clicks: 2"));
+    assert!(status(&mut mcp, &fixture, 2006).contains("Feature: on"));
+    assert!(status(&mut mcp, &fixture, 2008).contains("Colour: Blue"));
+    assert!(status(&mut mcp, &fixture, 2020).contains("Last key: F5"));
+    let name = mcp.ok("read_text", &json!({ "target": fixture.target("id:2001") }));
+    assert!(name.contains("Ada Lovelace"), "{name}");
+    mcp.report_timings();
+}
+
+#[test]
+#[ignore = "drives the real desktop through the fixture app"]
+fn waits_for_a_delayed_button() {
+    let Some(fixture) = Fixture::launch("wait") else { return };
+    let mut mcp = Mcp::start();
+    wait_for_window(&mut mcp, &fixture);
+    let report = mcp.ok(
+        "act",
+        &json!({ "steps": [
+            { "do": "click", "target": fixture.target("name:\"Show later\"") },
+            { "do": "wait_for", "until": "appears", "target": fixture.target("name:Appeared"), "timeout_ms": 5000 },
+            { "do": "click", "target": fixture.target("name:Appeared") }
+        ] }),
+    );
+    assert!(!report.contains('✗'), "{report}");
+    assert!(status(&mut mcp, &fixture, 2017).contains("Appeared clicked"));
+    mcp.report_timings();
+}
+
+#[test]
+#[ignore = "drives the real desktop through the fixture app"]
+fn picks_files_in_open_and_save_dialogs() {
+    let Some(fixture) = Fixture::launch("files") else { return };
+    let files = TempDir::new("files");
+    let first = files.0.join("first.txt");
+    let second = files.0.join("second.txt");
+    fs::write(&first, "one").unwrap();
+    fs::write(&second, "two").unwrap();
+    let mut mcp = Mcp::start();
+    wait_for_window(&mut mcp, &fixture);
+    mcp.ok(
+        "pick_file",
+        &json!({ "paths": [first.display().to_string(), second.display().to_string()],
+                "open_with": fixture.target("name:\"Open file…\"") }),
+    );
+    let opened = status(&mut mcp, &fixture, 2012);
+    assert!(opened.contains("first.txt") && opened.contains("second.txt"), "{opened}");
+    let report = files.0.join("report.txt");
+    mcp.ok(
+        "pick_file",
+        &json!({ "paths": [report.display().to_string()], "open_with": fixture.target("name:\"Save file…\"") }),
+    );
+    assert!(status(&mut mcp, &fixture, 2014).contains("report.txt"));
+    assert!(!report.exists(), "the fixture must not write files");
+    mcp.report_timings();
+}
+
+#[test]
+#[ignore = "drives the real desktop through the fixture app"]
+fn screenshot_point_click_and_window_actions() {
+    let Some(fixture) = Fixture::launch("windows") else { return };
+    let mut mcp = Mcp::start();
+    wait_for_window(&mut mcp, &fixture);
+    mcp.ok("windows", &json!({ "action": "focus", "window": fixture.title }));
+    let shot = mcp.call("screenshot", &json!({ "target": fixture.title, "marks": true }));
+    assert!(!shot.is_error && shot.images == 1, "{}", shot.text);
+    let found = mcp.ok("find", &json!({ "query": "name:\"Click me\"", "window": fixture.title }));
+    assert!(found.starts_with('e'), "{found}");
+    mcp.ok("windows", &json!({ "action": "minimize", "window": fixture.title }));
+    mcp.ok("windows", &json!({ "action": "restore", "window": fixture.title }));
+    mcp.ok(
+        "windows",
+        &json!({ "action": "move", "window": fixture.title,
+                             "rect": { "x": 200, "y": 160, "width": 700, "height": 760 } }),
+    );
+    mcp.ok("windows", &json!({ "action": "close", "window": fixture.title }));
+    mcp.ok("wait_for", &json!({ "until": "window_closed", "window": fixture.title, "timeout_ms": 5000 }));
+    let listed = mcp.ok("windows", &json!({ "action": "list" }));
+    assert!(!listed.contains(&fixture.title), "{listed}");
+    mcp.report_timings();
+}
