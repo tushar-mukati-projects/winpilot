@@ -134,6 +134,7 @@ dependencies = [
 name = "deckhand"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "deckhand-core",
  "deckhand-worker",
  "parking_lot",

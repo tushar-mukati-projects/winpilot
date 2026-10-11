@@ -24,6 +24,7 @@ rmcp = { version = "3.5.1", default-features = false, features = ["server", "mac
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "sync", "time"] }
 parking_lot = "0.12"
 base64 = "0.22"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 fast_image_resize = "6.1.0"
 jpeg-encoder = { version = "0.7.1", features = ["simd"] }
 png = "0.18"

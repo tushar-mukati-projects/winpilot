@@ -1,8 +1,9 @@
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use crate::{
     element::{Element, Snapshot, WindowInfo},
-    error::{Error, Result},
+    error::{Error, ErrorCode, Result},
+    format::element_line,
     role::Role,
 };
 
@@ -30,32 +31,980 @@ pub struct Selector {
     pub steps: Vec<SelectorStep>,
 }
 
+const CHAIN: &str = ">>";
+const FOCUSED: &str = "focused";
+const MAX_LISTED_CANDIDATES: usize = 5;
+
+type TermBuilder = fn(&str) -> Result<Term>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Piece {
+    Chain,
+    Bare(String),
+    Term(Term),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Rank {
+    text: u32,
+    visible: bool,
+    enabled: bool,
+    actionable: bool,
+}
+
 impl FromStr for Selector {
     type Err = Error;
 
     fn from_str(text: &str) -> Result<Self> {
-        todo!("parse selector '{text}'")
+        let pieces = lex(text)?;
+        if pieces.is_empty() {
+            return Err(Error::invalid("empty selector"));
+        }
+        let steps = pieces.split(|piece| *piece == Piece::Chain).map(|group| build_step(group, text));
+        Ok(Self { steps: steps.collect::<Result<_>>()? })
     }
 }
 
 impl Selector {
     pub fn has_window_terms(&self) -> bool {
-        todo!()
+        self.terms().any(Term::is_window_term)
     }
 
     pub fn has_element_terms(&self) -> bool {
-        todo!()
+        self.steps.iter().any(SelectorStep::has_element_terms)
     }
 
     pub fn matches_window(&self, window: &WindowInfo) -> bool {
-        todo!("{window:?}")
+        self.terms().all(|term| term.matches_window(window))
     }
 
     pub fn find<'a>(&self, snapshot: &'a Snapshot) -> Vec<&'a Element> {
-        todo!("{snapshot:?}")
+        if !self.matches_window(&snapshot.window) {
+            return Vec::new();
+        }
+        let mut steps = self.steps.iter().filter(|step| step.has_element_terms());
+        let Some(first) = steps.next() else { return Vec::new() };
+        let elements = &snapshot.elements;
+        let mut matched = first.select(elements, 0..elements.len());
+        for step in steps {
+            matched = step.select(elements, descendant_indices(snapshot, &matched));
+        }
+        matched.into_iter().filter_map(|index| elements.get(index)).collect()
     }
 
     pub fn resolve<'a>(&self, snapshot: &'a Snapshot) -> Result<&'a Element> {
-        todo!("{snapshot:?}")
+        let matches = self.find(snapshot);
+        match matches.as_slice() {
+            [] => Err(Error::not_found(format!("no element matches {self}"))),
+            &[only] => Ok(only),
+            _ => self.best_ranked(&matches).ok_or_else(|| self.ambiguous(&matches)),
+        }
+    }
+
+    fn terms(&self) -> impl Iterator<Item = &Term> {
+        self.steps.iter().flat_map(|step| &step.terms)
+    }
+
+    fn final_texts(&self) -> Vec<&str> {
+        self.steps
+            .iter()
+            .rev()
+            .find(|step| step.has_element_terms())
+            .map(|step| step.texts().collect())
+            .unwrap_or_default()
+    }
+
+    fn best_ranked<'a>(&self, matches: &[&'a Element]) -> Option<&'a Element> {
+        let texts = self.final_texts();
+        let ranked: Vec<(Rank, &'a Element)> =
+            matches.iter().map(|&element| (rank(element, &texts), element)).collect();
+        let best = ranked.iter().map(|(rank, _)| *rank).max()?;
+        let mut winners = ranked.iter().filter(|(rank, _)| *rank == best);
+        match (winners.next(), winners.next()) {
+            (Some(&(_, element)), None) => Some(element),
+            _ => None,
+        }
+    }
+
+    fn ambiguous(&self, matches: &[&Element]) -> Error {
+        let mut lines = vec![format!("{} elements match {self}; add nth:, a role:, or use a ref:", matches.len())];
+        let listed = matches.iter().take(MAX_LISTED_CANDIDATES);
+        lines.extend(listed.map(|element| format!("  {}", element_line(element, false))));
+        if matches.len() > MAX_LISTED_CANDIDATES {
+            lines.push("  …".to_string());
+        }
+        Error::new(ErrorCode::Ambiguous, lines.join("\n"))
+    }
+}
+
+impl SelectorStep {
+    fn has_element_terms(&self) -> bool {
+        self.terms.iter().any(|term| !term.is_window_term())
+    }
+
+    fn matches(&self, element: &Element) -> bool {
+        self.terms.iter().all(|term| term.matches_element(element))
+    }
+
+    fn nth(&self) -> Option<u32> {
+        self.terms.iter().find_map(|term| match term {
+            Term::Nth(position) => Some(*position),
+            _ => None,
+        })
+    }
+
+    fn texts(&self) -> impl Iterator<Item = &str> {
+        self.terms.iter().filter_map(|term| match term {
+            Term::Text(text) => Some(text.as_str()),
+            _ => None,
+        })
+    }
+
+    fn select(&self, elements: &[Element], candidates: impl IntoIterator<Item = usize>) -> Vec<usize> {
+        let matched = candidates
+            .into_iter()
+            .filter(|&index| elements.get(index).is_some_and(|element| self.matches(element)))
+            .collect::<Vec<_>>();
+        match self.nth() {
+            Some(position) => nth_of(&matched, position).into_iter().collect(),
+            None => matched,
+        }
+    }
+}
+
+impl Term {
+    const fn is_window_term(&self) -> bool {
+        matches!(self, Self::Window(_) | Self::Process(_))
+    }
+
+    fn matches_window(&self, window: &WindowInfo) -> bool {
+        match self {
+            Self::Window(title) => contains_folded(&window.title, title),
+            Self::Process(process) => process_stem(&window.process) == process_stem(process),
+            _ => true,
+        }
+    }
+
+    fn matches_element(&self, element: &Element) -> bool {
+        match self {
+            Self::Role(role) => element.role == *role,
+            Self::Name(name) => fold(&element.name) == fold(name),
+            Self::NameContains(name) => contains_folded(&element.name, name),
+            Self::Id(id) => element.automation_id == *id,
+            Self::Class(class) => fold(&element.class_name) == fold(class),
+            Self::Text(text) => {
+                contains_folded(&element.name, text)
+                    || element.value.as_deref().is_some_and(|value| contains_folded(value, text))
+            }
+            Self::Focused => element.state.focused,
+            Self::Window(_) | Self::Process(_) | Self::Nth(_) => true,
+        }
+    }
+}
+
+fn nth_of(matched: &[usize], position: u32) -> Option<usize> {
+    let index = usize::try_from(position).ok()?.checked_sub(1)?;
+    matched.get(index).copied()
+}
+
+fn descendant_indices(snapshot: &Snapshot, parents: &[usize]) -> Vec<usize> {
+    let mut indices = Vec::new();
+    let mut covered_until = 0;
+    for &parent in parents {
+        if parent < covered_until {
+            continue;
+        }
+        let start = parent + 1;
+        let end = start + snapshot.descendants(parent).len();
+        indices.extend(start..end);
+        covered_until = end;
+    }
+    indices
+}
+
+fn rank(element: &Element, texts: &[&str]) -> Rank {
+    Rank {
+        text: texts.iter().map(|text| text_rank(&element.name, text)).sum(),
+        visible: element.is_visible(),
+        enabled: element.state.enabled,
+        actionable: element.is_actionable(),
+    }
+}
+
+fn text_rank(name: &str, text: &str) -> u32 {
+    let name = fold(name);
+    let text = fold(text);
+    if name == text { 2 } else { u32::from(name.starts_with(&text)) }
+}
+
+fn fold(text: &str) -> String {
+    text.trim().to_lowercase()
+}
+
+fn contains_folded(haystack: &str, needle: &str) -> bool {
+    fold(haystack).contains(&fold(needle))
+}
+
+fn process_stem(process: &str) -> String {
+    let folded = fold(process);
+    match folded.strip_suffix(".exe") {
+        Some(stem) => stem.to_string(),
+        None => folded,
+    }
+}
+
+fn lex(text: &str) -> Result<Vec<Piece>> {
+    let mut pieces = Vec::new();
+    let mut rest = text.trim_start();
+    while !rest.is_empty() {
+        let (piece, after) = lex_piece(rest)?;
+        pieces.push(piece);
+        rest = after.trim_start();
+    }
+    Ok(pieces)
+}
+
+fn lex_piece(text: &str) -> Result<(Piece, &str)> {
+    if let Some(rest) = text.strip_prefix(CHAIN) {
+        return Ok((Piece::Chain, rest));
+    }
+    if let Some((key, rest)) = split_key(text) {
+        let (value, rest) = lex_value(rest)?;
+        return Ok((Piece::Term(keyed_term(key, &value)?), rest));
+    }
+    let quoted = text.starts_with('"');
+    let (value, rest) = lex_value(text)?;
+    Ok((bare_piece(&value, quoted)?, rest))
+}
+
+fn split_key(text: &str) -> Option<(&str, &str)> {
+    let letters = text.bytes().take_while(u8::is_ascii_alphabetic).count();
+    let key_length = letters + usize::from(text[letters..].starts_with('~'));
+    let value = text[key_length..].strip_prefix(':')?;
+    (letters > 0).then(|| (&text[..key_length], value))
+}
+
+fn lex_value(text: &str) -> Result<(String, &str)> {
+    if !text.starts_with('"') {
+        let (value, rest) = lex_bare(text);
+        return Ok((value.to_string(), rest));
+    }
+    let (value, rest) = lex_quoted(text)?;
+    if !at_boundary(rest) {
+        let (extra, _) = lex_bare(rest);
+        return Err(Error::invalid(format!("unexpected '{extra}' right after a closing quote in selector")));
+    }
+    Ok((value, rest))
+}
+
+fn lex_bare(text: &str) -> (&str, &str) {
+    let end = text
+        .char_indices()
+        .find(|&(index, ch)| ch.is_whitespace() || text[index..].starts_with(CHAIN))
+        .map_or(text.len(), |(index, _)| index);
+    text.split_at(end)
+}
+
+fn lex_quoted(text: &str) -> Result<(String, &str)> {
+    let mut value = String::new();
+    let mut chars = text.char_indices().skip(1);
+    while let Some((index, ch)) = chars.next() {
+        match ch {
+            '"' => return Ok((value, &text[index + 1..])),
+            '\\' => push_escaped(&mut value, chars.next().map(|(_, next)| next)),
+            _ => value.push(ch),
+        }
+    }
+    Err(Error::invalid(format!("unterminated quote in selector at '{text}'")))
+}
+
+fn push_escaped(value: &mut String, next: Option<char>) {
+    match next {
+        Some(escaped @ ('"' | '\\')) => value.push(escaped),
+        Some(other) => {
+            value.push('\\');
+            value.push(other);
+        }
+        None => value.push('\\'),
+    }
+}
+
+fn at_boundary(rest: &str) -> bool {
+    rest.is_empty() || rest.starts_with(char::is_whitespace) || rest.starts_with(CHAIN)
+}
+
+fn bare_piece(value: &str, quoted: bool) -> Result<Piece> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(Error::invalid("empty quoted value in selector"));
+    }
+    if !quoted && value.eq_ignore_ascii_case(FOCUSED) {
+        return Ok(Piece::Term(Term::Focused));
+    }
+    Ok(Piece::Bare(value.to_string()))
+}
+
+fn keyed_term(key: &str, value: &str) -> Result<Term> {
+    let key = key.to_ascii_lowercase();
+    let build = term_builder(&key).ok_or_else(|| unknown_key(&key))?;
+    let value = if key == "id" { value } else { value.trim() };
+    if value.trim().is_empty() {
+        return Err(Error::invalid(format!("empty value for '{key}:' in selector")));
+    }
+    build(value)
+}
+
+fn term_builder(key: &str) -> Option<TermBuilder> {
+    let build: TermBuilder = match key {
+        "role" => |value| value.parse().map(Term::Role),
+        "name" => |value| Ok(Term::Name(value.to_string())),
+        "name~" => |value| Ok(Term::NameContains(value.to_string())),
+        "id" => |value| Ok(Term::Id(value.to_string())),
+        "class" => |value| Ok(Term::Class(value.to_string())),
+        "text" => |value| Ok(Term::Text(value.to_string())),
+        "window" => |value| Ok(Term::Window(value.to_string())),
+        "process" => |value| Ok(Term::Process(value.to_string())),
+        "nth" => parse_nth,
+        _ => return None,
+    };
+    Some(build)
+}
+
+fn unknown_key(key: &str) -> Error {
+    Error::invalid(format!(
+        "unknown selector key '{key}:'; use role, name, name~, id, class, text, window, process, nth or focused"
+    ))
+}
+
+fn parse_nth(value: &str) -> Result<Term> {
+    value
+        .parse::<u32>()
+        .ok()
+        .filter(|&position| position >= 1)
+        .map(Term::Nth)
+        .ok_or_else(|| Error::invalid(format!("nth needs a whole number from 1, got '{value}'")))
+}
+
+fn build_step(pieces: &[Piece], text: &str) -> Result<SelectorStep> {
+    if pieces.is_empty() {
+        return Err(Error::invalid(format!("empty step in selector '{text}'")));
+    }
+    let mut terms = Vec::new();
+    let mut words: Vec<&str> = Vec::new();
+    for piece in pieces {
+        match piece {
+            Piece::Bare(word) => words.push(word),
+            Piece::Term(term) => {
+                flush_words(&mut words, &mut terms);
+                terms.push(term.clone());
+            }
+            Piece::Chain => {}
+        }
+    }
+    flush_words(&mut words, &mut terms);
+    Ok(SelectorStep { terms })
+}
+
+fn flush_words(words: &mut Vec<&str>, terms: &mut Vec<Term>) {
+    if !words.is_empty() {
+        terms.push(Term::Text(words.join(" ")));
+        words.clear();
+    }
+}
+
+impl fmt::Display for Selector {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_joined(f, &self.steps, " >> ")
+    }
+}
+
+impl fmt::Display for SelectorStep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_joined(f, &self.terms, " ")
+    }
+}
+
+impl fmt::Display for Term {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Role(role) => write!(f, "role:{role}"),
+            Self::Name(value) => write_keyed(f, "name", value),
+            Self::NameContains(value) => write_keyed(f, "name~", value),
+            Self::Id(value) => write_keyed(f, "id", value),
+            Self::Class(value) => write_keyed(f, "class", value),
+            Self::Text(value) => write_keyed(f, "text", value),
+            Self::Window(value) => write_keyed(f, "window", value),
+            Self::Process(value) => write_keyed(f, "process", value),
+            Self::Nth(position) => write!(f, "nth:{position}"),
+            Self::Focused => f.write_str(FOCUSED),
+        }
+    }
+}
+
+fn write_joined<T: fmt::Display>(f: &mut fmt::Formatter<'_>, items: &[T], separator: &str) -> fmt::Result {
+    for (index, item) in items.iter().enumerate() {
+        if index > 0 {
+            f.write_str(separator)?;
+        }
+        write!(f, "{item}")?;
+    }
+    Ok(())
+}
+
+fn write_keyed(f: &mut fmt::Formatter<'_>, key: &str, value: &str) -> fmt::Result {
+    if needs_quotes(value) {
+        let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+        write!(f, "{key}:\"{escaped}\"")
+    } else {
+        write!(f, "{key}:{value}")
+    }
+}
+
+fn needs_quotes(value: &str) -> bool {
+    value.is_empty() || value.chars().any(|ch| ch.is_whitespace() || matches!(ch, '"' | '\\' | '>'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        element::fixtures::{element, snapshot, window, with_value},
+        geometry::Rect,
+    };
+
+    fn parse(text: &str) -> Selector {
+        text.parse().unwrap()
+    }
+
+    fn terms(text: &str) -> Vec<Term> {
+        let selector = parse(text);
+        assert_eq!(selector.steps.len(), 1, "{text}");
+        selector.steps.into_iter().next().unwrap().terms
+    }
+
+    fn parse_error(text: &str) -> String {
+        let error = text.parse::<Selector>().unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidArgument, "{text}");
+        error.message
+    }
+
+    fn canonical(text: &str) -> String {
+        parse(text).to_string()
+    }
+
+    fn notepad() -> Snapshot {
+        let mut editor = with_value(element(6, 1, Role::Edit, "Text editor"), "hello world");
+        editor.automation_id = "15".to_string();
+        editor.class_name = "RichEditD2DPT".to_string();
+        editor.state.focused = true;
+        snapshot(vec![
+            element(1, 0, Role::Window, "Untitled - Notepad"),
+            element(2, 1, Role::MenuBar, "Application"),
+            element(3, 2, Role::MenuItem, "File"),
+            element(4, 2, Role::MenuItem, "Edit"),
+            element(5, 2, Role::MenuItem, "Format"),
+            editor,
+            element(7, 1, Role::StatusBar, "Status"),
+            element(8, 2, Role::Text, "Ln 1, Col 1"),
+            element(9, 1, Role::Button, "Save"),
+            element(10, 1, Role::Button, "Save as"),
+            element(11, 1, Role::Button, "Don't save"),
+        ])
+    }
+
+    fn nested() -> Snapshot {
+        snapshot(vec![
+            element(1, 0, Role::Window, "Dialog"),
+            element(2, 1, Role::Group, "Outer"),
+            element(3, 2, Role::Button, "A"),
+            element(4, 2, Role::Group, "Inner"),
+            element(5, 3, Role::Button, "B"),
+            element(6, 2, Role::Button, "C"),
+            element(7, 1, Role::Group, "Second"),
+            element(8, 2, Role::Button, "D"),
+            element(9, 1, Role::Button, "E"),
+        ])
+    }
+
+    fn found(selector: &str, snapshot: &Snapshot) -> Vec<u32> {
+        parse(selector).find(snapshot).iter().map(|element| element.id.0).collect()
+    }
+
+    fn resolved(selector: &str, snapshot: &Snapshot) -> u32 {
+        parse(selector).resolve(snapshot).unwrap().id.0
+    }
+
+    fn resolve_error(selector: &str, snapshot: &Snapshot) -> Error {
+        parse(selector).resolve(snapshot).unwrap_err()
+    }
+
+    const NONE: [u32; 0] = [];
+
+    #[test]
+    fn parses_every_key() {
+        let text = "role:button name:Save name~:sav id:1001 class:Edit text:hello window:Notepad process:notepad.exe nth:2 focused";
+        assert_eq!(
+            terms(text),
+            [
+                Term::Role(Role::Button),
+                Term::Name("Save".to_string()),
+                Term::NameContains("sav".to_string()),
+                Term::Id("1001".to_string()),
+                Term::Class("Edit".to_string()),
+                Term::Text("hello".to_string()),
+                Term::Window("Notepad".to_string()),
+                Term::Process("notepad.exe".to_string()),
+                Term::Nth(2),
+                Term::Focused,
+            ]
+        );
+        assert_eq!(canonical(text), text);
+    }
+
+    #[test]
+    fn keys_are_case_insensitive() {
+        assert_eq!(terms("ROLE:Button Name~:x"), [Term::Role(Role::Button), Term::NameContains("x".to_string())]);
+    }
+
+    #[test]
+    fn roles_parse_with_role_from_str() {
+        assert_eq!(terms("role:hyperlink"), [Term::Role(Role::Link)]);
+        assert_eq!(terms("role:\"menu item\""), [Term::Role(Role::MenuItem)]);
+        assert_eq!(parse_error("role:gizmo"), "unknown role 'gizmo'");
+    }
+
+    #[test]
+    fn bare_words_join_into_one_text_term() {
+        assert_eq!(terms("Save as"), [Term::Text("Save as".to_string())]);
+        assert_eq!(terms("  Save    as  "), [Term::Text("Save as".to_string())]);
+        assert_eq!(terms("\"Save as\""), [Term::Text("Save as".to_string())]);
+        assert_eq!(terms("\"Save\" as"), [Term::Text("Save as".to_string())]);
+    }
+
+    #[test]
+    fn keyed_terms_split_bare_text_runs() {
+        assert_eq!(
+            terms("Save role:button as"),
+            [Term::Text("Save".to_string()), Term::Role(Role::Button), Term::Text("as".to_string())]
+        );
+    }
+
+    #[test]
+    fn focused_keyword_is_bare_and_case_insensitive() {
+        assert_eq!(terms("focused"), [Term::Focused]);
+        assert_eq!(terms("FOCUSED role:edit"), [Term::Focused, Term::Role(Role::Edit)]);
+        assert_eq!(terms("\"focused\""), [Term::Text("focused".to_string())]);
+        assert_eq!(terms("text:focused"), [Term::Text("focused".to_string())]);
+        assert_eq!(
+            terms("Save focused as"),
+            [Term::Text("Save".to_string()), Term::Focused, Term::Text("as".to_string())]
+        );
+    }
+
+    #[test]
+    fn quoted_values_unescape_quotes_and_backslashes() {
+        assert_eq!(terms(r#"name:"say \"hi\" \\ now""#), [Term::Name(r#"say "hi" \ now"#.to_string())]);
+        assert_eq!(terms(r#"name:"C:\temp""#), [Term::Name(r"C:\temp".to_string())]);
+        assert_eq!(terms(r"name:C:\temp"), [Term::Name(r"C:\temp".to_string())]);
+    }
+
+    #[test]
+    fn quoted_values_may_hold_spaces_and_chain_marks() {
+        let selector = parse("name:\"a >> b\" >> role:button");
+        assert_eq!(selector.steps.len(), 2);
+        assert_eq!(selector.steps[0].terms, [Term::Name("a >> b".to_string())]);
+        assert_eq!(selector.steps[1].terms, [Term::Role(Role::Button)]);
+    }
+
+    #[test]
+    fn chains_need_no_spaces() {
+        let selector = parse("role:menubar>>name:File");
+        assert_eq!(selector.steps.len(), 2);
+        assert_eq!(selector.steps[1].terms, [Term::Name("File".to_string())]);
+        assert_eq!(parse("\"Save\">>role:button").steps.len(), 2);
+    }
+
+    #[test]
+    fn values_are_trimmed_except_ids() {
+        assert_eq!(terms("name:\"  Save  \""), [Term::Name("Save".to_string())]);
+        assert_eq!(terms("id:\" x \""), [Term::Id(" x ".to_string())]);
+    }
+
+    #[test]
+    fn colons_inside_values() {
+        assert_eq!(terms("name:a:b"), [Term::Name("a:b".to_string())]);
+        assert_eq!(terms("12:30"), [Term::Text("12:30".to_string())]);
+        assert_eq!(terms(":x"), [Term::Text(":x".to_string())]);
+        assert_eq!(terms("\"http://x\""), [Term::Text("http://x".to_string())]);
+    }
+
+    #[test]
+    fn unknown_keys_are_rejected() {
+        let expected =
+            "unknown selector key 'foo:'; use role, name, name~, id, class, text, window, process, nth or focused";
+        assert_eq!(parse_error("foo:bar"), expected);
+        assert_eq!(parse_error("foo:"), expected);
+        assert!(parse_error("Role~:x").starts_with("unknown selector key 'role~:'"));
+        assert!(parse_error("focused:yes").starts_with("unknown selector key 'focused:'"));
+        assert!(parse_error("http://x").starts_with("unknown selector key 'http:'"));
+    }
+
+    #[test]
+    fn empty_values_are_rejected() {
+        assert_eq!(parse_error("name:"), "empty value for 'name:' in selector");
+        assert_eq!(parse_error("name: Save"), "empty value for 'name:' in selector");
+        assert_eq!(parse_error("name:\"\""), "empty value for 'name:' in selector");
+        assert_eq!(parse_error("name:\"   \""), "empty value for 'name:' in selector");
+        assert_eq!(parse_error("id:\"  \""), "empty value for 'id:' in selector");
+        assert_eq!(parse_error("role:>>x"), "empty value for 'role:' in selector");
+        assert_eq!(parse_error("\"\""), "empty quoted value in selector");
+        assert_eq!(parse_error("role:button \"  \""), "empty quoted value in selector");
+    }
+
+    #[test]
+    fn unterminated_quotes_are_rejected() {
+        assert_eq!(parse_error("name:\"Save"), "unterminated quote in selector at '\"Save'");
+        assert_eq!(parse_error("\"abc"), "unterminated quote in selector at '\"abc'");
+        assert_eq!(parse_error(r#"name:"a\""#), r#"unterminated quote in selector at '"a\"'"#);
+        assert_eq!(parse_error(r#"name:"a\"#), r#"unterminated quote in selector at '"a\'"#);
+    }
+
+    #[test]
+    fn text_glued_to_a_closing_quote_is_rejected() {
+        assert_eq!(parse_error("name:\"a\"b c"), "unexpected 'b' right after a closing quote in selector");
+    }
+
+    #[test]
+    fn nth_must_be_a_positive_whole_number() {
+        for value in ["0", "x", "-1", "1.5", "99999999999"] {
+            assert_eq!(parse_error(&format!("nth:{value}")), format!("nth needs a whole number from 1, got '{value}'"));
+        }
+        assert_eq!(terms("nth:1"), [Term::Nth(1)]);
+        assert_eq!(terms("nth:\"3\""), [Term::Nth(3)]);
+    }
+
+    #[test]
+    fn empty_steps_are_rejected() {
+        assert_eq!(parse_error("a >> >> b"), "empty step in selector 'a >> >> b'");
+        assert_eq!(parse_error(">> a"), "empty step in selector '>> a'");
+        assert_eq!(parse_error("a >>"), "empty step in selector 'a >>'");
+        assert_eq!(parse_error(">>"), "empty step in selector '>>'");
+        assert_eq!(parse_error("a>>>>b"), "empty step in selector 'a>>>>b'");
+    }
+
+    #[test]
+    fn empty_selectors_are_rejected() {
+        assert_eq!(parse_error(""), "empty selector");
+        assert_eq!(parse_error("  \t "), "empty selector");
+    }
+
+    #[test]
+    fn display_is_canonical() {
+        assert_eq!(canonical("ROLE:Button   NAME:\"Save\""), "role:button name:Save");
+        assert_eq!(canonical("Save as"), "text:\"Save as\"");
+        assert_eq!(canonical("role:hyperlink"), "role:link");
+        assert_eq!(canonical("Focused"), "focused");
+        assert_eq!(
+            canonical("window:\"Untitled - Notepad\">>role:menuitem   name:File"),
+            "window:\"Untitled - Notepad\" >> role:menuitem name:File"
+        );
+        assert_eq!(canonical(r#"name:"say \"hi\"""#), r#"name:"say \"hi\"""#);
+        assert_eq!(canonical(r"name:C:\temp"), r#"name:"C:\\temp""#);
+        assert_eq!(canonical("name:a>b"), "name:\"a>b\"");
+        assert_eq!(canonical("id:\" x \""), "id:\" x \"");
+        assert_eq!(canonical("nth:007"), "nth:7");
+    }
+
+    #[test]
+    fn display_quotes_empty_values() {
+        let selector = Selector { steps: vec![SelectorStep { terms: vec![Term::Name(String::new())] }] };
+        assert_eq!(selector.to_string(), "name:\"\"");
+    }
+
+    #[test]
+    fn display_round_trips() {
+        let cases = [
+            "role:button name:\"Save\"",
+            "Save as",
+            "\"a >> b\" >> role:button",
+            r#"name:"tab\there""#,
+            r#"name:"quote \" and backslash \\""#,
+            "window:Notepad process:notepad >> role:menubar >> name~:fil nth:2",
+            "focused role:edit",
+            "\"focused\"",
+            "text:\"focused\"",
+            "id:\"  spaced id \"",
+            r#"class:"a\\b""#,
+            "name:ü-umlaut",
+            "name:\"日本語 テキスト\"",
+            "role:\"menu item\"",
+            "12:30",
+            "name:a:b",
+            "name:\"line\nbreak\"",
+            "Save focused as",
+        ];
+        for text in cases {
+            let selector = parse(text);
+            let shown = selector.to_string();
+            assert_eq!(parse(&shown), selector, "{text} -> {shown}");
+            assert_eq!(parse(&shown).to_string(), shown, "{text}");
+        }
+    }
+
+    #[test]
+    fn window_and_element_term_detection() {
+        assert!(parse("window:Notepad").has_window_terms());
+        assert!(!parse("window:Notepad").has_element_terms());
+        assert!(!parse("role:button").has_window_terms());
+        assert!(parse("role:button").has_element_terms());
+        assert!(parse("process:notepad >> name:File").has_window_terms());
+        assert!(parse("process:notepad >> name:File").has_element_terms());
+        assert!(parse("nth:2").has_element_terms());
+        assert!(parse("focused").has_element_terms());
+    }
+
+    #[test]
+    fn window_titles_match_by_contains() {
+        let notepad = window("Untitled - Notepad");
+        assert!(parse("window:notepad").matches_window(&notepad));
+        assert!(parse("window:\"untitled -\"").matches_window(&notepad));
+        assert!(parse("window:\"  NOTEPAD  \"").matches_window(&notepad));
+        assert!(!parse("window:Chrome").matches_window(&notepad));
+    }
+
+    #[test]
+    fn processes_match_with_or_without_exe() {
+        let notepad = window("Untitled - Notepad");
+        assert!(parse("process:notepad").matches_window(&notepad));
+        assert!(parse("process:NOTEPAD.EXE").matches_window(&notepad));
+        assert!(!parse("process:note").matches_window(&notepad));
+        assert!(!parse("process:chrome").matches_window(&notepad));
+        let bare = WindowInfo { process: "Notepad".to_string(), ..window("x") };
+        assert!(parse("process:notepad.exe").matches_window(&bare));
+    }
+
+    #[test]
+    fn every_window_term_in_every_step_must_match() {
+        let notepad = window("Untitled - Notepad");
+        assert!(parse("window:Notepad >> process:notepad >> role:button").matches_window(&notepad));
+        assert!(!parse("window:Notepad >> process:chrome").matches_window(&notepad));
+        assert!(parse("role:button").matches_window(&notepad));
+    }
+
+    #[test]
+    fn find_by_each_element_term() {
+        let snap = notepad();
+        assert_eq!(found("role:menuitem", &snap), [3, 4, 5]);
+        assert_eq!(found("name:file", &snap), [3]);
+        assert_eq!(found("name:Fil", &snap), NONE);
+        assert_eq!(found("name~:ORM", &snap), [5]);
+        assert_eq!(found("id:15", &snap), [6]);
+        assert_eq!(found("class:richeditd2dpt", &snap), [6]);
+        assert_eq!(found("text:editor", &snap), [6]);
+        assert_eq!(found("text:WORLD", &snap), [6]);
+        assert_eq!(found("text:save", &snap), [9, 10, 11]);
+        assert_eq!(found("Save", &snap), [9, 10, 11]);
+        assert_eq!(found("focused", &snap), [6]);
+        assert_eq!(found("role:button focused", &snap), NONE);
+        assert_eq!(found("role:button name~:save", &snap), [9, 10, 11]);
+    }
+
+    #[test]
+    fn ids_are_case_sensitive_and_untrimmed() {
+        let mut button = element(1, 0, Role::Button, "Save");
+        button.automation_id = "SaveBtn".to_string();
+        let snap = snapshot(vec![button]);
+        assert_eq!(found("id:SaveBtn", &snap), [1]);
+        assert_eq!(found("id:savebtn", &snap), NONE);
+        assert_eq!(found("id:\" SaveBtn\"", &snap), NONE);
+    }
+
+    #[test]
+    fn element_strings_are_trimmed_before_comparing() {
+        let mut padded = element(1, 0, Role::Button, "  Padded  ");
+        padded.class_name = " Button ".to_string();
+        let snap = snapshot(vec![padded]);
+        assert_eq!(found("name:padded", &snap), [1]);
+        assert_eq!(found("class:button", &snap), [1]);
+    }
+
+    #[test]
+    fn chained_steps_match_descendants_only() {
+        let snap = notepad();
+        assert_eq!(found("role:menubar >> name:Edit", &snap), [4]);
+        assert_eq!(found("role:menubar >> role:button", &snap), NONE);
+        assert_eq!(found("role:statusbar >> role:text", &snap), [8]);
+        assert_eq!(found("role:window >> role:button", &snap), [9, 10, 11]);
+    }
+
+    #[test]
+    fn nested_parents_give_no_duplicates_in_document_order() {
+        let snap = nested();
+        assert_eq!(found("role:group >> role:button", &snap), [3, 5, 6, 8]);
+        assert_eq!(found("role:group >> role:group", &snap), [4]);
+        assert_eq!(found("name:Outer >> role:group >> role:button", &snap), [5]);
+        assert_eq!(found("role:window >> role:group >> role:button", &snap), [3, 5, 6, 8]);
+    }
+
+    #[test]
+    fn nth_picks_within_its_step() {
+        let snap = nested();
+        assert_eq!(found("role:button nth:2", &snap), [5]);
+        assert_eq!(found("role:button nth:5", &snap), [9]);
+        assert_eq!(found("role:button nth:6", &snap), NONE);
+        assert_eq!(found("role:group nth:2 >> role:button", &snap), [5]);
+        assert_eq!(found("role:group nth:3 >> role:button", &snap), [8]);
+        assert_eq!(found("role:group >> role:button nth:3", &snap), [6]);
+        assert_eq!(found("name:Outer >> nth:2", &snap), [4]);
+        assert_eq!(found("role:menubar >> role:menuitem nth:2", &notepad()), [4]);
+    }
+
+    #[test]
+    fn window_terms_filter_the_whole_snapshot() {
+        let snap = notepad();
+        assert_eq!(found("window:Notepad >> role:menubar >> name:File", &snap), [3]);
+        assert_eq!(found("window:Chrome >> role:menubar", &snap), NONE);
+        assert_eq!(found("process:chrome role:button", &snap), NONE);
+        assert_eq!(found("process:NOTEPAD.EXE role:button", &snap), [9, 10, 11]);
+        assert_eq!(found("role:button >> window:Notepad", &snap), [9, 10, 11]);
+        assert_eq!(found("role:button >> window:Chrome", &snap), NONE);
+    }
+
+    #[test]
+    fn window_only_selectors_find_no_elements() {
+        assert!(parse("window:Notepad").find(&notepad()).is_empty());
+        assert!(parse("window:Notepad >> process:notepad").find(&notepad()).is_empty());
+    }
+
+    #[test]
+    fn find_on_an_empty_snapshot() {
+        assert!(parse("role:button").find(&snapshot(Vec::new())).is_empty());
+        assert!(parse("a >> b").find(&snapshot(Vec::new())).is_empty());
+    }
+
+    #[test]
+    fn resolve_reports_not_found_with_the_canonical_selector() {
+        let error = resolve_error("ROLE:Button  name:Nope", &notepad());
+        assert_eq!(error.code, ErrorCode::NotFound);
+        assert_eq!(error.message, "no element matches role:button name:Nope");
+        let error = resolve_error("window:Chrome >> Save", &notepad());
+        assert_eq!(error.message, "no element matches window:Chrome >> text:Save");
+    }
+
+    #[test]
+    fn resolve_returns_a_single_match() {
+        assert_eq!(resolved("name:File", &notepad()), 3);
+    }
+
+    #[test]
+    fn exact_name_beats_prefix_beats_contains() {
+        assert_eq!(resolved("text:save", &notepad()), 9);
+        let snap = snapshot(vec![element(1, 0, Role::Button, "Don't save"), element(2, 0, Role::Button, "Save as")]);
+        assert_eq!(resolved("text:save", &snap), 2);
+    }
+
+    #[test]
+    fn value_matches_rank_like_contains() {
+        let by_value = with_value(element(3, 0, Role::Edit, "Search"), "save");
+        let snap = snapshot(vec![by_value, element(4, 0, Role::Button, "Autosave")]);
+        assert_eq!(found("text:save", &snap), [3, 4]);
+        assert_eq!(resolve_error("text:save", &snap).code, ErrorCode::Ambiguous);
+    }
+
+    #[test]
+    fn visible_beats_hidden() {
+        let mut offscreen = element(1, 0, Role::Button, "OK");
+        offscreen.state.offscreen = true;
+        let snap = snapshot(vec![offscreen, element(2, 0, Role::Button, "OK")]);
+        assert_eq!(resolved("name:OK", &snap), 2);
+        let mut empty = element(3, 0, Role::Button, "OK");
+        empty.rect = Rect::new(10, 10, 0, 20);
+        let snap = snapshot(vec![empty, element(4, 0, Role::Button, "OK")]);
+        assert_eq!(resolved("name:OK", &snap), 4);
+    }
+
+    #[test]
+    fn enabled_beats_disabled() {
+        let mut disabled = element(1, 0, Role::Button, "OK");
+        disabled.state.enabled = false;
+        let snap = snapshot(vec![disabled, element(2, 0, Role::Button, "OK")]);
+        assert_eq!(resolved("name:OK", &snap), 2);
+    }
+
+    #[test]
+    fn actionable_beats_inert() {
+        let snap = snapshot(vec![element(1, 0, Role::Text, "Total"), element(2, 0, Role::Button, "Total")]);
+        assert_eq!(resolved("name:Total", &snap), 2);
+        let mut invokable = element(3, 0, Role::Text, "Total");
+        invokable.patterns.invoke = true;
+        let snap = snapshot(vec![element(4, 0, Role::Text, "Total"), invokable]);
+        assert_eq!(resolved("name:Total", &snap), 3);
+    }
+
+    #[test]
+    fn text_rank_outweighs_visibility() {
+        let mut exact_hidden = element(1, 0, Role::Button, "Save");
+        exact_hidden.state.offscreen = true;
+        let snap = snapshot(vec![exact_hidden, element(2, 0, Role::Button, "Save as")]);
+        assert_eq!(resolved("text:save", &snap), 1);
+    }
+
+    #[test]
+    fn visibility_outweighs_enabled() {
+        let mut visible_disabled = element(3, 0, Role::Button, "OK");
+        visible_disabled.state.enabled = false;
+        let mut hidden_enabled = element(4, 0, Role::Button, "OK");
+        hidden_enabled.state.offscreen = true;
+        assert_eq!(resolved("name:OK", &snapshot(vec![hidden_enabled, visible_disabled])), 3);
+    }
+
+    #[test]
+    fn enabled_outweighs_actionable() {
+        let mut disabled_button = element(5, 0, Role::Button, "Total");
+        disabled_button.state.enabled = false;
+        let snap = snapshot(vec![disabled_button, element(6, 0, Role::Text, "Total")]);
+        assert_eq!(resolved("name:Total", &snap), 6);
+    }
+
+    #[test]
+    fn ties_are_ambiguous_and_list_candidates() {
+        let error = resolve_error("text:sav", &notepad());
+        assert_eq!(error.code, ErrorCode::Ambiguous);
+        assert_eq!(
+            error.message,
+            "3 elements match text:sav; add nth:, a role:, or use a ref:\n  e9 button \"Save\"\n  e10 button \"Save as\"\n  e11 button \"Don't save\""
+        );
+    }
+
+    #[test]
+    fn ambiguity_lists_at_most_five_candidates() {
+        let buttons = (1..=7).map(|id| element(id, 0, Role::Button, &format!("Item {id}"))).collect();
+        let error = resolve_error("role:button", &snapshot(buttons));
+        let lines: Vec<&str> = error.message.lines().collect();
+        assert_eq!(lines.len(), 7);
+        assert_eq!(lines[0], "7 elements match role:button; add nth:, a role:, or use a ref:");
+        assert_eq!(lines[1], "  e1 button \"Item 1\"");
+        assert_eq!(lines[5], "  e5 button \"Item 5\"");
+        assert_eq!(lines[6], "  …");
+    }
+
+    #[test]
+    fn exactly_five_candidates_have_no_ellipsis() {
+        let buttons = (1..=5).map(|id| element(id, 0, Role::Button, "Same")).collect();
+        let error = resolve_error("name:Same", &snapshot(buttons));
+        assert_eq!(error.message.lines().count(), 6);
+        assert!(!error.message.contains('…'));
+    }
+
+    #[test]
+    fn only_the_final_steps_text_terms_rank() {
+        let error = resolve_error("text:Outer >> role:button", &nested());
+        assert_eq!(error.code, ErrorCode::Ambiguous);
+        assert!(error.message.starts_with("3 elements match text:Outer >> role:button;"));
+    }
+
+    #[test]
+    fn nth_resolves_ambiguity() {
+        assert_eq!(resolved("text:sav nth:2", &notepad()), 10);
     }
 }

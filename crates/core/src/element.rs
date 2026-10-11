@@ -158,6 +158,15 @@ pub(crate) mod fixtures {
     pub fn snapshot(elements: Vec<Element>) -> Snapshot {
         Snapshot { window: window("Untitled - Notepad"), elements, focused: None, truncated: false }
     }
+
+    pub fn app_window(hwnd: i64, process: &str, title: &str) -> WindowInfo {
+        WindowInfo { hwnd: WindowRef(hwnd), process: process.to_string(), foreground: false, ..window(title) }
+    }
+
+    pub fn with_value(mut element: Element, value: &str) -> Element {
+        element.value = Some(value.to_string());
+        element
+    }
 }
 
 #[cfg(test)]
