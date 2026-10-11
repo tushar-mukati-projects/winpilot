@@ -19,6 +19,7 @@ use crate::{
     batch::{Batch, with_modifiers_held},
     event::{InputEvent, MouseAction},
     layout::{KeyboardLayout, SystemLayout},
+    physical_button::PhysicalButton,
     send::{send, send_batch},
     virtual_desktop::VirtualDesktop,
 };
@@ -41,7 +42,7 @@ pub fn click(point: Point, button: MouseButton, count: u8, modifiers: Modifiers)
     validate_click_count(count)?;
     let desktop = VirtualDesktop::current()?;
     let layout = SystemLayout::of_foreground_window();
-    send_batch(&click_batch(desktop, point, button, count, modifiers, &layout)?)
+    send_batch(&click_batch(desktop, point, PhysicalButton::current(button), count, modifiers, &layout)?)
 }
 
 pub fn scroll(point: Point, direction: Direction, notches: u32) -> Result<()> {
@@ -61,14 +62,14 @@ pub fn move_event(desktop: VirtualDesktop, point: Point) -> InputEvent {
     InputEvent::Mouse(MouseAction { dx, dy, data: 0, flags })
 }
 
-pub fn button_event(button: MouseButton, transition: ButtonTransition) -> InputEvent {
+pub fn button_event(button: PhysicalButton, transition: ButtonTransition) -> InputEvent {
     InputEvent::Mouse(MouseAction { dx: 0, dy: 0, data: 0, flags: button_flags(button, transition) })
 }
 
 pub fn click_batch(
     desktop: VirtualDesktop,
     point: Point,
-    button: MouseButton,
+    button: PhysicalButton,
     count: u8,
     modifiers: Modifiers,
     layout: &impl KeyboardLayout,
@@ -114,14 +115,14 @@ fn wheel_event(direction: Direction, notches: u32) -> InputEvent {
     InputEvent::Mouse(MouseAction { dx: 0, dy: 0, data: amount.cast_unsigned(), flags })
 }
 
-fn button_flags(button: MouseButton, transition: ButtonTransition) -> MOUSE_EVENT_FLAGS {
+fn button_flags(button: PhysicalButton, transition: ButtonTransition) -> MOUSE_EVENT_FLAGS {
     match (button, transition) {
-        (MouseButton::Left, ButtonTransition::Press) => MOUSEEVENTF_LEFTDOWN,
-        (MouseButton::Left, ButtonTransition::Release) => MOUSEEVENTF_LEFTUP,
-        (MouseButton::Right, ButtonTransition::Press) => MOUSEEVENTF_RIGHTDOWN,
-        (MouseButton::Right, ButtonTransition::Release) => MOUSEEVENTF_RIGHTUP,
-        (MouseButton::Middle, ButtonTransition::Press) => MOUSEEVENTF_MIDDLEDOWN,
-        (MouseButton::Middle, ButtonTransition::Release) => MOUSEEVENTF_MIDDLEUP,
+        (PhysicalButton::Left, ButtonTransition::Press) => MOUSEEVENTF_LEFTDOWN,
+        (PhysicalButton::Left, ButtonTransition::Release) => MOUSEEVENTF_LEFTUP,
+        (PhysicalButton::Right, ButtonTransition::Press) => MOUSEEVENTF_RIGHTDOWN,
+        (PhysicalButton::Right, ButtonTransition::Release) => MOUSEEVENTF_RIGHTUP,
+        (PhysicalButton::Middle, ButtonTransition::Press) => MOUSEEVENTF_MIDDLEDOWN,
+        (PhysicalButton::Middle, ButtonTransition::Release) => MOUSEEVENTF_MIDDLEUP,
     }
 }
 
@@ -171,7 +172,7 @@ mod tests {
     #[test]
     fn single_left_click_without_modifiers() {
         let batch =
-            click_batch(DESKTOP, Point::new(10, 10), MouseButton::Left, 1, Modifiers::NONE, &FakeLayout).unwrap();
+            click_batch(DESKTOP, Point::new(10, 10), PhysicalButton::Left, 1, Modifiers::NONE, &FakeLayout).unwrap();
         assert_eq!(
             seen(&batch.events),
             vec![Seen::Mouse(ABSOLUTE_MOVE), Seen::Mouse(MOUSEEVENTF_LEFTDOWN), Seen::Mouse(MOUSEEVENTF_LEFTUP)]
@@ -182,7 +183,7 @@ mod tests {
     #[test]
     fn double_click_with_ctrl_shift_holds_modifiers_around_the_clicks() {
         let modifiers = Modifiers { ctrl: true, shift: true, ..Modifiers::NONE };
-        let batch = click_batch(DESKTOP, Point::new(10, 10), MouseButton::Left, 2, modifiers, &FakeLayout).unwrap();
+        let batch = click_batch(DESKTOP, Point::new(10, 10), PhysicalButton::Left, 2, modifiers, &FakeLayout).unwrap();
         let down = KEYBD_EVENT_FLAGS::default();
         assert_eq!(
             seen(&batch.events),
@@ -211,7 +212,7 @@ mod tests {
     #[test]
     fn triple_right_click_with_alt() {
         let alt = Modifiers { alt: true, ..Modifiers::NONE };
-        let batch = click_batch(DESKTOP, Point::new(0, 0), MouseButton::Right, 3, alt, &FakeLayout).unwrap();
+        let batch = click_batch(DESKTOP, Point::new(0, 0), PhysicalButton::Right, 3, alt, &FakeLayout).unwrap();
         let events = seen(&batch.events);
         assert_eq!(events.len(), 9);
         assert_eq!(events[0], Seen::Key(VK_MENU, KEYBD_EVENT_FLAGS::default()));
@@ -223,15 +224,32 @@ mod tests {
     #[test]
     fn middle_button_uses_middle_flags() {
         let batch =
-            click_batch(DESKTOP, Point::new(0, 0), MouseButton::Middle, 1, Modifiers::NONE, &FakeLayout).unwrap();
+            click_batch(DESKTOP, Point::new(0, 0), PhysicalButton::Middle, 1, Modifiers::NONE, &FakeLayout).unwrap();
         assert_eq!(seen(&batch.events)[1..], [Seen::Mouse(MOUSEEVENTF_MIDDLEDOWN), Seen::Mouse(MOUSEEVENTF_MIDDLEUP)]);
+    }
+
+    #[test]
+    fn primary_click_uses_the_left_button_when_buttons_are_not_swapped() {
+        let button = PhysicalButton::of(MouseButton::Left, false);
+        let batch = click_batch(DESKTOP, Point::new(0, 0), button, 1, Modifiers::NONE, &FakeLayout).unwrap();
+        assert_eq!(seen(&batch.events)[1..], [Seen::Mouse(MOUSEEVENTF_LEFTDOWN), Seen::Mouse(MOUSEEVENTF_LEFTUP)]);
+        assert_eq!(seen(&batch.release_on_failure), vec![Seen::Mouse(MOUSEEVENTF_LEFTUP)]);
+    }
+
+    #[test]
+    fn primary_click_uses_the_right_button_when_buttons_are_swapped() {
+        let button = PhysicalButton::of(MouseButton::Left, true);
+        let batch = click_batch(DESKTOP, Point::new(0, 0), button, 1, Modifiers::NONE, &FakeLayout).unwrap();
+        assert_eq!(seen(&batch.events)[1..], [Seen::Mouse(MOUSEEVENTF_RIGHTDOWN), Seen::Mouse(MOUSEEVENTF_RIGHTUP)]);
+        assert_eq!(seen(&batch.release_on_failure), vec![Seen::Mouse(MOUSEEVENTF_RIGHTUP)]);
     }
 
     #[test]
     fn click_count_outside_one_to_three_is_rejected() {
         for count in [0, 4, 255] {
-            let error = click_batch(DESKTOP, Point::new(0, 0), MouseButton::Left, count, Modifiers::NONE, &FakeLayout)
-                .unwrap_err();
+            let error =
+                click_batch(DESKTOP, Point::new(0, 0), PhysicalButton::Left, count, Modifiers::NONE, &FakeLayout)
+                    .unwrap_err();
             assert_eq!(error.code, ErrorCode::InvalidArgument);
         }
     }

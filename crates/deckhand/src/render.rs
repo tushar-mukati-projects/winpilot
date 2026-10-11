@@ -5,11 +5,14 @@ use deckhand_core::{
 };
 use rmcp::model::{CallToolResult, ContentBlock};
 
+use crate::config;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Extras<'a> {
     pub observe: ObserveFormat,
     pub restarts: u32,
     pub config_problem: Option<&'a str>,
+    pub worker_problem: Option<&'a str>,
 }
 
 pub fn outcome(result: Result<Reply>, extras: &Extras) -> CallToolResult {
@@ -48,6 +51,9 @@ fn act(report: ActReport) -> Vec<ContentBlock> {
 
 fn status(report: StatusReport, extras: &Extras) -> String {
     let mut summary = format::status(&with_restarts(report, extras.restarts));
+    if let Some(problem) = extras.worker_problem {
+        summary.push_str(&worker_line(problem));
+    }
     if let Some(problem) = extras.config_problem {
         summary.push_str(&config_line(problem));
     }
@@ -59,8 +65,12 @@ fn with_restarts(mut report: StatusReport, restarts: u32) -> StatusReport {
     report
 }
 
+fn worker_line(problem: &str) -> String {
+    format!("\nworker: {problem}")
+}
+
 fn config_line(problem: &str) -> String {
-    format!("\nconfig: {problem} (using default settings)")
+    format!("\nconfig: {} (every other tool is refused until then)", config::advice(problem))
 }
 
 fn text(body: String) -> Vec<ContentBlock> {
@@ -104,6 +114,24 @@ mod tests {
 
     #[test]
     fn config_problem_is_one_extra_line() {
-        assert_eq!(config_line("bad key"), "\nconfig: bad key (using default settings)");
+        assert_eq!(
+            config_line("bad key"),
+            "\nconfig: bad key; fix it or delete it to use the defaults (every other tool is refused until then)"
+        );
+    }
+
+    #[test]
+    fn worker_and_config_problems_follow_the_status_lines() {
+        let extras = Extras {
+            observe: ObserveFormat::default(),
+            restarts: 4,
+            config_problem: Some("bad key"),
+            worker_problem: Some("it exited"),
+        };
+        let text = status(status_report(), &extras);
+        let lines: Vec<&str> = text.lines().collect();
+        assert!(lines.contains(&"worker restarts: 4"), "{text}");
+        assert_eq!(lines[lines.len() - 2], "worker: it exited");
+        assert!(lines[lines.len() - 1].starts_with("config: bad key; "), "{text}");
     }
 }

@@ -38,11 +38,15 @@ fn compare(before: Option<&Element>, after: &Element) -> Option<Change> {
 }
 
 fn differs(before: &Element, after: &Element) -> bool {
-    before.name != after.name
-        || before.value != after.value
+    before.name.trim() != after.name.trim()
+        || shown_value(before) != shown_value(after)
         || before.role != after.role
         || before.automation_id != after.automation_id
         || ignoring_focus(before.state) != ignoring_focus(after.state)
+}
+
+fn shown_value(element: &Element) -> &str {
+    element.value.as_deref().unwrap_or_default()
 }
 
 const fn ignoring_focus(state: ElementState) -> ElementState {
@@ -115,7 +119,7 @@ mod tests {
     fn each_compared_field_counts_as_a_change() {
         let edits: [fn(&mut Element); 10] = [
             |element| element.name = "Renamed".to_string(),
-            |element| element.value = Some(String::new()),
+            |element| element.value = Some("typed".to_string()),
             |element| element.role = Role::Combobox,
             |element| element.automation_id = "15".to_string(),
             |element| element.state.enabled = false,
@@ -147,6 +151,21 @@ mod tests {
         let mut after = base();
         after[2].state.focused = true;
         assert!(diff(&snapshot(before), &snapshot(after)).is_empty());
+    }
+
+    #[test]
+    fn whitespace_only_renames_are_ignored() {
+        let mut after = base();
+        after[2].name = "  Close ".to_string();
+        assert!(diff(&snapshot(base()), &snapshot(after)).is_empty());
+    }
+
+    #[test]
+    fn missing_and_empty_values_are_equal() {
+        let mut after = base();
+        after[1].value = Some(String::new());
+        assert!(diff(&snapshot(base()), &snapshot(after.clone())).is_empty());
+        assert!(diff(&snapshot(after), &snapshot(base())).is_empty());
     }
 
     #[test]

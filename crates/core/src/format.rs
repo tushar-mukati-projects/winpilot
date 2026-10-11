@@ -1,10 +1,9 @@
-use std::borrow::Cow;
-
 use crate::{
     diff::Change,
     element::{Element, ElementState, Snapshot, WindowInfo, WindowState},
     error::Error,
     geometry::{Point, Rect},
+    matching::is_gap,
     protocol::{
         ActReport, After, ClipboardReport, DialogKind, DiffReport, FindReport, Found, Observation, PickReport,
         ScreenshotReport, StatusReport, StepOutcome, TextReport, TextSource, Timing, WaitReport, WindowsReport,
@@ -508,30 +507,46 @@ fn timing(timing: &Timing) -> String {
 }
 
 fn quote(text: &str, limit: usize) -> String {
-    let text = normalize_newlines(text);
-    let (kept, cut) = truncate(&text, limit);
-    let mut quoted = String::with_capacity(kept.len() + 2);
+    let flat = collapse(text, is_gap);
+    let (kept, cut) = truncate(&flat, limit);
+    let mut quoted = String::with_capacity(kept.len() + 8);
     quoted.push('"');
-    push_sanitized(&mut quoted, kept, quoted_escape);
+    for ch in kept.chars() {
+        if matches!(ch, '"' | '\\') {
+            quoted.push('\\');
+        }
+        quoted.push(ch);
+    }
+    quoted.push('"');
     if cut {
         quoted.push(ELLIPSIS);
     }
-    quoted.push('"');
     quoted
 }
 
 fn single_line(text: &str, limit: usize) -> String {
-    let (kept, cut) = truncate(text, limit);
-    let mut line = String::with_capacity(kept.len());
-    push_sanitized(&mut line, kept, |_| None);
+    let flat = collapse(text, char::is_control);
+    let (kept, cut) = truncate(&flat, limit);
+    let mut line = kept.to_string();
     if cut {
         line.push(ELLIPSIS);
     }
     line
 }
 
-fn normalize_newlines(text: &str) -> Cow<'_, str> {
-    if text.contains('\r') { Cow::Owned(text.replace("\r\n", "\n")) } else { Cow::Borrowed(text) }
+fn collapse(text: &str, is_break: fn(char) -> bool) -> String {
+    let mut collapsed = String::with_capacity(text.len());
+    let mut after_gap = false;
+    for ch in text.chars() {
+        let gap = is_break(ch);
+        match (gap, after_gap) {
+            (false, _) => collapsed.push(ch),
+            (true, false) => collapsed.push(' '),
+            (true, true) => {}
+        }
+        after_gap = gap;
+    }
+    collapsed
 }
 
 fn truncate(text: &str, limit: usize) -> (&str, bool) {
@@ -540,34 +555,6 @@ fn truncate(text: &str, limit: usize) -> (&str, bool) {
     }
     let cut = text.char_indices().nth(limit.saturating_sub(1)).map_or(0, |(index, _)| index);
     (&text[..cut], true)
-}
-
-fn push_sanitized(out: &mut String, text: &str, escape: fn(char) -> Option<&'static str>) {
-    let mut previous_control = false;
-    for ch in text.chars() {
-        if let Some(escaped) = escape(ch) {
-            out.push_str(escaped);
-            previous_control = false;
-            continue;
-        }
-        let control = ch.is_control();
-        match (control, previous_control) {
-            (false, _) => out.push(ch),
-            (true, false) => out.push(' '),
-            (true, true) => {}
-        }
-        previous_control = control;
-    }
-}
-
-const fn quoted_escape(ch: char) -> Option<&'static str> {
-    match ch {
-        '"' => Some("\\\""),
-        '\\' => Some("\\\\"),
-        '\n' => Some("\\n"),
-        '\t' => Some("\\t"),
-        _ => None,
-    }
 }
 
 #[cfg(test)]
@@ -710,7 +697,7 @@ mod tests {
         let empty = with_value(element(3, 0, Role::Edit, "Name"), "");
         assert_eq!(element_line(&empty, false), "e3 edit \"Name\"");
         let spaces = with_value(element(3, 0, Role::Edit, "Name"), "  ");
-        assert_eq!(element_line(&spaces, false), "e3 edit \"Name\" value=\"  \"");
+        assert_eq!(element_line(&spaces, false), "e3 edit \"Name\" value=\" \"");
     }
 
     #[test]
@@ -789,11 +776,21 @@ mod tests {
     #[test]
     fn quoting_escapes_and_collapses_control_characters() {
         let tricky = element(1, 0, Role::Text, "a\"b\\c\nd\te");
-        assert_eq!(element_line(&tricky, false), r#"e1 text "a\"b\\c\nd\te""#);
+        assert_eq!(element_line(&tricky, false), r#"e1 text "a\"b\\c d e""#);
         let controls = element(2, 0, Role::Text, "x\u{7}\u{1b}y\u{0}z");
         assert_eq!(element_line(&controls, false), "e2 text \"x y z\"");
         let crlf = with_value(element(3, 0, Role::Edit, "Body"), "one\r\ntwo\rthree");
-        assert_eq!(element_line(&crlf, false), r#"e3 edit "Body" value="one\ntwo three""#);
+        assert_eq!(element_line(&crlf, false), r#"e3 edit "Body" value="one two three""#);
+    }
+
+    #[test]
+    fn whitespace_runs_collapse_to_single_spaces() {
+        let spaced = element(1, 0, Role::Text, "Save \t\n  as");
+        assert_eq!(element_line(&spaced, false), "e1 text \"Save as\"");
+        let mixed = with_value(element(2, 0, Role::Edit, "Body"), "a\u{a0}\u{2003} b\r\n\r\nc");
+        assert_eq!(element_line(&mixed, false), "e2 edit \"Body\" value=\"a b c\"");
+        let id = with_id(element(3, 0, Role::Edit, ""), "two  spaces\nand\tbreak");
+        assert_eq!(element_line(&id, false), "e3 edit #two  spaces and break");
     }
 
     #[test]
@@ -801,7 +798,7 @@ mod tests {
         let exact = "n".repeat(80);
         assert_eq!(element_line(&element(1, 0, Role::Text, &exact), false), format!("e1 text \"{exact}\""));
         let long = "n".repeat(81);
-        assert_eq!(element_line(&element(1, 0, Role::Text, &long), false), format!("e1 text \"{}…\"", "n".repeat(79)));
+        assert_eq!(element_line(&element(1, 0, Role::Text, &long), false), format!("e1 text \"{}\"…", "n".repeat(79)));
     }
 
     #[test]
@@ -809,15 +806,24 @@ mod tests {
         let exact = with_value(element(1, 0, Role::Edit, "v"), &"v".repeat(60));
         assert_eq!(element_line(&exact, false), format!("e1 edit \"v\" value=\"{}\"", "v".repeat(60)));
         let long = with_value(element(1, 0, Role::Edit, "v"), &"v".repeat(200));
-        assert_eq!(element_line(&long, false), format!("e1 edit \"v\" value=\"{}…\"", "v".repeat(59)));
+        assert_eq!(element_line(&long, false), format!("e1 edit \"v\" value=\"{}\"…", "v".repeat(59)));
     }
 
     #[test]
     fn truncation_respects_char_boundaries() {
         let wide = "é".repeat(100);
-        assert_eq!(element_line(&element(1, 0, Role::Text, &wide), false), format!("e1 text \"{}…\"", "é".repeat(79)));
+        assert_eq!(element_line(&element(1, 0, Role::Text, &wide), false), format!("e1 text \"{}\"…", "é".repeat(79)));
         let emoji = with_value(element(2, 0, Role::Edit, "e"), &"😀".repeat(61));
-        assert_eq!(element_line(&emoji, false), format!("e2 edit \"e\" value=\"{}…\"", "😀".repeat(59)));
+        assert_eq!(element_line(&emoji, false), format!("e2 edit \"e\" value=\"{}\"…", "😀".repeat(59)));
+    }
+
+    #[test]
+    fn truncated_names_keep_the_marker_outside_the_quotes() {
+        let long = format!("{}\"tail", "q".repeat(78));
+        let line = element_line(&element(1, 0, Role::Text, &long), false);
+        assert_eq!(line, format!("e1 text \"{}\\\"\"…", "q".repeat(78)));
+        let window = app_window(5, "app.exe", &"t".repeat(90));
+        assert_eq!(window_line(&window), format!("w5 app.exe \"{}\"…", "t".repeat(79)));
     }
 
     #[test]
@@ -840,7 +846,7 @@ mod tests {
         assert_eq!(window_line(&maximized), "w16 notepad.exe \"Untitled - Notepad\" maximized foreground");
         assert_eq!(window_line(&app_window(5, "", "Title")), "w5 \"Title\"");
         assert_eq!(window_line(&app_window(5, "app.exe", "")), "w5 app.exe \"\"");
-        assert_eq!(window_line(&app_window(5, "app.exe", "a\nb")), "w5 app.exe \"a\\nb\"");
+        assert_eq!(window_line(&app_window(5, "app.exe", "a\nb")), "w5 app.exe \"a b\"");
     }
 
     #[test]

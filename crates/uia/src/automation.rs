@@ -13,7 +13,7 @@ use windows::Win32::{
 };
 use windows_core::Interface;
 
-use crate::{options::UiaOptions, registry::Registry, requests::CacheRequests};
+use crate::{options::UiaOptions, registry::Registry, requests::CacheRequests, warmed::Warmed};
 
 static CREATION: Mutex<()> = Mutex::new(());
 
@@ -23,6 +23,7 @@ pub struct Uia {
     pub(crate) control_view: IUIAutomationCondition,
     pub(crate) walker: IUIAutomationTreeWalker,
     pub(crate) registry: Registry<IUIAutomationElement>,
+    pub(crate) warmed: Warmed,
 }
 
 impl Uia {
@@ -36,7 +37,8 @@ impl Uia {
             unsafe { automation.ControlViewCondition() }.context("creating the control view condition")?;
         let requests = CacheRequests::build(&automation, &control_view)?;
         let walker = unsafe { automation.ControlViewWalker() }.context("creating the control view walker")?;
-        Ok(Self { automation, requests, control_view, walker, registry: Registry::new() })
+        let registry = Registry::new(options.first_ref);
+        Ok(Self { automation, requests, control_view, walker, registry, warmed: Warmed::default() })
     }
 }
 

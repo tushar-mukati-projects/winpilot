@@ -1,4 +1,4 @@
-use std::{mem::size_of, slice::Chunks};
+use std::mem::size_of;
 
 use deckhand_core::{Error, ErrorCode, Result};
 use windows::Win32::{
@@ -6,16 +6,13 @@ use windows::Win32::{
     UI::Input::KeyboardAndMouse::{INPUT, SendInput},
 };
 
-use crate::{batch::Batch, event::InputEvent};
-
-pub const MAX_INPUTS_PER_CALL: usize = 512;
+use crate::{batch::Batch, call_split::split_into_calls, event::InputEvent};
 
 const BLOCKED_BY_WINDOWS: &str =
     "input was blocked by Windows (the target window is elevated or the secure desktop is active)";
 
 pub fn send(events: &[InputEvent]) -> Result<()> {
-    let inputs: Vec<INPUT> = events.iter().map(|event| event.to_win32()).collect();
-    for call in split_into_calls(&inputs) {
+    for call in split_into_calls(events) {
         send_call(call)?;
     }
     Ok(())
@@ -29,12 +26,9 @@ pub fn send_batch(batch: &Batch) -> Result<()> {
     outcome
 }
 
-pub fn split_into_calls<T>(items: &[T]) -> Chunks<'_, T> {
-    items.chunks(MAX_INPUTS_PER_CALL)
-}
-
-fn send_call(inputs: &[INPUT]) -> Result<()> {
-    let inserted = insert_inputs(inputs);
+fn send_call(events: &[InputEvent]) -> Result<()> {
+    let inputs: Vec<INPUT> = events.iter().map(|event| event.to_win32()).collect();
+    let inserted = insert_inputs(&inputs);
     if inserted as usize == inputs.len() {
         return Ok(());
     }
@@ -77,15 +71,7 @@ mod tests {
     }
 
     #[test]
-    fn calls_are_chunked_at_512() {
-        let items = vec![0u8; 1100];
-        let sizes: Vec<usize> = split_into_calls(&items).map(<[u8]>::len).collect();
-        assert_eq!(sizes, vec![512, 512, 76]);
-    }
-
-    #[test]
-    fn empty_input_needs_no_calls() {
-        let items: Vec<u8> = Vec::new();
-        assert_eq!(split_into_calls(&items).count(), 0);
+    fn sending_nothing_makes_no_calls() {
+        assert!(send(&[]).is_ok());
     }
 }

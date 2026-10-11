@@ -19,7 +19,10 @@ use windows::Win32::{
 };
 use windows_core::{BOOL, BSTR};
 
-use crate::{fingerprint::Fingerprint, text::truncate_chars, variant::OwnedVariant, win};
+use crate::{
+    fingerprint::Fingerprint, text::truncate_chars, tree_path::TreePath, variant::OwnedVariant, win,
+    window_identity::WindowIdentity,
+};
 
 const VALUE_LIMIT: usize = 4096;
 
@@ -87,7 +90,7 @@ impl NodeProps {
         }
     }
 
-    pub(crate) fn fingerprint(&self, window: WindowRef, path: Vec<u32>) -> Fingerprint {
+    pub(crate) fn fingerprint(&self, window: WindowIdentity, path: Option<TreePath>) -> Fingerprint {
         Fingerprint {
             window,
             role: self.role,

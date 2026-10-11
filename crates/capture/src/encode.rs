@@ -1,11 +1,9 @@
-use std::borrow::Cow;
-
-use deckhand_core::{Context, Error, Result, protocol::ImageFormat};
+use deckhand_core::{Context, Error, ImageMapping, Result, protocol::ImageFormat};
 
 use crate::canvas::Canvas;
 use crate::frame::Frame;
 use crate::marks::{Mark, draw_marks};
-use crate::resize::resize_bgra;
+use crate::resize::{fit, fitted_pixels};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EncodeOptions {
@@ -24,25 +22,13 @@ pub struct Encoded {
     pub scale: f64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Fit {
-    pub width: u32,
-    pub height: u32,
-    pub scale: f64,
-}
-
-pub(crate) fn fit(width: u32, height: u32, max_width: u32, max_height: u32) -> Fit {
-    let scale = (f64::from(width) / f64::from(max_width)).max(f64::from(height) / f64::from(max_height)).max(1.0);
-    let shrink = |side: u32| ((f64::from(side) / scale).round() as u32).max(1);
-    Fit { width: shrink(width), height: shrink(height), scale }
-}
-
 pub fn encode(frame: &Frame, options: &EncodeOptions, marks: &[Mark]) -> Result<Encoded> {
     validate(frame, options)?;
     let fit = fit(frame.width, frame.height, options.max_width, options.max_height);
-    let mut pixels = scaled_pixels(frame, fit)?;
+    let mut pixels = fitted_pixels(frame, fit)?;
     if !marks.is_empty() {
-        draw_marks(&mut Canvas::new(pixels.to_mut(), fit.width, fit.height), marks, frame.origin, fit.scale);
+        let mapping = ImageMapping { origin: frame.origin, scale: fit.scale };
+        draw_marks(&mut Canvas::new(pixels.to_mut(), fit.width, fit.height), marks, mapping, frame.rect());
     }
     let (bytes, mime) = match options.format {
         ImageFormat::Jpeg => (encode_jpeg(&pixels, fit.width, fit.height, options.quality)?, "image/jpeg"),
@@ -59,13 +45,6 @@ fn validate(frame: &Frame, options: &EncodeOptions) -> Result<()> {
         return Err(Error::invalid("maximum image width and height must be positive"));
     }
     Ok(())
-}
-
-fn scaled_pixels(frame: &Frame, fit: Fit) -> Result<Cow<'_, [u8]>> {
-    if fit.width == frame.width && fit.height == frame.height {
-        return Ok(Cow::Borrowed(&frame.bgra));
-    }
-    resize_bgra(&frame.bgra, (frame.width, frame.height), (fit.width, fit.height)).map(Cow::Owned)
 }
 
 fn encode_jpeg(bgra: &[u8], width: u32, height: u32, quality: u8) -> Result<Vec<u8>> {
@@ -123,28 +102,6 @@ mod tests {
     }
 
     #[test]
-    fn fit_shrinks_to_the_tighter_limit() {
-        assert_eq!(fit(2560, 1600, 1280, 1280), Fit { width: 1280, height: 800, scale: 2.0 });
-        assert_eq!(fit(1000, 4000, 1280, 1280), Fit { width: 320, height: 1280, scale: 3.125 });
-        assert_eq!(fit(3840, 2160, 1568, 1568), Fit { width: 1568, height: 882, scale: 3840.0 / 1568.0 });
-    }
-
-    #[test]
-    fn fit_never_upscales() {
-        assert_eq!(fit(800, 600, 1280, 1280), Fit { width: 800, height: 600, scale: 1.0 });
-        assert_eq!(fit(1280, 800, 1280, 800), Fit { width: 1280, height: 800, scale: 1.0 });
-    }
-
-    #[test]
-    fn fit_keeps_every_side_at_least_one_pixel() {
-        let thin = fit(10_000, 1, 100, 100);
-        assert_eq!((thin.width, thin.height), (100, 1));
-        let odd = fit(1001, 3, 500, 500);
-        assert_eq!((odd.width, odd.height), (500, 1));
-        assert!((odd.scale - 2.002).abs() < 1e-9);
-    }
-
-    #[test]
     fn jpeg_has_markers_and_fitted_size() {
         let encoded = encode(&checker(640, 400), &options(320, 320, ImageFormat::Jpeg), &[]).unwrap();
         assert_eq!((encoded.width, encoded.height, encoded.scale), (320, 200, 2.0));
@@ -175,11 +132,20 @@ mod tests {
     }
 
     #[test]
+    fn reported_scale_maps_the_far_corner_within_half_a_screen_pixel() {
+        let encoded = encode(&checker(1920, 1201), &options(1280, 1280, ImageFormat::Jpeg), &[]).unwrap();
+        let far_x = f64::from(encoded.width) * encoded.scale;
+        let far_y = f64::from(encoded.height) * encoded.scale;
+        assert!((far_x - 1920.0).abs() <= 0.5 && (far_y - 1201.0).abs() <= 0.5, "{far_x} {far_y}");
+    }
+
+    #[test]
     fn invalid_inputs_are_rejected() {
         let frame = checker(10, 10);
         let zero = encode(&frame, &options(0, 100, ImageFormat::Jpeg), &[]).unwrap_err();
         assert_eq!(zero.code, ErrorCode::InvalidArgument);
-        let broken = Frame { origin: Point::new(0, 0), width: 10, height: 10, bgra: vec![0; 10] };
+        let mut broken = checker(10, 10);
+        broken.bgra.truncate(10);
         let malformed = encode(&broken, &options(100, 100, ImageFormat::Jpeg), &[]).unwrap_err();
         assert_eq!(malformed.code, ErrorCode::InvalidArgument);
     }

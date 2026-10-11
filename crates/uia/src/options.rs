@@ -4,11 +4,12 @@ use std::time::Duration;
 pub struct UiaOptions {
     pub connection_timeout: Duration,
     pub transaction_timeout: Duration,
+    pub first_ref: u32,
 }
 
 impl Default for UiaOptions {
     fn default() -> Self {
-        Self { connection_timeout: Duration::from_secs(2), transaction_timeout: Duration::from_secs(3) }
+        Self { connection_timeout: Duration::from_secs(2), transaction_timeout: Duration::from_secs(3), first_ref: 1 }
     }
 }
 

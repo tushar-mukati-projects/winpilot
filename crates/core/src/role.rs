@@ -99,8 +99,8 @@ const FIRST_CONTROL_TYPE_ID: i32 = 50000;
 
 impl Role {
     pub fn from_control_type(id: i32) -> Self {
-        usize::try_from(id - FIRST_CONTROL_TYPE_ID)
-            .ok()
+        id.checked_sub(FIRST_CONTROL_TYPE_ID)
+            .and_then(|offset| usize::try_from(offset).ok())
             .and_then(|index| CONTROL_TYPES.get(index).copied())
             .unwrap_or(Self::Unknown)
     }
@@ -219,7 +219,7 @@ impl FromStr for Role {
             _ => None,
         };
         alias
-            .or_else(|| CONTROL_TYPES.iter().copied().find(|role| role.as_str() == wanted))
+            .or_else(|| CONTROL_TYPES.iter().copied().chain([Self::Unknown]).find(|role| role.as_str() == wanted))
             .ok_or_else(|| Error::invalid(format!("unknown role '{text}'")))
     }
 }
@@ -235,6 +235,9 @@ mod tests {
         assert_eq!(Role::from_control_type(50040), Role::AppBar);
         assert_eq!(Role::from_control_type(49999), Role::Unknown);
         assert_eq!(Role::from_control_type(50041), Role::Unknown);
+        assert_eq!(Role::from_control_type(i32::MIN), Role::Unknown);
+        assert_eq!(Role::from_control_type(i32::MAX), Role::Unknown);
+        assert_eq!(Role::from_control_type(0), Role::Unknown);
     }
 
     #[test]
@@ -248,8 +251,9 @@ mod tests {
 
     #[test]
     fn every_role_round_trips_through_its_name() {
-        for role in CONTROL_TYPES {
+        for role in CONTROL_TYPES.into_iter().chain([Role::Unknown]) {
             assert_eq!(role.as_str().parse::<Role>().unwrap(), role);
+            assert_eq!(role.to_string().parse::<Role>().unwrap(), role);
         }
     }
 }

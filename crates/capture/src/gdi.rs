@@ -1,24 +1,28 @@
 use std::ffi::c_void;
 
-use deckhand_core::{Context, Error, Point, Rect, Result};
+use deckhand_core::{Context, Error, Point, Result};
 use windows::Win32::Graphics::Gdi::{
-    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CAPTUREBLT, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
-    DeleteDC, GdiFlush, GetDC, HBITMAP, HDC, HGDIOBJ, ReleaseDC, SRCCOPY, SelectObject,
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, GdiFlush,
+    GetDC, HBITMAP, HDC, HGDIOBJ, ReleaseDC, SelectObject,
 };
 use windows_core::Owned;
 
-use crate::frame::Frame;
-use crate::pixels::BYTES_PER_PIXEL;
+use crate::frame::{Frame, FrameSource};
+use crate::pixels::{BYTES_PER_PIXEL, Pixels};
 
-struct ScreenDc(HDC);
+pub(crate) struct ScreenDc(HDC);
 
 impl ScreenDc {
-    fn acquire() -> Result<Self> {
+    pub(crate) fn acquire() -> Result<Self> {
         let dc = unsafe { GetDC(None) };
         if dc.is_invalid() {
             return Err(Error::internal("GetDC for the screen failed"));
         }
         Ok(Self(dc))
+    }
+
+    pub(crate) const fn dc(&self) -> HDC {
+        self.0
     }
 }
 
@@ -91,15 +95,24 @@ impl GdiSurface {
         self.dc.0
     }
 
-    pub(crate) fn pixels(&self) -> Result<&[u8]> {
-        unsafe { GdiFlush() }.ok().context("flushing GDI")?;
-        let length = self.width as usize * self.height as usize * BYTES_PER_PIXEL;
-        Ok(unsafe { std::slice::from_raw_parts(self.bits, length) })
+    pub(crate) const fn holds(&self, width: u32, height: u32) -> bool {
+        self.width >= width && self.height >= height
     }
 
-    pub(crate) fn to_frame(&self, origin: Point) -> Result<Frame> {
-        let bgra = self.pixels()?.to_vec();
-        Ok(Frame { origin, width: self.width, height: self.height, bgra })
+    pub(crate) const fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    pub(crate) fn pixels(&self) -> Result<Pixels<'_>> {
+        unsafe { GdiFlush() }.ok().context("flushing GDI")?;
+        let stride = self.width as usize * BYTES_PER_PIXEL;
+        let bytes = unsafe { std::slice::from_raw_parts(self.bits, stride * self.height as usize) };
+        Ok(Pixels { bytes, stride })
+    }
+
+    pub(crate) fn to_frame(&self, origin: Point, source: FrameSource) -> Result<Frame> {
+        let bgra = self.pixels()?.bytes.to_vec();
+        Ok(Frame { origin, width: self.width, height: self.height, bgra, source })
     }
 }
 
@@ -121,15 +134,6 @@ fn create_top_down_dib(dc: &MemoryDc, width: u32, height: u32) -> Result<(Owned<
     Ok((bitmap, bits.cast_const().cast::<u8>()))
 }
 
-pub(crate) fn capture_screen(rect: Rect) -> Result<Frame> {
-    let screen = ScreenDc::acquire()?;
-    let surface = GdiSurface::new(rect.width as u32, rect.height as u32)?;
-    let raster = SRCCOPY | CAPTUREBLT;
-    unsafe { BitBlt(surface.dc(), 0, 0, rect.width, rect.height, Some(screen.0), rect.x, rect.y, raster) }
-        .context("BitBlt from the screen")?;
-    surface.to_frame(Point::new(rect.x, rect.y))
-}
-
 #[cfg(test)]
 mod tests {
     use windows::Win32::Foundation::RECT;
@@ -143,8 +147,9 @@ mod tests {
         let brush = HBRUSH(unsafe { GetStockObject(WHITE_BRUSH) }.0);
         let top_row = RECT { left: 0, top: 0, right: 8, bottom: 1 };
         assert_ne!(unsafe { FillRect(surface.dc(), &raw const top_row, brush) }, 0);
-        let frame = surface.to_frame(Point::new(3, 4)).unwrap();
+        let frame = surface.to_frame(Point::new(3, 4), FrameSource::Window).unwrap();
         assert_eq!((frame.width, frame.height, frame.bgra.len()), (8, 4, 128));
+        assert_eq!(frame.source, FrameSource::Window);
         assert_eq!(&frame.bgra[..3], &[255, 255, 255]);
         assert_eq!(&frame.bgra[32..35], &[0, 0, 0]);
     }
@@ -152,5 +157,13 @@ mod tests {
     #[test]
     fn zero_sized_surfaces_are_rejected() {
         assert!(GdiSurface::new(0, 10).is_err());
+    }
+
+    #[test]
+    fn surfaces_report_what_they_can_hold() {
+        let surface = GdiSurface::new(8, 4).unwrap();
+        assert_eq!(surface.size(), (8, 4));
+        assert!(surface.holds(8, 4) && surface.holds(1, 1));
+        assert!(!surface.holds(9, 4) && !surface.holds(8, 5));
     }
 }

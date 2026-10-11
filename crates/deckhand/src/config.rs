@@ -3,7 +3,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use deckhand_core::Config;
+use deckhand_core::{Config, Error};
+
+use crate::app_data;
+
+const HOW_TO_FIX: &str = "fix it or delete it to use the defaults";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoadedConfig {
@@ -16,7 +20,7 @@ impl LoadedConfig {
         Self { config: Config::default(), problem: None }
     }
 
-    fn fallback(problem: String) -> Self {
+    fn invalid(problem: String) -> Self {
         Self { config: Config::default(), problem: Some(problem) }
     }
 }
@@ -25,35 +29,43 @@ pub fn load() -> LoadedConfig {
     let Some(path) = config_path() else { return LoadedConfig::defaults() };
     let loaded = load_from(&path);
     if let Some(problem) = &loaded.problem {
-        eprintln!("deckhand: {problem}; using default settings");
+        eprintln!("deckhand: {}; every tool except status is refused until then", advice(problem));
     }
     loaded
 }
 
+pub fn advice(problem: &str) -> String {
+    format!("{problem}; {HOW_TO_FIX}")
+}
+
+pub fn refusal(problem: &str) -> Error {
+    Error::invalid(advice(problem))
+}
+
 fn config_path() -> Option<PathBuf> {
-    std::env::var_os("APPDATA").map(|dir| PathBuf::from(dir).join("deckhand").join("config.toml"))
+    app_data::dir_from_env("APPDATA").map(|dir| dir.join("deckhand").join("config.toml"))
 }
 
 pub fn load_from(path: &Path) -> LoadedConfig {
     match fs::read_to_string(path) {
         Ok(text) => parse(&text, path),
         Err(error) if error.kind() == io::ErrorKind::NotFound => LoadedConfig::defaults(),
-        Err(error) => LoadedConfig::fallback(format!("could not read {}: {error}", path.display())),
+        Err(error) => LoadedConfig::invalid(format!("{} could not be read ({error})", path.display())),
     }
 }
 
 pub fn parse(text: &str, path: &Path) -> LoadedConfig {
     match toml::from_str::<Config>(text) {
         Ok(config) => LoadedConfig { config, problem: None },
-        Err(error) => LoadedConfig::fallback(describe(&error, text, path)),
+        Err(error) => LoadedConfig::invalid(describe(&error, text, path)),
     }
 }
 
 fn describe(error: &toml::de::Error, text: &str, path: &Path) -> String {
     let message = one_line(error.message());
     match error.span() {
-        Some(span) => format!("{} line {}: {message}", path.display(), line_number(text, span.start)),
-        None => format!("{}: {message}", path.display()),
+        Some(span) => format!("{} is invalid (line {}: {message})", path.display(), line_number(text, span.start)),
+        None => format!("{} is invalid ({message})", path.display()),
     }
 }
 
@@ -71,6 +83,7 @@ mod tests {
     use deckhand_core::config::{ActConfig, LogConfig, ScreenshotConfig};
 
     use super::*;
+    use crate::testing::TempDir;
 
     fn path() -> &'static Path {
         Path::new("C:\\cfg\\config.toml")
@@ -102,18 +115,34 @@ mod tests {
     }
 
     #[test]
-    fn invalid_config_falls_back_to_defaults_with_a_one_line_problem() {
+    fn invalid_config_is_a_one_line_problem_naming_the_line() {
         let loaded = parse("[log]\n\nretention_days = \"soon\"\n", path());
-        assert_eq!(loaded.config, Config::default());
         let problem = loaded.problem.unwrap();
-        assert!(problem.starts_with("C:\\cfg\\config.toml line 3: "), "{problem}");
+        assert!(problem.starts_with("C:\\cfg\\config.toml is invalid (line 3: "), "{problem}");
+        assert!(problem.ends_with(')'), "{problem}");
         assert!(!problem.contains('\n'));
+    }
+
+    #[test]
+    fn refusal_tells_the_user_how_to_fix_it() {
+        let error = refusal("C:\\cfg\\config.toml is invalid (line 3: bad)");
+        assert_eq!(error.code, deckhand_core::ErrorCode::InvalidArgument);
+        assert_eq!(
+            error.message,
+            "C:\\cfg\\config.toml is invalid (line 3: bad); fix it or delete it to use the defaults"
+        );
+    }
+
+    #[test]
+    fn unreadable_config_is_a_problem() {
+        let temp = TempDir::new("config-unreadable");
+        let problem = load_from(temp.path()).problem.unwrap();
+        assert!(problem.contains("could not be read"), "{problem}");
     }
 
     #[test]
     fn unknown_keys_are_reported() {
         let loaded = parse("[log]\nlog_txt = true\n", path());
-        assert_eq!(loaded.config, Config::default());
         assert!(loaded.problem.unwrap().contains("log_txt"));
     }
 

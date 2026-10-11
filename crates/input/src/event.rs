@@ -57,14 +57,14 @@ mod tests {
     use deckhand_core::{
         Point,
         keys::{Chord, Key, Modifiers, NamedKey},
-        protocol::{Direction, MouseButton},
+        protocol::Direction,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{KEYEVENTF_UNICODE, MOUSEEVENTF_MOVE, VK_RETURN};
 
     use super::*;
     use crate::{
-        chord::chord_batch, mouse::click_batch, mouse::scroll_events, test_layout::FakeLayout, text::text_events,
-        virtual_desktop::VirtualDesktop,
+        chord::chord_batch, foreground_unlock::foreground_unlock_batch, mouse::click_batch, mouse::scroll_events,
+        physical_button::PhysicalButton, test_layout::FakeLayout, text::text_events, virtual_desktop::VirtualDesktop,
     };
 
     fn extra_info(input: &INPUT) -> usize {
@@ -80,10 +80,12 @@ mod tests {
         let desktop = VirtualDesktop { x: 0, y: 0, width: 2560, height: 1600 };
         let ctrl = Modifiers { ctrl: true, ..Modifiers::NONE };
         let chord = Chord { modifiers: ctrl, key: Some(Key::Named(NamedKey::Left)) };
-        let mut events = click_batch(desktop, Point::new(5, 5), MouseButton::Right, 2, ctrl, &layout).unwrap().events;
+        let mut events =
+            click_batch(desktop, Point::new(5, 5), PhysicalButton::Right, 2, ctrl, &layout).unwrap().events;
         events.extend(scroll_events(desktop, Point::new(5, 5), Direction::Left, 3).unwrap());
         events.extend(chord_batch(&chord, &layout).unwrap().events);
         events.extend(text_events("a\nb\t😀", &layout));
+        events.extend(foreground_unlock_batch(&layout).events);
         events
     }
 

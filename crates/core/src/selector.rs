@@ -4,6 +4,7 @@ use crate::{
     element::{Element, Snapshot, WindowInfo},
     error::{Error, ErrorCode, Result},
     format::element_line,
+    matching::{contains_folded, fold, same_process},
     role::Role,
 };
 
@@ -34,6 +35,8 @@ pub struct Selector {
 const CHAIN: &str = ">>";
 const FOCUSED: &str = "focused";
 const MAX_LISTED_CANDIDATES: usize = 5;
+const SELECTOR_KEYS: &str = "role, name, name~, id, class, text, window, process and nth, plus the bare word focused";
+const QUOTE_HINT: &str = "put text containing ':' in quotes, e.g. \"File name:\"";
 
 type TermBuilder = fn(&str) -> Result<Term>;
 
@@ -79,10 +82,10 @@ impl Selector {
     }
 
     pub fn find<'a>(&self, snapshot: &'a Snapshot) -> Vec<&'a Element> {
-        if !self.matches_window(&snapshot.window) {
+        if !self.has_element_terms() || !self.matches_window(&snapshot.window) {
             return Vec::new();
         }
-        let mut steps = self.steps.iter().filter(|step| step.has_element_terms());
+        let mut steps = self.steps.iter().filter(|step| step.filters_elements());
         let Some(first) = steps.next() else { return Vec::new() };
         let elements = &snapshot.elements;
         let mut matched = first.select(elements, 0..elements.len());
@@ -109,7 +112,7 @@ impl Selector {
         self.steps
             .iter()
             .rev()
-            .find(|step| step.has_element_terms())
+            .find(|step| step.filters_elements())
             .map(|step| step.texts().collect())
             .unwrap_or_default()
     }
@@ -139,6 +142,10 @@ impl Selector {
 
 impl SelectorStep {
     fn has_element_terms(&self) -> bool {
+        self.terms.iter().any(Term::is_element_term)
+    }
+
+    fn filters_elements(&self) -> bool {
         self.terms.iter().any(|term| !term.is_window_term())
     }
 
@@ -166,7 +173,7 @@ impl SelectorStep {
             .filter(|&index| elements.get(index).is_some_and(|element| self.matches(element)))
             .collect::<Vec<_>>();
         match self.nth() {
-            Some(position) => nth_of(&matched, position).into_iter().collect(),
+            Some(position) => nth_of(&preferring_visible(elements, matched), position).into_iter().collect(),
             None => matched,
         }
     }
@@ -177,10 +184,14 @@ impl Term {
         matches!(self, Self::Window(_) | Self::Process(_))
     }
 
+    const fn is_element_term(&self) -> bool {
+        !matches!(self, Self::Window(_) | Self::Process(_) | Self::Nth(_))
+    }
+
     fn matches_window(&self, window: &WindowInfo) -> bool {
         match self {
             Self::Window(title) => contains_folded(&window.title, title),
-            Self::Process(process) => process_stem(&window.process) == process_stem(process),
+            Self::Process(process) => same_process(&window.process, process),
             _ => true,
         }
     }
@@ -200,6 +211,12 @@ impl Term {
             Self::Window(_) | Self::Process(_) | Self::Nth(_) => true,
         }
     }
+}
+
+fn preferring_visible(elements: &[Element], matched: Vec<usize>) -> Vec<usize> {
+    let visible: Vec<usize> =
+        matched.iter().copied().filter(|&index| elements.get(index).is_some_and(Element::is_visible)).collect();
+    if visible.is_empty() { matched } else { visible }
 }
 
 fn nth_of(matched: &[usize], position: u32) -> Option<usize> {
@@ -237,22 +254,6 @@ fn text_rank(name: &str, text: &str) -> u32 {
     if name == text { 2 } else { u32::from(name.starts_with(&text)) }
 }
 
-fn fold(text: &str) -> String {
-    text.trim().to_lowercase()
-}
-
-fn contains_folded(haystack: &str, needle: &str) -> bool {
-    fold(haystack).contains(&fold(needle))
-}
-
-fn process_stem(process: &str) -> String {
-    let folded = fold(process);
-    match folded.strip_suffix(".exe") {
-        Some(stem) => stem.to_string(),
-        None => folded,
-    }
-}
-
 fn lex(text: &str) -> Result<Vec<Piece>> {
     let mut pieces = Vec::new();
     let mut rest = text.trim_start();
@@ -269,8 +270,9 @@ fn lex_piece(text: &str) -> Result<(Piece, &str)> {
         return Ok((Piece::Chain, rest));
     }
     if let Some((key, rest)) = split_key(text) {
+        let quoted = rest.starts_with('"');
         let (value, rest) = lex_value(rest)?;
-        return Ok((Piece::Term(keyed_term(key, &value)?), rest));
+        return Ok((Piece::Term(keyed_term(key, &value, quoted)?), rest));
     }
     let quoted = text.starts_with('"');
     let (value, rest) = lex_value(text)?;
@@ -344,14 +346,21 @@ fn bare_piece(value: &str, quoted: bool) -> Result<Piece> {
     Ok(Piece::Bare(value.to_string()))
 }
 
-fn keyed_term(key: &str, value: &str) -> Result<Term> {
+fn keyed_term(key: &str, value: &str, quoted: bool) -> Result<Term> {
     let key = key.to_ascii_lowercase();
     let build = term_builder(&key).ok_or_else(|| unknown_key(&key))?;
     let value = if key == "id" { value } else { value.trim() };
     if value.trim().is_empty() {
-        return Err(Error::invalid(format!("empty value for '{key}:' in selector")));
+        return Err(empty_value(&key, quoted));
     }
     build(value)
+}
+
+fn empty_value(key: &str, quoted: bool) -> Error {
+    if quoted {
+        return Error::invalid(format!("empty value for '{key}:' in selector"));
+    }
+    Error::invalid(format!("empty value for '{key}:' in selector; to match text, {QUOTE_HINT}"))
 }
 
 fn term_builder(key: &str) -> Option<TermBuilder> {
@@ -371,9 +380,7 @@ fn term_builder(key: &str) -> Option<TermBuilder> {
 }
 
 fn unknown_key(key: &str) -> Error {
-    Error::invalid(format!(
-        "unknown selector key '{key}:'; use role, name, name~, id, class, text, window, process, nth or focused"
-    ))
+    Error::invalid(format!("'{key}:' is not a selector key; {QUOTE_HINT}. Keys are {SELECTOR_KEYS}"))
 }
 
 fn parse_nth(value: &str) -> Result<Term> {
@@ -640,23 +647,37 @@ mod tests {
 
     #[test]
     fn unknown_keys_are_rejected() {
-        let expected =
-            "unknown selector key 'foo:'; use role, name, name~, id, class, text, window, process, nth or focused";
+        let expected = "'foo:' is not a selector key; put text containing ':' in quotes, e.g. \"File name:\". Keys are role, name, name~, id, class, text, window, process and nth, plus the bare word focused";
         assert_eq!(parse_error("foo:bar"), expected);
         assert_eq!(parse_error("foo:"), expected);
-        assert!(parse_error("Role~:x").starts_with("unknown selector key 'role~:'"));
-        assert!(parse_error("focused:yes").starts_with("unknown selector key 'focused:'"));
-        assert!(parse_error("http://x").starts_with("unknown selector key 'http:'"));
+        assert!(parse_error("Role~:x").starts_with("'role~:' is not a selector key;"));
+        assert!(parse_error("focused:yes").starts_with("'focused:' is not a selector key;"));
+        assert!(parse_error("http://x").starts_with("'http:' is not a selector key;"));
+    }
+
+    #[test]
+    fn plain_text_with_a_colon_explains_quoting() {
+        assert!(
+            parse_error("Note: save first")
+                .starts_with("'note:' is not a selector key; put text containing ':' in quotes, e.g. \"File name:\"")
+        );
+        assert_eq!(
+            parse_error("File name:"),
+            "empty value for 'name:' in selector; to match text, put text containing ':' in quotes, e.g. \"File name:\""
+        );
+        assert_eq!(terms("\"Note: save first\""), [Term::Text("Note: save first".to_string())]);
+        assert_eq!(terms("\"File name:\""), [Term::Text("File name:".to_string())]);
     }
 
     #[test]
     fn empty_values_are_rejected() {
-        assert_eq!(parse_error("name:"), "empty value for 'name:' in selector");
-        assert_eq!(parse_error("name: Save"), "empty value for 'name:' in selector");
+        let hint = "; to match text, put text containing ':' in quotes, e.g. \"File name:\"";
+        assert_eq!(parse_error("name:"), format!("empty value for 'name:' in selector{hint}"));
+        assert_eq!(parse_error("name: Save"), format!("empty value for 'name:' in selector{hint}"));
         assert_eq!(parse_error("name:\"\""), "empty value for 'name:' in selector");
         assert_eq!(parse_error("name:\"   \""), "empty value for 'name:' in selector");
         assert_eq!(parse_error("id:\"  \""), "empty value for 'id:' in selector");
-        assert_eq!(parse_error("role:>>x"), "empty value for 'role:' in selector");
+        assert_eq!(parse_error("role:>>x"), format!("empty value for 'role:' in selector{hint}"));
         assert_eq!(parse_error("\"\""), "empty quoted value in selector");
         assert_eq!(parse_error("role:button \"  \""), "empty quoted value in selector");
     }
@@ -759,8 +780,19 @@ mod tests {
         assert!(parse("role:button").has_element_terms());
         assert!(parse("process:notepad >> name:File").has_window_terms());
         assert!(parse("process:notepad >> name:File").has_element_terms());
-        assert!(parse("nth:2").has_element_terms());
+        assert!(!parse("nth:2").has_element_terms());
+        assert!(!parse("window:Notepad nth:2").has_element_terms());
+        assert!(parse("window:Notepad nth:2").has_window_terms());
+        assert!(parse("name:Outer >> nth:2").has_element_terms());
         assert!(parse("focused").has_element_terms());
+    }
+
+    #[test]
+    fn window_and_nth_alone_find_no_elements() {
+        let snap = snapshot(vec![element(1, 0, Role::Window, "Untitled - Notepad"), element(2, 1, Role::Button, "OK")]);
+        assert_eq!(found("window:Notepad nth:2", &snap), NONE);
+        assert_eq!(found("nth:1", &snap), NONE);
+        assert_eq!(found("window:Notepad nth:1 >> role:button", &snap), [2]);
     }
 
     #[test]
@@ -820,6 +852,30 @@ mod tests {
     }
 
     #[test]
+    fn names_shown_by_observe_paste_back_into_selectors() {
+        let names =
+            ["line one\nline two", "a\tb", "  spaced   out  ", "crlf\r\nend", "bell\u{7}name", "quote \" and \\"];
+        let snap = snapshot(
+            names.iter().enumerate().map(|(index, name)| element(index as u32 + 1, 0, Role::Text, name)).collect(),
+        );
+        for (index, element) in snap.elements.iter().enumerate() {
+            let line = element_line(element, false);
+            let shown =
+                line.split_once(' ').and_then(|(_, rest)| rest.split_once(' ')).map(|(_, label)| label).unwrap();
+            assert_eq!(found(&format!("name:{shown}"), &snap), [index as u32 + 1], "{line}");
+        }
+    }
+
+    #[test]
+    fn whitespace_runs_and_controls_fold_to_single_spaces() {
+        let snap = snapshot(vec![element(1, 0, Role::Text, "line one\nline two"), element(2, 0, Role::Text, "a\tb")]);
+        assert_eq!(found("name:\"line one line two\"", &snap), [1]);
+        assert_eq!(found("name:\"LINE   ONE line two\"", &snap), [1]);
+        assert_eq!(found("name:\"a b\"", &snap), [2]);
+        assert_eq!(found("text:\"one line\"", &snap), [1]);
+    }
+
+    #[test]
     fn element_strings_are_trimmed_before_comparing() {
         let mut padded = element(1, 0, Role::Button, "  Padded  ");
         padded.class_name = " Button ".to_string();
@@ -857,6 +913,37 @@ mod tests {
         assert_eq!(found("role:group >> role:button nth:3", &snap), [6]);
         assert_eq!(found("name:Outer >> nth:2", &snap), [4]);
         assert_eq!(found("role:menubar >> role:menuitem nth:2", &notepad()), [4]);
+    }
+
+    #[test]
+    fn nth_counts_visible_matches_first() {
+        let mut hidden = element(3, 1, Role::Button, "B");
+        hidden.state.offscreen = true;
+        let mut zero = element(5, 1, Role::Button, "Z");
+        zero.rect = Rect::new(0, 0, 0, 0);
+        let snap = snapshot(vec![
+            element(1, 0, Role::Window, "App"),
+            element(2, 1, Role::Button, "A"),
+            hidden,
+            zero,
+            element(4, 1, Role::Button, "C"),
+        ]);
+        assert_eq!(found("role:button nth:2", &snap), [4]);
+        assert_eq!(found("role:button nth:3", &snap), NONE);
+        assert_eq!(resolved("role:button nth:2", &snap), 4);
+        assert_eq!(found("role:button", &snap), [2, 3, 5, 4]);
+    }
+
+    #[test]
+    fn nth_falls_back_to_hidden_matches_when_none_are_visible() {
+        let hidden = |id, name| {
+            let mut button = element(id, 0, Role::Button, name);
+            button.state.offscreen = true;
+            button
+        };
+        let snap = snapshot(vec![hidden(1, "A"), hidden(2, "B"), element(3, 0, Role::Text, "Label")]);
+        assert_eq!(found("role:button nth:2", &snap), [2]);
+        assert_eq!(found("role:button nth:3", &snap), NONE);
     }
 
     #[test]

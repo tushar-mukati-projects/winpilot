@@ -1,22 +1,25 @@
-use std::{
-    os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
-    process::Child,
-};
+use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 
 use deckhand_core::{Context, Result};
 use windows::{
     Win32::{
         Foundation::HANDLE,
         System::JobObjects::{
-            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-            JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-            JobObjectExtendedLimitInformation, SetInformationJobObject, TerminateJobObject,
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation, SetInformationJobObject,
+            TerminateJobObject,
         },
     },
     core::PCWSTR,
 };
 
 const TERMINATED_EXIT_CODE: u32 = 1;
+const WORKER_LIMITS: JOB_OBJECT_LIMIT = JOB_OBJECT_LIMIT(
+    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE.0
+        | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK.0
+        | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION.0,
+);
 
 #[derive(Debug)]
 pub struct Job {
@@ -26,12 +29,12 @@ pub struct Job {
 impl Job {
     pub fn kill_on_close() -> Result<Self> {
         let job = Self::create()?;
-        job.set_kill_on_close()?;
+        job.set_limits()?;
         Ok(job)
     }
 
-    pub fn assign(&self, child: &Child) -> Result<()> {
-        let process = HANDLE(child.as_raw_handle());
+    pub fn assign(&self, process: &impl AsRawHandle) -> Result<()> {
+        let process = HANDLE(process.as_raw_handle());
         unsafe { AssignProcessToJobObject(self.raw(), process) }.context("adding the worker to its job object")
     }
 
@@ -45,10 +48,9 @@ impl Job {
         Ok(Self { handle })
     }
 
-    fn set_kill_on_close(&self) -> Result<()> {
+    fn set_limits(&self) -> Result<()> {
         let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        limits.BasicLimitInformation.LimitFlags =
-            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
+        limits.BasicLimitInformation.LimitFlags = WORKER_LIMITS;
         let size = size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
         let limits_ptr = (&raw const limits).cast();
         unsafe { SetInformationJobObject(self.raw(), JobObjectExtendedLimitInformation, limits_ptr, size) }
@@ -61,10 +63,32 @@ impl Job {
 }
 
 #[cfg(test)]
+impl Job {
+    pub fn limits(&self) -> JOB_OBJECT_LIMIT {
+        use windows::Win32::System::JobObjects::QueryInformationJobObject;
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        let size = size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
+        let limits_ptr = (&raw mut limits).cast();
+        unsafe {
+            QueryInformationJobObject(Some(self.raw()), JobObjectExtendedLimitInformation, limits_ptr, size, None)
+        }
+        .unwrap();
+        limits.BasicLimitInformation.LimitFlags
+    }
+
+    pub fn contains(&self, process: &impl AsRawHandle) -> bool {
+        use windows::{Win32::System::JobObjects::IsProcessInJob, core::BOOL};
+        let mut inside = BOOL::default();
+        unsafe { IsProcessInJob(HANDLE(process.as_raw_handle()), Some(self.raw()), &raw mut inside) }.unwrap();
+        inside.as_bool()
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use std::{
         os::windows::process::CommandExt,
-        process::{Command, Stdio},
+        process::{Child, Command, Stdio},
         time::{Duration, Instant},
     };
 
@@ -99,6 +123,7 @@ mod tests {
         let mut child = idle_child();
         let job = Job::kill_on_close().unwrap();
         job.assign(&child).unwrap();
+        assert!(job.contains(&child));
         assert!(child.try_wait().unwrap().is_none());
         job.terminate().unwrap();
         assert_eq!(wait_for_exit(&mut child), Some(1));
@@ -111,5 +136,14 @@ mod tests {
         job.assign(&child).unwrap();
         drop(job);
         assert!(wait_for_exit(&mut child).is_some());
+    }
+
+    #[test]
+    fn crashes_die_at_once_instead_of_waiting_for_error_reporting() {
+        let job = Job::kill_on_close().unwrap();
+        let limits = job.limits();
+        assert!(limits.contains(JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION));
+        assert!(limits.contains(JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE));
+        assert!(limits.contains(JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK));
     }
 }

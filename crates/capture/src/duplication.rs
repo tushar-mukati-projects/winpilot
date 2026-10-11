@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use windows::Win32::Foundation::{E_ACCESSDENIED, E_INVALIDARG, E_OUTOFMEMORY, HMODULE};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
@@ -20,8 +20,7 @@ use windows_core::{HRESULT, Interface};
 
 use crate::pixels::{BYTES_PER_PIXEL, Block, Pixels, PixelsMut, copy_block};
 
-const WARM_ACQUIRE_TIMEOUT_MS: u32 = 0;
-const FIRST_IMAGE_BUDGET: Duration = Duration::from_millis(150);
+const POLL_TIMEOUT_MS: u32 = 0;
 const TRANSIENT_CODES: [HRESULT; 6] = [
     E_ACCESSDENIED,
     E_INVALIDARG,
@@ -56,14 +55,9 @@ struct Staging {
     height: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Readiness {
-    Image,
-    AwaitingFirstImage,
-}
-
 pub(crate) struct Duplication {
-    waited_for_first_image: bool,
+    opened_at: Instant,
+    last_frame_at: Option<Instant>,
     staging: Option<Staging>,
     session: IDXGIOutputDuplication,
     context: ID3D11DeviceContext,
@@ -71,26 +65,30 @@ pub(crate) struct Duplication {
 }
 
 impl Duplication {
-    pub(crate) fn open(adapter: &IDXGIAdapter1, output: &IDXGIOutput) -> Result<Self, DxgiFailure> {
+    pub(crate) fn open(adapter: &IDXGIAdapter1, output: &IDXGIOutput, now: Instant) -> Result<Self, DxgiFailure> {
         let (device, context) = create_device(adapter)?;
-        let duplication = duplicate_output(output, &device).map_err(|error| classify_creation(&error))?;
-        ensure_unrotated(&duplication)?;
-        Ok(Self { waited_for_first_image: false, staging: None, session: duplication, context, device })
+        let session = duplicate_output(output, &device).map_err(|error| classify_creation(&error))?;
+        ensure_unrotated(&session)?;
+        Ok(Self { opened_at: now, last_frame_at: None, staging: None, session, context, device })
+    }
+
+    pub(crate) const fn opened_at(&self) -> Instant {
+        self.opened_at
+    }
+
+    pub(crate) const fn last_frame_at(&self) -> Option<Instant> {
+        self.last_frame_at
     }
 
     pub(crate) fn frame_size(&self) -> Option<(u32, u32)> {
         self.staging.as_ref().map(|staging| (staging.width, staging.height))
     }
 
-    pub(crate) fn update(&mut self) -> Result<Readiness, DxgiFailure> {
-        if self.staging.is_some() {
-            self.refresh(WARM_ACQUIRE_TIMEOUT_MS)?;
-            return Ok(Readiness::Image);
+    pub(crate) fn poll(&mut self, now: Instant) -> Result<(), DxgiFailure> {
+        if self.acquire_latest(POLL_TIMEOUT_MS)? {
+            self.last_frame_at = Some(now);
         }
-        let budget = if self.waited_for_first_image { Duration::ZERO } else { FIRST_IMAGE_BUDGET };
-        self.waited_for_first_image = true;
-        let arrived = self.acquire_first_image(budget)?;
-        Ok(if arrived { Readiness::Image } else { Readiness::AwaitingFirstImage })
+        Ok(())
     }
 
     pub(crate) fn read(&self, from: Block, target: &mut PixelsMut, to: (usize, usize)) -> Result<(), DxgiFailure> {
@@ -102,21 +100,7 @@ impl Duplication {
         copy_block(&source, from, target, to).map_err(|_| DxgiFailure::Transient)
     }
 
-    fn acquire_first_image(&mut self, budget: Duration) -> Result<bool, DxgiFailure> {
-        let deadline = Instant::now() + budget;
-        loop {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            let timeout = u32::try_from(remaining.as_millis()).unwrap_or(u32::MAX);
-            if self.refresh(timeout)? {
-                return Ok(true);
-            }
-            if remaining.is_zero() {
-                return Ok(false);
-            }
-        }
-    }
-
-    fn refresh(&mut self, timeout_ms: u32) -> Result<bool, DxgiFailure> {
+    fn acquire_latest(&mut self, timeout_ms: u32) -> Result<bool, DxgiFailure> {
         let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
         let mut resource: Option<IDXGIResource> = None;
         let acquired = unsafe { self.session.AcquireNextFrame(timeout_ms, &raw mut info, &raw mut resource) };
@@ -172,7 +156,7 @@ fn create_device(adapter: &IDXGIAdapter1) -> Result<(ID3D11Device, ID3D11DeviceC
             Some(&raw mut context),
         )
     };
-    created.map_err(|_| DxgiFailure::Unsupported)?;
+    created.map_err(|error| classify_creation(&error))?;
     match (device, context) {
         (Some(device), Some(context)) => Ok((device, context)),
         _ => Err(DxgiFailure::Unsupported),

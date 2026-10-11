@@ -1,31 +1,33 @@
-use deckhand_core::{Context, Error, ErrorCode, Point, Rect, Result, WindowRef};
+use deckhand_core::{Context, Error, ErrorCode, Rect, Result, WindowRef};
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
-use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowRect, IsHungAppWindow, IsIconic, IsWindow, IsWindowVisible, PW_RENDERFULLCONTENT,
-};
+use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsIconic, IsWindow};
 
+use crate::capture_area::CaptureArea;
 use crate::convert::{hwnd_from_ref, rect_from_win32};
-use crate::dpi::with_window_dpi;
-use crate::frame::{Frame, overlap, validate_capture_rect};
-use crate::gdi::GdiSurface;
-use crate::resize::resize_bgra;
+use crate::frame::{Frame, FrameSource};
+use crate::window_print::printed_window;
+use crate::window_visibility::shows_on_screen;
 
-pub(crate) fn capture_window(window: WindowRef, screen: impl FnOnce(Rect) -> Result<Frame>) -> Result<Frame> {
+pub(crate) fn capture_window(window: WindowRef, screen: impl FnOnce(CaptureArea) -> Result<Frame>) -> Result<Frame> {
     let hwnd = live_window(window)?;
     if unsafe { IsIconic(hwnd) }.as_bool() {
         return Err(Error::invalid("window is minimized"));
     }
-    let outer = window_rect(hwnd)?;
-    validate_capture_rect(outer)?;
+    let outer = CaptureArea::new(window_rect(hwnd)?)?;
     let visible = visible_bounds(hwnd, outer)?;
-    match printed_window(hwnd, outer) {
-        Some(printed) if !is_all_black(&printed) => {
-            printed.crop(visible).ok_or_else(|| Error::internal("window image does not cover its visible bounds"))
-        }
-        printed => fall_back_to_screen(hwnd, visible, printed, screen),
+    match printed_window(hwnd, outer.rect()) {
+        Some(printed) if !is_all_black(&printed) => printed
+            .crop(visible.rect())
+            .ok_or_else(|| Error::internal("window image does not cover its visible bounds")),
+        _ => fall_back_to_screen(window, hwnd, visible, screen),
     }
+}
+
+pub(crate) fn window_rect(hwnd: HWND) -> Result<Rect> {
+    let mut rect = RECT::default();
+    unsafe { GetWindowRect(hwnd, &raw mut rect) }.context("GetWindowRect")?;
+    Ok(rect_from_win32(rect))
 }
 
 fn live_window(window: WindowRef) -> Result<HWND> {
@@ -36,60 +38,27 @@ fn live_window(window: WindowRef) -> Result<HWND> {
     Ok(hwnd)
 }
 
-fn window_rect(hwnd: HWND) -> Result<Rect> {
-    let mut rect = RECT::default();
-    unsafe { GetWindowRect(hwnd, &raw mut rect) }.context("GetWindowRect")?;
-    Ok(rect_from_win32(rect))
-}
-
-fn visible_bounds(hwnd: HWND, outer: Rect) -> Result<Rect> {
+fn visible_bounds(hwnd: HWND, outer: CaptureArea) -> Result<CaptureArea> {
     let mut rect = RECT::default();
     let size = size_of::<RECT>() as u32;
     let queried = unsafe { DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, (&raw mut rect).cast(), size) };
-    let bounds = if queried.is_ok() { rect_from_win32(rect) } else { outer };
-    overlap(bounds, outer).ok_or_else(|| Error::invalid("window has no visible area"))
-}
-
-fn printed_window(hwnd: HWND, outer: Rect) -> Option<Frame> {
-    if unsafe { IsHungAppWindow(hwnd) }.as_bool() {
-        return None;
-    }
-    let printed = with_window_dpi(hwnd, || print_at_window_dpi(hwnd)).ok().flatten()?;
-    to_physical_size(printed, outer).ok()
-}
-
-fn print_at_window_dpi(hwnd: HWND) -> Result<Option<Frame>> {
-    let logical = window_rect(hwnd)?;
-    validate_capture_rect(logical)?;
-    let surface = GdiSurface::new(logical.width as u32, logical.height as u32)?;
-    let flags = PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT);
-    if !unsafe { PrintWindow(hwnd, surface.dc(), flags) }.as_bool() {
-        return Ok(None);
-    }
-    surface.to_frame(Point::new(logical.x, logical.y)).map(Some)
-}
-
-fn to_physical_size(printed: Frame, outer: Rect) -> Result<Frame> {
-    let size = (outer.width as u32, outer.height as u32);
-    let bgra = if (printed.width, printed.height) == size {
-        printed.bgra
-    } else {
-        resize_bgra(&printed.bgra, (printed.width, printed.height), size)?
-    };
-    Ok(Frame { origin: Point::new(outer.x, outer.y), width: size.0, height: size.1, bgra })
+    let bounds = if queried.is_ok() { rect_from_win32(rect) } else { outer.rect() };
+    outer.clip(bounds).ok_or_else(|| Error::invalid("window has no visible area"))
 }
 
 fn fall_back_to_screen(
+    window: WindowRef,
     hwnd: HWND,
-    visible: Rect,
-    printed: Option<Frame>,
-    screen: impl FnOnce(Rect) -> Result<Frame>,
+    visible: CaptureArea,
+    screen: impl FnOnce(CaptureArea) -> Result<Frame>,
 ) -> Result<Frame> {
-    if unsafe { IsWindowVisible(hwnd) }.as_bool() {
-        return screen(visible);
+    if !shows_on_screen(hwnd, visible.rect()) {
+        let message = format!("{window} could not be captured while covered or hidden; bring it to the front");
+        return Err(Error::invalid(message));
     }
-    let printed = printed.ok_or_else(|| Error::unsupported("hidden window could not be printed"))?;
-    printed.crop(visible).ok_or_else(|| Error::internal("window image does not cover its visible bounds"))
+    let mut frame = screen(visible)?;
+    frame.source = FrameSource::ScreenFallback;
+    Ok(frame)
 }
 
 fn is_all_black(frame: &Frame) -> bool {
@@ -98,7 +67,27 @@ fn is_all_black(frame: &Frame) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use deckhand_core::Point;
+    use windows::Win32::Foundation::LPARAM;
+    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, IsWindowVisible};
+    use windows_core::BOOL;
+
     use super::*;
+
+    unsafe extern "system" fn collect_hidden(hwnd: HWND, found: LPARAM) -> BOOL {
+        let found = unsafe { &mut *(found.0 as *mut Vec<HWND>) };
+        let sized = window_rect(hwnd).is_ok_and(|rect| rect.width >= 16 && rect.height >= 16);
+        if sized && !unsafe { IsWindowVisible(hwnd) }.as_bool() && !unsafe { IsIconic(hwnd) }.as_bool() {
+            found.push(hwnd);
+        }
+        BOOL::from(found.len() < 6)
+    }
+
+    fn hidden_windows() -> Vec<HWND> {
+        let mut found: Vec<HWND> = Vec::new();
+        let _ = unsafe { EnumWindows(Some(collect_hidden), LPARAM(&raw mut found as isize)) };
+        found
+    }
 
     #[test]
     fn black_detection_ignores_alpha() {
@@ -110,18 +99,38 @@ mod tests {
     }
 
     #[test]
-    fn physical_resize_keeps_flat_content() {
-        let printed = Frame { origin: Point::new(5, 5), width: 4, height: 2, bgra: [9u8, 8, 7, 255].repeat(8) };
-        let scaled = to_physical_size(printed, Rect::new(-10, 20, 6, 3)).unwrap();
-        assert_eq!((scaled.origin, scaled.width, scaled.height), (Point::new(-10, 20), 6, 3));
-        assert!(scaled.bgra.as_chunks::<4>().0.iter().all(|pixel| *pixel == [9, 8, 7, 255]));
-    }
-
-    #[test]
     fn missing_windows_are_not_found() {
         let error = capture_window(WindowRef(0), |_| Err(Error::internal("unused"))).unwrap_err();
         assert_eq!(error.code, ErrorCode::NotFound);
         let error = capture_window(WindowRef(0x7FFF_FFF0), |_| Err(Error::internal("unused"))).unwrap_err();
         assert_eq!(error.code, ErrorCode::NotFound);
+    }
+
+    #[test]
+    fn hidden_windows_never_borrow_screen_pixels_or_return_black() {
+        crate::dpi::make_thread_per_monitor_aware().unwrap();
+        for hwnd in hidden_windows() {
+            let window = WindowRef(hwnd.0 as i64);
+            match capture_window(window, |_| Err(Error::internal("the screen must not be read"))) {
+                Ok(frame) => {
+                    assert_eq!(frame.source, FrameSource::Window);
+                    assert!(!is_all_black(&frame));
+                }
+                Err(error) => assert!(matches!(error.code, ErrorCode::InvalidArgument | ErrorCode::NotFound)),
+            }
+        }
+    }
+
+    #[test]
+    fn hidden_windows_get_the_covered_or_hidden_error() {
+        let Some(&hwnd) = hidden_windows().first() else {
+            return;
+        };
+        let window = WindowRef(hwnd.0 as i64);
+        let visible = CaptureArea::new(Rect::new(0, 0, 16, 16)).unwrap();
+        let error = fall_back_to_screen(window, hwnd, visible, |_| Err(Error::internal("unused"))).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidArgument);
+        let expected = format!("{window} could not be captured while covered or hidden; bring it to the front");
+        assert_eq!(error.message, expected);
     }
 }

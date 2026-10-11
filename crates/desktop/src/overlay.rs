@@ -16,9 +16,8 @@ pub struct Overlay {
 impl Overlay {
     pub fn spawn() -> Result<Self> {
         let (commands, receiver) = mpsc::channel();
-        let (thread, capture_excluded) =
-            MessageThread::spawn("deckhand-overlay", move || OverlayWindows::create(receiver))?;
-        Ok(Self { commands, thread, capture_excluded })
+        let (thread, status) = MessageThread::spawn("deckhand-overlay", move || OverlayWindows::create(receiver))?;
+        Ok(Self { commands, thread, capture_excluded: status.capture_excluded })
     }
 
     pub fn show_target(&self, rect: Rect) {

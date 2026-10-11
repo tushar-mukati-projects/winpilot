@@ -1,11 +1,11 @@
 use std::time::Instant;
 
 use deckhand_core::{
-    Context, Result,
+    Context, ErrorCode, Result,
     format::ObserveFormat,
     protocol::{
-        ActArgs, Call, ClipboardArgs, Condition, FindArgs, ObserveArgs, PickFileArgs, ReadTextArgs, ScreenshotArgs,
-        StatusArgs, WindowsArgs,
+        ActArgs, Call, ClipboardArgs, Condition, FindArgs, ObserveArgs, PickFileArgs, ReadTextArgs, Reply,
+        ScreenshotArgs, StatusArgs, WindowsArgs,
     },
 };
 use rmcp::{
@@ -18,9 +18,9 @@ use rmcp::{
 
 use crate::{
     audit::{Audit, Entry},
-    config::LoadedConfig,
+    config::{self, LoadedConfig},
     render::{self, Extras},
-    summary,
+    status, summary,
     supervisor::Supervisor,
 };
 
@@ -80,7 +80,19 @@ pub struct DeckhandServer {
     audit: Audit,
     settings: Settings,
     instructions: String,
+    started: Instant,
     tool_router: ToolRouter<Self>,
+}
+
+struct Answer {
+    outcome: Result<Reply>,
+    worker_problem: Option<String>,
+}
+
+impl Answer {
+    const fn plain(outcome: Result<Reply>) -> Self {
+        Self { outcome, worker_problem: None }
+    }
 }
 
 pub async fn serve_stdio(server: DeckhandServer) -> Result<()> {
@@ -92,24 +104,52 @@ pub async fn serve_stdio(server: DeckhandServer) -> Result<()> {
 impl DeckhandServer {
     pub fn new(supervisor: Supervisor, audit: Audit, settings: Settings) -> Self {
         let instructions = INSTRUCTIONS.replace("{hotkey}", &settings.kill_hotkey);
-        Self { supervisor, audit, settings, instructions, tool_router: Self::tool_router() }
+        let started = Instant::now();
+        Self { supervisor, audit, settings, instructions, started, tool_router: Self::tool_router() }
     }
 
     async fn run(&self, call: Call, view: ObserveFormat, context: &RequestContext<RoleServer>) -> CallToolResult {
         let started = Instant::now();
         let tool = call.name();
         let summary = summary::describe(&call, self.settings.log_text);
-        let outcome = self.supervisor.call(call, context.ct.cancelled()).await;
-        let failure = outcome.as_ref().err().map(|error| error.code);
+        let answer = self.answer(call, context).await;
+        let failure = answer.outcome.as_ref().err().map(|error| error.code);
         self.audit.record(&Entry { tool, summary: &summary, failure, elapsed: started.elapsed() });
-        render::outcome(outcome, &self.extras(view))
+        render::outcome(answer.outcome, &self.extras(view, answer.worker_problem.as_deref()))
     }
 
-    fn extras(&self, observe: ObserveFormat) -> Extras<'_> {
+    async fn answer(&self, call: Call, context: &RequestContext<RoleServer>) -> Answer {
+        if let Some(problem) = &self.settings.config_problem {
+            return self.refuse(&call, problem);
+        }
+        let is_status = call == Call::Status;
+        match self.supervisor.call(call, context.ct.cancelled()).await {
+            Err(error) if is_status && error.code != ErrorCode::Cancelled => {
+                Answer { outcome: Ok(self.server_status()), worker_problem: Some(error.message) }
+            }
+            outcome => Answer::plain(outcome),
+        }
+    }
+
+    fn refuse(&self, call: &Call, problem: &str) -> Answer {
+        match call {
+            Call::Status => Answer::plain(Ok(self.server_status())),
+            _ => Answer::plain(Err(config::refusal(problem))),
+        }
+    }
+
+    fn server_status(&self) -> Reply {
+        let report =
+            status::server_report(self.started.elapsed(), &self.settings.kill_hotkey, self.supervisor.restarts());
+        Reply::Status(report)
+    }
+
+    fn extras<'a>(&'a self, observe: ObserveFormat, worker_problem: Option<&'a str>) -> Extras<'a> {
         Extras {
             observe,
             restarts: self.supervisor.restarts(),
             config_problem: self.settings.config_problem.as_deref(),
+            worker_problem,
         }
     }
 }
@@ -171,7 +211,7 @@ impl DeckhandServer {
         self.run(Call::WaitFor(args), ObserveFormat::default(), &context).await
     }
 
-    #[tool(description = WINDOWS, annotations(destructive_hint = false, open_world_hint = false))]
+    #[tool(description = WINDOWS, annotations(open_world_hint = false))]
     async fn windows(
         &self,
         Parameters(args): Parameters<WindowsArgs>,
@@ -198,7 +238,7 @@ impl DeckhandServer {
         self.run(Call::ReadText(args), ObserveFormat::default(), &context).await
     }
 
-    #[tool(description = CLIPBOARD, annotations(destructive_hint = false, open_world_hint = false))]
+    #[tool(description = CLIPBOARD, annotations(open_world_hint = false))]
     async fn clipboard(
         &self,
         Parameters(args): Parameters<ClipboardArgs>,
@@ -218,11 +258,11 @@ impl DeckhandServer {
 }
 
 #[tool_handler(router = self.tool_router)]
-#[allow(clippy::unused_async_trait_impl)]
+#[expect(clippy::unused_async_trait_impl)]
 impl ServerHandler for DeckhandServer {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new(SERVER_NAME, env!("CARGO_PKG_VERSION")))
+            .with_server_info(Implementation::new(SERVER_NAME, crate::VERSION))
             .with_instructions(self.instructions.clone())
     }
 }
@@ -243,7 +283,7 @@ mod tests {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, Lines, ReadHalf, WriteHalf};
 
     use super::*;
-    use crate::testing::{FakeSpawner, echo_worker};
+    use crate::testing::{FakeSpawner, FakeWorker, echo_worker};
 
     const TOOLS: [&str; 10] = [
         "act",
@@ -259,16 +299,27 @@ mod tests {
     ];
     const READ_ONLY: [&str; 6] = ["find", "observe", "read_text", "screenshot", "status", "wait_for"];
     const ALWAYS_LOADED: [&str; 4] = ["act", "find", "observe", "screenshot"];
-    const NOT_DESTRUCTIVE: [&str; 2] = ["clipboard", "windows"];
+    const BAD_CONFIG: &str = "C:\\cfg\\config.toml is invalid (line 3: invalid type)";
 
     fn settings() -> Settings {
         Settings { log_text: false, config_problem: None, kill_hotkey: "ctrl+alt+shift+backspace".to_string() }
     }
 
     fn server() -> (DeckhandServer, FakeSpawner) {
-        let spawner = FakeSpawner::new(|_, worker| echo_worker(worker));
+        server_with(settings(), echo_worker)
+    }
+
+    fn server_with(
+        settings: Settings,
+        behaviour: impl Fn(FakeWorker) + Send + Sync + 'static,
+    ) -> (DeckhandServer, FakeSpawner) {
+        let spawner = FakeSpawner::new(move |_, worker| behaviour(worker));
         let supervisor = Supervisor::new(Box::new(spawner.clone()), Config::default());
-        (DeckhandServer::new(supervisor, Audit::disabled(), settings()), spawner)
+        (DeckhandServer::new(supervisor, Audit::disabled(), settings), spawner)
+    }
+
+    fn text_of(response: &Value) -> &str {
+        response["result"]["content"][0]["text"].as_str().unwrap()
     }
 
     fn tools() -> Vec<Tool> {
@@ -312,9 +363,8 @@ mod tests {
             let name = tool.name.as_ref();
             let annotations = tool.annotations.clone().unwrap();
             let read_only = READ_ONLY.contains(&name).then_some(true);
-            let destructive = NOT_DESTRUCTIVE.contains(&name).then_some(false);
             assert_eq!(annotations.read_only_hint, read_only, "{name}");
-            assert_eq!(annotations.destructive_hint, destructive, "{name}");
+            assert_eq!(annotations.destructive_hint, None, "{name} must keep the destructive default");
             assert_eq!(annotations.open_world_hint, Some(false), "{name}");
         }
     }
@@ -337,7 +387,7 @@ mod tests {
         assert!(instructions.lines().count() <= 12);
         assert!(instructions.contains("ctrl+alt+shift+backspace"));
         assert_eq!(info.server_info.name, "deckhand");
-        assert_eq!(info.server_info.version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(info.server_info.version, crate::VERSION);
         assert!(info.capabilities.tools.is_some());
     }
 
@@ -396,7 +446,7 @@ mod tests {
         let response = client.initialize().await;
         let result = &response["result"];
         assert_eq!(result["serverInfo"]["name"], "deckhand");
-        assert_eq!(result["serverInfo"]["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(result["serverInfo"]["version"], crate::VERSION);
         assert!(result["capabilities"]["tools"].is_object());
         assert!(result["instructions"].as_str().unwrap().contains("pick_file"));
     }
@@ -428,7 +478,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "needs deckhand_core::format, which is still a stub on this branch"]
     async fn status_call_round_trips_through_the_worker() {
         let (server, spawner) = server();
         let mut client = RawClient::connect(server);
@@ -438,5 +487,53 @@ mod tests {
         assert_eq!(result["isError"], false);
         assert_eq!(result["content"][0]["type"], "text");
         assert_eq!(spawner.spawned(), 1);
+    }
+
+    #[tokio::test]
+    async fn status_still_answers_when_the_worker_cannot_start() {
+        let (server, spawner) = server_with(settings(), drop);
+        let mut client = RawClient::connect(server);
+        client.initialize().await;
+        for id in [5, 6] {
+            let response = client.request(id, "tools/call", json!({"name": "status", "arguments": {}})).await;
+            assert_eq!(response["result"]["isError"], false);
+            let text = text_of(&response);
+            assert!(text.starts_with(&format!("version: {}", crate::VERSION)), "{text}");
+            let worker = text.lines().last().unwrap();
+            assert!(worker.starts_with("worker: the desktop worker failed to start: it exited"), "{text}");
+            assert!(worker.contains("retrying in"), "{text}");
+        }
+        assert_eq!(spawner.spawned(), 1);
+        let response = client.request(7, "tools/call", json!({"name": "observe", "arguments": {}})).await;
+        assert_eq!(response["result"]["isError"], true);
+        assert!(text_of(&response).starts_with("error[target_not_responding]: the desktop worker failed to start"));
+    }
+
+    #[tokio::test]
+    async fn invalid_config_refuses_every_tool_but_status() {
+        let refusing = Settings { config_problem: Some(BAD_CONFIG.to_string()), ..settings() };
+        let (server, spawner) = server_with(refusing, echo_worker);
+        let mut client = RawClient::connect(server);
+        client.initialize().await;
+        let calls = [
+            ("observe", json!({})),
+            ("act", json!({"steps": [{"do": "key", "keys": "ctrl+s"}]})),
+            ("windows", json!({"action": "list"})),
+            ("clipboard", json!({"action": "get"})),
+        ];
+        for (id, (name, arguments)) in (10..).zip(calls) {
+            let response = client.request(id, "tools/call", json!({"name": name, "arguments": arguments})).await;
+            assert_eq!(response["result"]["isError"], true, "{name}");
+            assert_eq!(
+                text_of(&response),
+                format!("error[invalid_argument]: {BAD_CONFIG}; fix it or delete it to use the defaults"),
+                "{name}"
+            );
+        }
+        let response = client.request(20, "tools/call", json!({"name": "status", "arguments": {}})).await;
+        assert_eq!(response["result"]["isError"], false);
+        let text = text_of(&response);
+        assert!(text.lines().last().unwrap().starts_with(&format!("config: {BAD_CONFIG}; fix it")), "{text}");
+        assert_eq!(spawner.spawned(), 0);
     }
 }

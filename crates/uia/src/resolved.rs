@@ -2,10 +2,7 @@ use deckhand_core::{Element, Error, Result};
 use windows::Win32::UI::Accessibility::{IUIAutomationElement, UIA_PATTERN_ID};
 use windows_core::Interface;
 
-use crate::{
-    failure::{UiaResult, optional_pattern},
-    text::truncate_chars,
-};
+use crate::{pattern::current_pattern, text::truncate_chars};
 
 const LABEL_NAME_CHARS: usize = 60;
 
@@ -24,20 +21,9 @@ impl Resolved {
     }
 
     pub(crate) fn pattern<T: Interface>(&self, id: UIA_PATTERN_ID, name: &str) -> Result<T> {
-        self.optional_pattern(id, name)?
+        current_pattern(&self.element, id, &self.doing(&format!("reading the {name} pattern of")))?
             .ok_or_else(|| Error::unsupported(format!("{} has no {name} pattern", self.label())))
     }
-
-    pub(crate) fn optional_pattern<T: Interface>(&self, id: UIA_PATTERN_ID, name: &str) -> Result<Option<T>> {
-        current_pattern(&self.element, id).uia(&format!("reading the {name} pattern of {}", self.label()))
-    }
-}
-
-pub(crate) fn current_pattern<T: Interface>(
-    element: &IUIAutomationElement,
-    id: UIA_PATTERN_ID,
-) -> windows_core::Result<Option<T>> {
-    optional_pattern(unsafe { element.GetCurrentPatternAs::<T>(id) })
 }
 
 pub(crate) fn describe(info: &Element) -> String {

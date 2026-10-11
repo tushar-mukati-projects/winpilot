@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use deckhand_core::{Rect, WindowInfo, WindowRef, WindowState};
+use deckhand_core::{Element, Error, Rect, Result, Snapshot, WindowInfo, WindowRef, WindowState};
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{
@@ -18,6 +18,10 @@ use crate::{UiaHandle, UiaOptions, win};
 
 pub(crate) fn handle() -> UiaHandle {
     UiaHandle::spawn(UiaOptions::default()).unwrap()
+}
+
+pub(crate) fn first_element(snapshot: &Snapshot) -> Result<&Element> {
+    snapshot.elements.first().ok_or_else(|| Error::not_found("the snapshot has no elements"))
 }
 
 pub(crate) fn window_info(window: WindowRef, class_name: &str) -> WindowInfo {

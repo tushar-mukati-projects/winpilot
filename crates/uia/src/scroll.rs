@@ -5,10 +5,7 @@ use windows::Win32::UI::Accessibility::{
 };
 
 use crate::{
-    automation::Uia,
-    failure::UiaResult,
-    lookup::MAX_ANCESTRY,
-    resolved::{Resolved, current_pattern},
+    ancestry::MAX_ANCESTRY, automation::Uia, failure::UiaResult, pattern::current_pattern, resolved::Resolved,
 };
 
 const MAX_SCROLL_STEPS: u32 = 200;
@@ -16,34 +13,45 @@ const EDGE_TOLERANCE: f64 = 0.01;
 const FULL_PERCENT: f64 = 100.0;
 
 impl Uia {
-    pub fn scroll(&mut self, id: ElementRef, direction: Direction, amount: u32) -> Result<()> {
+    pub fn scroll(&mut self, id: ElementRef, direction: Direction, amount: u32) -> Result<u32> {
         let target = self.resolve(id)?;
-        let scroller = self.scroller_for(&target, direction)?;
-        let (horizontal, vertical) = step(direction);
-        for _ in 0..amount.min(MAX_SCROLL_STEPS) {
-            if at_edge(&scroller, direction, &target)? {
-                break;
-            }
-            unsafe { scroller.Scroll(horizontal, vertical) }.uia(&target.doing("scrolling"))?;
-        }
-        Ok(())
+        let Some(scroller) = self.movable_scroller(&target, direction)? else { return Ok(0) };
+        scroll_steps(&scroller, direction, amount.min(MAX_SCROLL_STEPS), &target)
     }
 
-    fn scroller_for(&self, target: &Resolved, direction: Direction) -> Result<IUIAutomationScrollPattern> {
-        let mut current = target.element.clone();
+    fn movable_scroller(&self, target: &Resolved, direction: Direction) -> Result<Option<IUIAutomationScrollPattern>> {
+        let mut found_scrollable = false;
+        let mut current = Some(target.element.clone());
         for _ in 0..=MAX_ANCESTRY {
-            if let Some(pattern) = scrollable(&current, direction, target)? {
-                return Ok(pattern);
+            let Some(element) = current else { break };
+            if let Some(pattern) = scrollable(&element, direction, target)? {
+                if !at_edge(&pattern, direction, target)? {
+                    return Ok(Some(pattern));
+                }
+                found_scrollable = true;
             }
-            let Some(parent) = self.parent_of(&current)? else { break };
-            current = parent;
+            current = self.parent_of(&element)?;
         }
-        Err(Error::unsupported(format!(
-            "neither {} nor any container around it can scroll {}",
-            target.label(),
-            direction_word(direction)
-        )))
+        if found_scrollable { Ok(None) } else { Err(cannot_scroll(target, direction)) }
     }
+}
+
+fn scroll_steps(
+    pattern: &IUIAutomationScrollPattern,
+    direction: Direction,
+    steps: u32,
+    target: &Resolved,
+) -> Result<u32> {
+    let (horizontal, vertical) = step(direction);
+    let mut moved = 0;
+    while moved < steps {
+        if moved > 0 && at_edge(pattern, direction, target)? {
+            break;
+        }
+        unsafe { pattern.Scroll(horizontal, vertical) }.uia(&target.doing("scrolling"))?;
+        moved += 1;
+    }
+    Ok(moved)
 }
 
 fn scrollable(
@@ -52,7 +60,7 @@ fn scrollable(
     target: &Resolved,
 ) -> Result<Option<IUIAutomationScrollPattern>> {
     let what = target.doing("looking for a scrollable container around");
-    let Some(pattern) = current_pattern::<IUIAutomationScrollPattern>(element, UIA_ScrollPatternId).uia(&what)? else {
+    let Some(pattern) = current_pattern::<IUIAutomationScrollPattern>(element, UIA_ScrollPatternId, &what)? else {
         return Ok(None);
     };
     let can_scroll = if is_vertical(direction) {
@@ -72,6 +80,14 @@ fn at_edge(pattern: &IUIAutomationScrollPattern, direction: Direction, target: &
     }
     .uia(&target.doing("reading the scroll position of"))?;
     Ok(is_at_edge(percent, direction))
+}
+
+fn cannot_scroll(target: &Resolved, direction: Direction) -> Error {
+    Error::unsupported(format!(
+        "neither {} nor any container around it can scroll {}",
+        target.label(),
+        direction_word(direction)
+    ))
 }
 
 fn is_at_edge(percent: f64, direction: Direction) -> bool {
@@ -146,7 +162,11 @@ mod tests {
                     .map(|element| element.id)
                     .ok_or_else(|| Error::not_found("listbox 2009"))?;
                 match uia.scroll(list, Direction::Down, 2) {
-                    Ok(()) => uia.scroll(list, Direction::Up, 2),
+                    Ok(down) => {
+                        let up = uia.scroll(list, Direction::Up, 2)?;
+                        assert!(down <= 2 && up <= 2);
+                        Ok(())
+                    }
                     Err(error) if error.code == ErrorCode::Unsupported => Ok(()),
                     Err(error) => Err(error),
                 }

@@ -34,6 +34,10 @@ impl<'a> Canvas<'a> {
         self.width
     }
 
+    pub(crate) const fn overlaps(&self, area: Bounds) -> bool {
+        area.left < self.width && area.right > 0 && area.top < self.height && area.bottom > 0
+    }
+
     pub(crate) fn fill(&mut self, area: Bounds, color: Bgra) {
         let left = area.left.clamp(0, self.width);
         let right = area.right.clamp(0, self.width);
@@ -96,6 +100,17 @@ pub(crate) mod tests {
         assert_eq!(pixel_at(&pixels, 8, 3, 3), [0, 0, 0, 0]);
         assert_eq!(pixel_at(&pixels, 8, 0, 0), [0, 0, 0, 0]);
         assert_eq!(pixel_at(&pixels, 8, 7, 7), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn overlap_needs_at_least_one_shared_pixel() {
+        let mut pixels = vec![0u8; 4 * 4 * 4];
+        let canvas = Canvas::new(&mut pixels, 4, 4);
+        assert!(canvas.overlaps(Bounds::sized(3, 3, 5, 5)));
+        assert!(canvas.overlaps(Bounds::sized(-2, -2, 3, 3)));
+        assert!(!canvas.overlaps(Bounds::sized(4, 0, 2, 2)));
+        assert!(!canvas.overlaps(Bounds::sized(-2, 0, 2, 2)));
+        assert!(!canvas.overlaps(Bounds::sized(0, -5, 2, 5)));
     }
 
     #[test]

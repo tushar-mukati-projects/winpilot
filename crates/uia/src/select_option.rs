@@ -5,7 +5,7 @@ use windows::Win32::UI::Accessibility::{
     ExpandCollapseState_Collapsed, ExpandCollapseState_Expanded, ExpandCollapseState_PartiallyExpanded,
     IUIAutomationCondition, IUIAutomationElement, IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern,
     IUIAutomationSelectionItemPattern, PropertyConditionFlags_IgnoreCase, TreeScope_Descendants,
-    UIA_ControlTypePropertyId, UIA_ExpandCollapsePatternId, UIA_InvokePatternId,
+    UIA_ControlTypePropertyId, UIA_DataItemControlTypeId, UIA_ExpandCollapsePatternId, UIA_InvokePatternId,
     UIA_IsSelectionItemPatternAvailablePropertyId, UIA_ListItemControlTypeId, UIA_MenuItemControlTypeId,
     UIA_NamePropertyId, UIA_PROPERTY_ID, UIA_SelectionItemPatternId, UIA_TreeItemControlTypeId,
 };
@@ -13,8 +13,9 @@ use windows::Win32::UI::Accessibility::{
 use crate::{
     automation::Uia,
     failure::{UiaResult, optional},
+    pattern::current_pattern,
     properties::cached_text,
-    resolved::{Resolved, current_pattern},
+    resolved::Resolved,
     tree::array_elements,
     variant::OwnedVariant,
 };
@@ -25,15 +26,12 @@ const LISTED_OPTIONS: usize = 10;
 impl Uia {
     pub fn select_option(&mut self, id: ElementRef, option: &str) -> Result<()> {
         let target = self.resolve(id)?;
-        let expander: Option<IUIAutomationExpandCollapsePattern> =
-            target.optional_pattern(UIA_ExpandCollapsePatternId, "ExpandCollapse")?;
-        let opened = match &expander {
-            Some(pattern) => expand_if_collapsed(pattern, &target)?,
-            None => false,
-        };
-        let picked = self.pick_option(&target, option, opened);
-        let closed = expander.as_ref().map_or(Ok(()), |pattern| collapse_if_expanded(pattern, &target));
-        picked.and(closed)
+        let opened_here = expand_if_collapsed(&target)?;
+        let picked = self.pick_option(&target, option, opened_here.is_some());
+        if let Some(pattern) = &opened_here {
+            let _closing_is_best_effort = collapse_if_expanded(pattern, &target);
+        }
+        picked
     }
 
     fn pick_option(&self, target: &Resolved, option: &str, just_opened: bool) -> Result<()> {
@@ -49,24 +47,23 @@ impl Uia {
         option: &str,
         just_opened: bool,
     ) -> Result<Option<IUIAutomationElement>> {
-        let found = self.find_option(target, option)?;
+        let condition = self.option_condition(option)?;
+        let found = find_first(target, &condition)?;
         if found.is_some() || !just_opened {
             return Ok(found);
         }
         thread::sleep(EXPAND_SETTLE);
-        self.find_option(target, option)
+        find_first(target, &condition)
     }
 
-    fn find_option(&self, target: &Resolved, option: &str) -> Result<Option<IUIAutomationElement>> {
+    fn option_condition(&self, option: &str) -> Result<IUIAutomationCondition> {
         let name = OwnedVariant::text(option);
         let by_name = unsafe {
             self.automation.CreatePropertyConditionEx(UIA_NamePropertyId, name.raw(), PropertyConditionFlags_IgnoreCase)
         }
         .uia("building the option search")?;
-        let condition = unsafe { self.automation.CreateAndCondition(&self.control_view, &by_name) }
-            .uia("building the option search")?;
-        optional(unsafe { target.element.FindFirst(TreeScope_Descendants, &condition) })
-            .uia(&target.doing("searching the options of"))
+        unsafe { self.automation.CreateAndCondition(&self.item_condition()?, &by_name) }
+            .uia("building the option search")
     }
 
     fn missing_option(&self, target: &Resolved, option: &str) -> Error {
@@ -77,7 +74,7 @@ impl Uia {
     fn option_names(&self, target: &Resolved) -> Result<Vec<String>> {
         let condition = self.item_condition()?;
         let found = optional(unsafe {
-            target.element.FindAllBuildCache(TreeScope_Descendants, &condition, &self.requests.name_only)
+            target.element.FindAllBuildCache(TreeScope_Descendants, &condition, &self.requests.element_name)
         })
         .uia(&target.doing("listing the options of"))?;
         let Some(found) = found else { return Ok(Vec::new()) };
@@ -93,7 +90,9 @@ impl Uia {
         let selectable = OwnedVariant::flag(true);
         let mut alternatives =
             vec![Some(self.property_condition(UIA_IsSelectionItemPatternAvailablePropertyId, &selectable)?)];
-        for kind in [UIA_ListItemControlTypeId, UIA_MenuItemControlTypeId, UIA_TreeItemControlTypeId] {
+        for kind in
+            [UIA_ListItemControlTypeId, UIA_MenuItemControlTypeId, UIA_TreeItemControlTypeId, UIA_DataItemControlTypeId]
+        {
             alternatives.push(Some(self.property_condition(UIA_ControlTypePropertyId, &OwnedVariant::int(kind.0))?));
         }
         let any_item = unsafe { self.automation.CreateOrConditionFromNativeArray(&alternatives) }
@@ -107,25 +106,34 @@ impl Uia {
     }
 }
 
+fn find_first(target: &Resolved, condition: &IUIAutomationCondition) -> Result<Option<IUIAutomationElement>> {
+    optional(unsafe { target.element.FindFirst(TreeScope_Descendants, condition) })
+        .uia(&target.doing("searching the options of"))
+}
+
 fn choose(item: &IUIAutomationElement, option: &str, target: &Resolved) -> Result<()> {
     let action = format!("picking \"{option}\" in {}", target.label());
-    let selectable = current_pattern::<IUIAutomationSelectionItemPattern>(item, UIA_SelectionItemPatternId);
-    if let Some(pattern) = selectable.uia(&action)? {
+    let selectable = current_pattern::<IUIAutomationSelectionItemPattern>(item, UIA_SelectionItemPatternId, &action)?;
+    if let Some(pattern) = selectable {
         return unsafe { pattern.Select() }.uia(&action);
     }
-    if let Some(pattern) = current_pattern::<IUIAutomationInvokePattern>(item, UIA_InvokePatternId).uia(&action)? {
+    if let Some(pattern) = current_pattern::<IUIAutomationInvokePattern>(item, UIA_InvokePatternId, &action)? {
         return unsafe { pattern.Invoke() }.uia(&action);
     }
     Err(Error::unsupported(format!("option \"{option}\" in {} can be neither selected nor invoked", target.label())))
 }
 
-fn expand_if_collapsed(pattern: &IUIAutomationExpandCollapsePattern, target: &Resolved) -> Result<bool> {
-    let state = unsafe { pattern.CurrentExpandCollapseState() }.uia(&target.doing("reading the expand state of"))?;
+fn expand_if_collapsed(target: &Resolved) -> Result<Option<IUIAutomationExpandCollapsePattern>> {
+    let reading = target.doing("reading the expand state of");
+    let pattern =
+        current_pattern::<IUIAutomationExpandCollapsePattern>(&target.element, UIA_ExpandCollapsePatternId, &reading)?;
+    let Some(pattern) = pattern else { return Ok(None) };
+    let state = unsafe { pattern.CurrentExpandCollapseState() }.uia(&reading)?;
     if state != ExpandCollapseState_Collapsed {
-        return Ok(false);
+        return Ok(None);
     }
     unsafe { pattern.Expand() }.uia(&target.doing("expanding"))?;
-    Ok(true)
+    Ok(Some(pattern))
 }
 
 fn collapse_if_expanded(pattern: &IUIAutomationExpandCollapsePattern, target: &Resolved) -> Result<()> {

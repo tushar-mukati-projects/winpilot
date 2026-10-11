@@ -3,10 +3,11 @@ use std::time::{Duration, Instant};
 use deckhand_core::{Point, Rect, Result};
 use windows::Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIOutput};
 
-use crate::duplication::{Duplication, DxgiFailure, Readiness};
+use crate::duplication::{Duplication, DxgiFailure};
 use crate::frame::Frame;
-use crate::gdi;
+use crate::freshness::{Decision, decide};
 use crate::pixels::Block;
+use crate::screen_grabber::ScreenGrabber;
 
 const RETRY_COOLDOWN: Duration = Duration::from_secs(1);
 
@@ -17,16 +18,17 @@ pub(crate) struct DxgiSource {
 
 enum State {
     Closed,
-    Warm(Box<Duplication>),
+    Open(Box<Duplication>),
     CoolingDown(Instant),
     GdiOnly,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Copied {
-    Done,
-    AwaitingFirstImage,
-    Unavailable,
+pub(crate) enum Served {
+    Nothing,
+    LiveGdi,
+    Staging(Duration),
 }
 
 pub(crate) struct Output {
@@ -34,14 +36,15 @@ pub(crate) struct Output {
     rect: Rect,
     sources: Vec<DxgiSource>,
     state: State,
-    still_image: Option<Frame>,
-    access_lost: bool,
+    needs_rebuild: bool,
+    #[cfg_attr(not(test), allow(dead_code))]
+    served: Served,
 }
 
 impl Output {
     pub(crate) fn new(monitor_id: isize, rect: Rect, sources: Vec<DxgiSource>) -> Self {
         let state = if sources.is_empty() { State::GdiOnly } else { State::Closed };
-        Self { monitor_id, rect, sources, state, still_image: None, access_lost: false }
+        Self { monitor_id, rect, sources, state, needs_rebuild: false, served: Served::Nothing }
     }
 
     pub(crate) const fn monitor_id(&self) -> isize {
@@ -52,8 +55,8 @@ impl Output {
         self.rect
     }
 
-    pub(crate) const fn access_lost(&self) -> bool {
-        self.access_lost
+    pub(crate) const fn needs_rebuild(&self) -> bool {
+        self.needs_rebuild
     }
 
     pub(crate) fn add_source(&mut self, source: DxgiSource) {
@@ -61,107 +64,133 @@ impl Output {
     }
 
     #[cfg(test)]
+    pub(crate) const fn served(&self) -> Served {
+        self.served
+    }
+
+    #[cfg(test)]
     pub(crate) fn mode(&self) -> &'static str {
         match &self.state {
             State::Closed => "closed",
-            State::Warm(duplication) if duplication.frame_size().is_some() => "dxgi",
-            State::Warm(_) => "dxgi awaiting its first image (gdi still image)",
+            State::Open(duplication) => {
+                match decide(duplication.opened_at(), duplication.last_frame_at(), Instant::now()) {
+                    Decision::UseStaging { .. } => "dxgi",
+                    Decision::UseGdi | Decision::Demote => "gdi (dxgi open without a fresh frame)",
+                }
+            }
             State::CoolingDown(_) => "gdi (dxgi cooling down)",
             State::GdiOnly => "gdi",
         }
     }
 
-    pub(crate) fn capture_into(&mut self, part: Rect, frame: &mut Frame) -> Result<()> {
-        match self.copy_with_dxgi(part, frame) {
-            Copied::Done => Ok(()),
-            Copied::AwaitingFirstImage => self.paste_still_image(frame),
-            Copied::Unavailable => frame.paste(&gdi::capture_screen(part)?),
+    pub(crate) fn capture_into(&mut self, part: Rect, frame: &mut Frame, grabber: &mut ScreenGrabber) -> Result<()> {
+        if let Some(frame_age) = self.copy_fresh_staging(part, frame) {
+            self.served = Served::Staging(frame_age);
+            return Ok(());
         }
+        self.served = Served::LiveGdi;
+        grabber.grab_into(part, frame)
     }
 
-    fn paste_still_image(&mut self, frame: &mut Frame) -> Result<()> {
-        let still = match self.still_image.take() {
-            Some(still) => still,
-            None => gdi::capture_screen(self.rect)?,
+    fn copy_fresh_staging(&mut self, part: Rect, frame: &mut Frame) -> Option<Duration> {
+        let Decision::UseStaging { frame_age } = self.choose_source(Instant::now()) else {
+            return None;
         };
-        let pasted = frame.paste(&still);
-        self.still_image = Some(still);
-        pasted
-    }
-
-    fn copy_with_dxgi(&mut self, part: Rect, frame: &mut Frame) -> Copied {
-        match self.attempt(part, frame) {
-            Ok(copied) => copied,
-            Err(DxgiFailure::AccessLost) => self.retry_after_access_lost(part, frame),
-            Err(failure) => self.demote(failure),
+        match self.read_staging(part, frame) {
+            Ok(()) => Some(frame_age),
+            Err(failure) => {
+                self.after_failed_read(failure);
+                None
+            }
         }
     }
 
-    fn retry_after_access_lost(&mut self, part: Rect, frame: &mut Frame) -> Copied {
-        self.access_lost = true;
-        self.close();
-        self.attempt(part, frame).unwrap_or_else(|failure| self.demote(failure))
+    fn choose_source(&mut self, now: Instant) -> Decision {
+        let decision = match self.poll(now) {
+            Ok(decision) => decision,
+            Err(DxgiFailure::AccessLost) => self.reopen_after_access_lost(now),
+            Err(failure) => self.back_off(failure, now),
+        };
+        if decision == Decision::Demote {
+            self.state = State::GdiOnly;
+        }
+        decision
     }
 
-    fn demote(&mut self, failure: DxgiFailure) -> Copied {
-        self.close();
+    fn reopen_after_access_lost(&mut self, now: Instant) -> Decision {
+        self.state = State::Closed;
+        match self.poll(now) {
+            Ok(decision) => {
+                self.needs_rebuild = false;
+                decision
+            }
+            Err(failure) => {
+                self.needs_rebuild = true;
+                self.back_off(failure, now)
+            }
+        }
+    }
+
+    fn after_failed_read(&mut self, failure: DxgiFailure) {
+        if failure == DxgiFailure::AccessLost {
+            self.needs_rebuild = true;
+            self.state = State::Closed;
+            return;
+        }
+        self.back_off(failure, Instant::now());
+    }
+
+    fn back_off(&mut self, failure: DxgiFailure, now: Instant) -> Decision {
         self.state = match failure {
             DxgiFailure::Unsupported => State::GdiOnly,
-            DxgiFailure::Transient | DxgiFailure::AccessLost => State::CoolingDown(Instant::now() + RETRY_COOLDOWN),
+            DxgiFailure::Transient | DxgiFailure::AccessLost => State::CoolingDown(now + RETRY_COOLDOWN),
         };
-        Copied::Unavailable
+        Decision::UseGdi
     }
 
-    fn close(&mut self) {
-        self.state = State::Closed;
-        self.still_image = None;
-    }
-
-    fn attempt(&mut self, part: Rect, frame: &mut Frame) -> Result<Copied, DxgiFailure> {
-        let rect = self.rect;
-        let Some(duplication) = self.ready_duplication()? else {
-            return Ok(Copied::Unavailable);
-        };
-        if duplication.update()? == Readiness::AwaitingFirstImage {
-            return Ok(Copied::AwaitingFirstImage);
+    fn poll(&mut self, now: Instant) -> Result<Decision, DxgiFailure> {
+        self.leave_expired_cooldown(now);
+        if matches!(self.state, State::Closed) {
+            self.state = State::Open(Box::new(open_first(&self.sources, now)?));
+            return Ok(Decision::UseGdi);
         }
-        if duplication.frame_size() != Some((rect.width as u32, rect.height as u32)) {
+        let State::Open(duplication) = &mut self.state else {
+            return Ok(Decision::UseGdi);
+        };
+        duplication.poll(now)?;
+        Ok(decide(duplication.opened_at(), duplication.last_frame_at(), now))
+    }
+
+    fn leave_expired_cooldown(&mut self, now: Instant) {
+        if let State::CoolingDown(until) = self.state
+            && now >= until
+        {
+            self.state = State::Closed;
+        }
+    }
+
+    fn read_staging(&self, part: Rect, frame: &mut Frame) -> Result<(), DxgiFailure> {
+        let State::Open(duplication) = &self.state else {
+            return Err(DxgiFailure::Transient);
+        };
+        if duplication.frame_size() != Some((self.rect.width as u32, self.rect.height as u32)) {
             return Err(DxgiFailure::AccessLost);
         }
         let from = Block {
-            x: (part.x - rect.x) as usize,
-            y: (part.y - rect.y) as usize,
+            x: (part.x - self.rect.x) as usize,
+            y: (part.y - self.rect.y) as usize,
             width: part.width as usize,
             height: part.height as usize,
         };
         let to = frame.offset_of(Point::new(part.x, part.y));
-        duplication.read(from, &mut frame.pixels_mut(), to)?;
-        self.still_image = None;
-        Ok(Copied::Done)
-    }
-
-    fn ready_duplication(&mut self) -> Result<Option<&mut Duplication>, DxgiFailure> {
-        if let State::CoolingDown(until) = self.state {
-            if Instant::now() < until {
-                return Ok(None);
-            }
-            self.close();
-        }
-        if matches!(self.state, State::Closed) {
-            self.still_image = None;
-            self.state = State::Warm(Box::new(open_first(&self.sources)?));
-        }
-        match &mut self.state {
-            State::Warm(duplication) => Ok(Some(duplication)),
-            _ => Ok(None),
-        }
+        duplication.read(from, &mut frame.pixels_mut(), to)
     }
 }
 
-fn open_first(sources: &[DxgiSource]) -> Result<Duplication, DxgiFailure> {
+fn open_first(sources: &[DxgiSource], now: Instant) -> Result<Duplication, DxgiFailure> {
     let mut failure = DxgiFailure::Unsupported;
     for source in sources {
-        match Duplication::open(&source.adapter, &source.output) {
+        match Duplication::open(&source.adapter, &source.output, now) {
             Ok(duplication) => return Ok(duplication),
             Err(next) => failure = more_hopeful(failure, next),
         }
@@ -193,15 +222,48 @@ mod tests {
     fn outputs_without_adapters_use_gdi() {
         let output = Output::new(1, Rect::new(0, 0, 10, 10), Vec::new());
         assert_eq!(output.mode(), "gdi");
+        assert_eq!(output.served(), Served::Nothing);
     }
 
     #[test]
-    fn gdi_outputs_fill_their_part_of_the_frame() {
+    fn gdi_outputs_fill_their_part_of_the_frame_live() {
         crate::dpi::make_thread_per_monitor_aware().unwrap();
         let mut output = Output::new(1, Rect::new(0, 0, 10, 10), Vec::new());
         let mut frame = Frame::black(Point::new(-4, -4), 8, 8);
-        output.capture_into(Rect::new(0, 0, 4, 4), &mut frame).unwrap();
+        output.capture_into(Rect::new(0, 0, 4, 4), &mut frame, &mut ScreenGrabber::default()).unwrap();
         assert_eq!(frame.bgra.len(), 8 * 8 * 4);
+        assert_eq!((output.mode(), output.served()), ("gdi", Served::LiveGdi));
+    }
+
+    #[test]
+    fn unsupported_failures_pin_gdi_and_others_cool_down() {
+        let mut output = Output::new(1, Rect::new(0, 0, 10, 10), Vec::new());
+        let now = Instant::now();
+        assert_eq!(output.back_off(DxgiFailure::Transient, now), Decision::UseGdi);
+        assert_eq!(output.mode(), "gdi (dxgi cooling down)");
+        output.back_off(DxgiFailure::Unsupported, now);
         assert_eq!(output.mode(), "gdi");
+    }
+
+    #[test]
+    fn the_rebuild_flag_follows_the_outcome_of_the_reopen_after_access_lost() {
+        crate::dpi::make_thread_per_monitor_aware().unwrap();
+        let mut displays = crate::displays::Displays::default();
+        displays.refresh().unwrap();
+        let Some(output) = displays.outputs_mut().iter_mut().find(|output| !output.sources.is_empty()) else {
+            return;
+        };
+        output.needs_rebuild = true;
+        assert_eq!(output.reopen_after_access_lost(Instant::now()), Decision::UseGdi);
+        let reopened = matches!(output.state, State::Open(_));
+        assert_eq!(output.needs_rebuild(), !reopened);
+    }
+
+    #[test]
+    fn a_lost_staging_read_asks_for_a_rebuild() {
+        let mut output = Output::new(1, Rect::new(0, 0, 10, 10), Vec::new());
+        output.after_failed_read(DxgiFailure::AccessLost);
+        assert!(output.needs_rebuild());
+        assert_eq!(output.mode(), "closed");
     }
 }

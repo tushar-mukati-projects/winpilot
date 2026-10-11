@@ -3,22 +3,25 @@ use std::{
     io::{BufReader, BufWriter, Read, Write},
     sync::{
         Arc, Weak,
-        atomic::{AtomicBool, AtomicU32, Ordering},
+        atomic::{AtomicBool, Ordering},
         mpsc,
     },
-    time::Duration,
 };
 
 use deckhand_core::{
-    Context, Error, ErrorCode, Result,
+    Context, Error, Result,
     ipc::{FromWorker, ToWorker, read_frame, write_frame},
     protocol::Reply,
 };
 use parking_lot::Mutex;
 use tokio::sync::oneshot;
 
+use crate::death::{Death, stopped_error};
+
 pub type ReplyReceiver = oneshot::Receiver<Result<Reply>>;
 type ReplySender = oneshot::Sender<Result<Reply>>;
+type Pending = HashMap<u64, ReplySender>;
+pub type DeathHook = Box<dyn Fn(&Link, &Death, bool) + Send + Sync>;
 
 pub trait WorkerProcess: Send {
     fn terminate(&mut self);
@@ -30,70 +33,25 @@ pub struct WorkerPipes {
     pub process: Box<dyn WorkerProcess>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Death {
-    Timeout { tool: &'static str, deadline: Duration },
-    Exited,
-    Unreadable(String),
-    Unwritable(String),
-    Shutdown,
-}
-
-impl Death {
-    pub fn error(&self) -> Error {
-        match self {
-            Self::Shutdown => Error::new(ErrorCode::Cancelled, "the deckhand server is shutting down"),
-            _ => Error::new(ErrorCode::TargetNotResponding, self.restart_message()),
-        }
-    }
-
-    fn restart_message(&self) -> String {
-        let cause = match self {
-            Self::Timeout { tool, deadline } => {
-                format!("the desktop worker did not answer {tool} within {} (an app may be hung)", seconds(*deadline))
-            }
-            Self::Exited => "the desktop worker exited unexpectedly".to_string(),
-            Self::Unreadable(detail) => format!("the desktop worker sent an unreadable message ({detail})"),
-            Self::Unwritable(detail) => format!("the desktop worker stopped accepting calls ({detail})"),
-            Self::Shutdown => "the deckhand server is shutting down".to_string(),
-        };
-        format!("{cause}; it was restarted")
-    }
-
-    const fn counts_as_restart(&self) -> bool {
-        !matches!(self, Self::Shutdown)
-    }
-}
-
-pub fn seconds(duration: Duration) -> String {
-    if duration.subsec_millis() == 0 {
-        format!("{} s", duration.as_secs())
-    } else {
-        format!("{:.1} s", duration.as_secs_f64())
-    }
-}
-
-pub fn stopped_error() -> Error {
-    Error::new(ErrorCode::TargetNotResponding, "the desktop worker stopped before answering; try again")
-}
-
 pub struct Link {
     frames: Mutex<Option<mpsc::Sender<ToWorker>>>,
-    pending: Mutex<Option<HashMap<u64, ReplySender>>>,
+    pending: Mutex<Option<Pending>>,
     process: Mutex<Option<Box<dyn WorkerProcess>>>,
     started: AtomicBool,
-    restarts: Arc<AtomicU32>,
+    answered: AtomicBool,
+    on_death: DeathHook,
 }
 
 impl Link {
-    pub fn start(pipes: WorkerPipes, restarts: Arc<AtomicU32>) -> Result<(Arc<Self>, oneshot::Receiver<String>)> {
+    pub fn start(pipes: WorkerPipes, on_death: DeathHook) -> Result<(Arc<Self>, oneshot::Receiver<String>)> {
         let (frames, outbox) = mpsc::channel();
         let link = Arc::new(Self {
             frames: Mutex::new(Some(frames)),
             pending: Mutex::new(Some(HashMap::new())),
             process: Mutex::new(Some(pipes.process)),
             started: AtomicBool::new(false),
-            restarts,
+            answered: AtomicBool::new(false),
+            on_death,
         });
         let (ready, announced) = oneshot::channel();
         let writer = Arc::downgrade(&link);
@@ -109,6 +67,10 @@ impl Link {
 
     pub fn mark_started(&self) {
         self.started.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_started(&self) -> bool {
+        self.started.load(Ordering::SeqCst)
     }
 
     pub fn register(&self, id: u64) -> Result<ReplyReceiver> {
@@ -132,22 +94,24 @@ impl Link {
     }
 
     pub fn stop(&self, death: &Death) {
-        let Some(calls) = self.pending.lock().take() else { return };
+        let Some(calls) = self.mark_dead_and_kill() else { return };
+        let in_use = !calls.is_empty() || self.answered.load(Ordering::SeqCst);
+        (self.on_death)(self, death, in_use);
+        fail_pending(calls, &death.error());
+    }
+
+    fn mark_dead_and_kill(&self) -> Option<Pending> {
+        let calls = self.pending.lock().take()?;
         drop(self.frames.lock().take());
         let process = self.process.lock().take();
         if let Some(mut process) = process {
             process.terminate();
         }
-        if death.counts_as_restart() && self.started.load(Ordering::SeqCst) {
-            self.restarts.fetch_add(1, Ordering::SeqCst);
-        }
-        let error = death.error();
-        for sender in calls.into_values() {
-            let _ = sender.send(Err(error.clone()));
-        }
+        Some(calls)
     }
 
     fn deliver(&self, id: u64, result: Result<Reply>) {
+        self.answered.store(true, Ordering::SeqCst);
         let sender = self.pending.lock().as_mut().and_then(|calls| calls.remove(&id));
         if let Some(sender) = sender {
             let _ = sender.send(result);
@@ -158,6 +122,12 @@ impl Link {
 impl Drop for Link {
     fn drop(&mut self) {
         self.stop(&Death::Shutdown);
+    }
+}
+
+fn fail_pending(calls: Pending, error: &Error) {
+    for sender in calls.into_values() {
+        let _ = sender.send(Err(error.clone()));
     }
 }
 
@@ -201,34 +171,5 @@ fn announce(ready: &mut Option<oneshot::Sender<String>>, version: String) {
 fn stop_link(link: &Weak<Link>, death: &Death) {
     if let Some(link) = link.upgrade() {
         link.stop(death);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn timeout_message_names_the_tool_and_deadline() {
-        let death = Death::Timeout { tool: "observe", deadline: Duration::from_secs(10) };
-        let error = death.error();
-        assert_eq!(error.code, ErrorCode::TargetNotResponding);
-        assert_eq!(
-            error.message,
-            "the desktop worker did not answer observe within 10 s (an app may be hung); it was restarted"
-        );
-    }
-
-    #[test]
-    fn fractional_deadlines_show_one_decimal() {
-        assert_eq!(seconds(Duration::from_millis(5500)), "5.5 s");
-        assert_eq!(seconds(Duration::from_secs(3)), "3 s");
-    }
-
-    #[test]
-    fn shutdown_is_not_a_restart() {
-        assert!(!Death::Shutdown.counts_as_restart());
-        assert!(Death::Exited.counts_as_restart());
-        assert_eq!(Death::Shutdown.error().code, ErrorCode::Cancelled);
     }
 }

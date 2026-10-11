@@ -16,8 +16,8 @@ use deckhand_core::{
 };
 
 use crate::{
+    lifecycle::Spawn,
     link::{WorkerPipes, WorkerProcess},
-    supervisor::Spawn,
 };
 
 pub struct FakeWorker {
@@ -31,8 +31,12 @@ impl FakeWorker {
     }
 
     pub fn handshake(&mut self) -> bool {
+        self.handshake_as(crate::VERSION)
+    }
+
+    pub fn handshake_as(&mut self, version: &str) -> bool {
         matches!(self.receive(), Some(ToWorker::Init { .. }))
-            && write_frame(&mut self.output, &FromWorker::Ready { version: "test".to_string() }).is_ok()
+            && write_frame(&mut self.output, &FromWorker::Ready { version: version.to_string() }).is_ok()
     }
 
     pub fn reply(&mut self, id: u64, result: Result<Reply>) -> bool {
@@ -88,19 +92,25 @@ impl WorkerProcess for FakeProcess {
 }
 
 pub fn echo_worker(mut worker: FakeWorker) {
-    if !worker.handshake() {
-        return;
-    }
-    while let Some(message) = worker.receive() {
-        worker.answer(&message);
+    if worker.handshake() {
+        echo_after_handshake(worker);
     }
 }
 
 pub fn hang_worker(mut worker: FakeWorker) {
-    if !worker.handshake() {
-        return;
+    if worker.handshake() {
+        drain(worker);
     }
+}
+
+pub fn drain(mut worker: FakeWorker) {
     while worker.receive().is_some() {}
+}
+
+pub fn echo_after_handshake(mut worker: FakeWorker) {
+    while let Some(message) = worker.receive() {
+        worker.answer(&message);
+    }
 }
 
 pub fn echo(call: &Call) -> Reply {

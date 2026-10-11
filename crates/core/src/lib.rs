@@ -6,18 +6,22 @@ pub mod format;
 pub mod geometry;
 pub mod ipc;
 pub mod keys;
+mod matching;
+mod path_guard;
 pub mod protocol;
 pub mod refs;
 pub mod role;
 pub mod selector;
 pub mod target;
+mod validation;
 
 pub const INJECTION_MARK: usize = 0x4445_434B;
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub use config::Config;
 pub use element::{Element, ElementState, Patterns, Snapshot, WindowInfo, WindowState};
 pub use error::{Context, Error, ErrorCode, Result};
-pub use geometry::{ImageMapping, Point, Rect};
+pub use geometry::{COORD_LIMIT, ImageMapping, Point, Rect};
 pub use refs::{ElementRef, ImageRef, WindowRef};
 pub use role::Role;
 pub use target::{Target, TargetSpec};

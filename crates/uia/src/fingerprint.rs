@@ -1,28 +1,37 @@
-use std::cmp::{Ordering, Reverse};
+use deckhand_core::{ElementRef, Role};
 
-use deckhand_core::{ElementRef, Role, WindowRef};
+use crate::{
+    tree_path::{PathCloseness, TreePath, View},
+    window_identity::WindowIdentity,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Fingerprint {
-    pub(crate) window: WindowRef,
+    pub(crate) window: WindowIdentity,
     pub(crate) role: Role,
     pub(crate) name: String,
     pub(crate) automation_id: String,
     pub(crate) class_name: String,
-    pub(crate) path: Vec<u32>,
+    pub(crate) path: Option<TreePath>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Closeness {
+struct Closeness {
     same_class: bool,
-    same_path: bool,
-    shared_prefix: usize,
-    length_gap: Reverse<usize>,
+    path: PathCloseness,
 }
 
 impl Fingerprint {
     pub(crate) fn depth(&self) -> u16 {
-        u16::try_from(self.path.len()).unwrap_or(u16::MAX)
+        self.path.as_ref().map_or(0, TreePath::depth)
+    }
+
+    pub(crate) fn view(&self) -> View {
+        self.path.as_ref().map_or(View::Full, |path| path.view)
+    }
+
+    pub(crate) fn keeps_identity(&self, role: Role, automation_id: &str) -> bool {
+        role == self.role && (self.automation_id.is_empty() || automation_id == self.automation_id)
     }
 
     pub(crate) fn could_be(&self, other: &Self) -> bool {
@@ -35,45 +44,49 @@ impl Fingerprint {
         if !self.name.is_empty() {
             return other.name == self.name;
         }
-        other.name.is_empty() && other.class_name == self.class_name && other.path == self.path
+        other.name.is_empty() && other.class_name == self.class_name && self.path.is_some() && other.path == self.path
     }
 
-    pub(crate) fn closeness(&self, other: &Self) -> Closeness {
+    fn closeness(&self, other: &Self) -> Closeness {
         Closeness {
             same_class: other.class_name == self.class_name,
-            same_path: other.path == self.path,
-            shared_prefix: self.path.iter().zip(&other.path).take_while(|(a, b)| a == b).count(),
-            length_gap: Reverse(self.path.len().abs_diff(other.path.len())),
+            path: PathCloseness::between(self.path.as_ref(), other.path.as_ref()),
         }
     }
 }
 
-pub(crate) fn best_match<'a>(
+pub(crate) fn top_matches<'a>(
     target: &Fingerprint,
     candidates: impl Iterator<Item = (ElementRef, &'a Fingerprint)>,
-) -> Option<ElementRef> {
-    candidates
+) -> Vec<ElementRef> {
+    let plausible: Vec<(Closeness, ElementRef)> = candidates
         .filter(|(_, candidate)| target.could_be(candidate))
-        .max_by(|(left_id, left), (right_id, right)| rank(target, (*left_id, left), (*right_id, right)))
-        .map(|(id, _)| id)
-}
-
-fn rank(target: &Fingerprint, left: (ElementRef, &Fingerprint), right: (ElementRef, &Fingerprint)) -> Ordering {
-    target.closeness(left.1).cmp(&target.closeness(right.1)).then(right.0.cmp(&left.0))
+        .map(|(id, candidate)| (target.closeness(candidate), id))
+        .collect();
+    let Some(best) = plausible.iter().map(|(closeness, _)| *closeness).max() else { return Vec::new() };
+    plausible.into_iter().filter(|(closeness, _)| *closeness == best).map(|(_, id)| id).collect()
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use std::sync::Arc;
+
+    use deckhand_core::WindowRef;
+
     use super::*;
+
+    pub(crate) fn test_window(hwnd: i64) -> WindowIdentity {
+        WindowIdentity { hwnd: WindowRef(hwnd), pid: 4242, class: Arc::from("TestWindow") }
+    }
 
     pub(crate) fn print(role: Role, name: &str, automation_id: &str, class_name: &str, path: &[u32]) -> Fingerprint {
         Fingerprint {
-            window: WindowRef(7),
+            window: test_window(7),
             role,
             name: name.to_string(),
             automation_id: automation_id.to_string(),
             class_name: class_name.to_string(),
-            path: path.to_vec(),
+            path: Some(TreePath { view: View::Full, indices: path.to_vec() }),
         }
     }
 
@@ -93,44 +106,82 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn anonymous_elements_need_class_and_path() {
+    fn anonymous_elements_need_class_and_exact_path() {
         let target = print(Role::Pane, "", "", "Pane", &[0, 1]);
         assert!(target.could_be(&print(Role::Pane, "", "", "Pane", &[0, 1])));
         assert!(!target.could_be(&print(Role::Pane, "", "", "Pane", &[0, 2])));
         assert!(!target.could_be(&print(Role::Pane, "", "", "Other", &[0, 1])));
+        let mut onscreen = print(Role::Pane, "", "", "Pane", &[0, 1]);
+        onscreen.path = Some(TreePath { view: View::Onscreen, indices: vec![0, 1] });
+        assert!(!target.could_be(&onscreen));
+    }
+
+    #[test]
+    fn anonymous_lookups_never_match() {
+        let mut target = print(Role::Pane, "", "", "Pane", &[]);
+        target.path = None;
+        let mut root = print(Role::Pane, "", "", "Pane", &[]);
+        assert!(!target.could_be(&root));
+        root.path = None;
+        assert!(!target.could_be(&root));
+        assert_eq!(target.depth(), 0);
+        assert_eq!(target.view(), View::Full);
     }
 
     #[test]
     fn other_windows_never_match() {
         let target = print(Role::Button, "Save", "", "Button", &[0]);
         let mut elsewhere = target.clone();
-        elsewhere.window = WindowRef(8);
+        elsewhere.window = test_window(8);
         assert!(!target.could_be(&elsewhere));
+        let mut reused = target.clone();
+        reused.window.pid += 1;
+        assert!(!target.could_be(&reused));
     }
 
     #[test]
-    fn ties_break_by_class_then_path() {
+    fn identity_survives_renames_but_not_role_or_id_changes() {
+        let target = print(Role::Button, "Play", "play", "Button", &[0]);
+        assert!(target.keeps_identity(Role::Button, "play"));
+        assert!(!target.keeps_identity(Role::Checkbox, "play"));
+        assert!(!target.keeps_identity(Role::Button, "stop"));
+        let anonymous = print(Role::Button, "Play", "", "Button", &[0]);
+        assert!(anonymous.keeps_identity(Role::Button, "gained-an-id"));
+    }
+
+    #[test]
+    fn the_closest_candidate_wins_alone() {
         let target = print(Role::Button, "Save", "", "Button", &[0, 4, 2]);
         let wrong_class = print(Role::Button, "Save", "", "Other", &[0, 4, 2]);
         let far = print(Role::Button, "Save", "", "Button", &[1, 0]);
         let near = print(Role::Button, "Save", "", "Button", &[0, 4, 3]);
         let candidates = [(ElementRef(1), &wrong_class), (ElementRef(2), &far), (ElementRef(3), &near)];
-        assert_eq!(best_match(&target, candidates.into_iter()), Some(ElementRef(3)));
+        assert_eq!(top_matches(&target, candidates.into_iter()), [ElementRef(3)]);
     }
 
     #[test]
-    fn equal_candidates_pick_the_oldest_ref() {
+    fn equally_close_candidates_are_all_returned() {
         let target = print(Role::Button, "Save", "", "Button", &[0]);
         let a = print(Role::Button, "Save", "", "Button", &[1]);
         let b = print(Role::Button, "Save", "", "Button", &[1]);
         let candidates = [(ElementRef(9), &a), (ElementRef(4), &b)];
-        assert_eq!(best_match(&target, candidates.into_iter()), Some(ElementRef(4)));
+        assert_eq!(top_matches(&target, candidates.into_iter()), [ElementRef(9), ElementRef(4)]);
+    }
+
+    #[test]
+    fn lookups_without_a_path_tie_on_every_position() {
+        let mut target = print(Role::Button, "Save", "", "Button", &[]);
+        target.path = None;
+        let shallow = print(Role::Button, "Save", "", "Button", &[0]);
+        let deep = print(Role::Button, "Save", "", "Button", &[0, 3, 1]);
+        let candidates = [(ElementRef(1), &shallow), (ElementRef(2), &deep)];
+        assert_eq!(top_matches(&target, candidates.into_iter()), [ElementRef(1), ElementRef(2)]);
     }
 
     #[test]
     fn no_candidates_means_no_match() {
         let target = print(Role::Button, "Save", "", "Button", &[0]);
         let other = print(Role::Button, "Open", "", "Button", &[0]);
-        assert_eq!(best_match(&target, [(ElementRef(1), &other)].into_iter()), None);
+        assert!(top_matches(&target, [(ElementRef(1), &other)].into_iter()).is_empty());
     }
 }

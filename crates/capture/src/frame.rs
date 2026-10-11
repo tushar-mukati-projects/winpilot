@@ -2,8 +2,12 @@ use deckhand_core::{Error, Point, Rect, Result};
 
 use crate::pixels::{BYTES_PER_PIXEL, Block, Pixels, PixelsMut, copy_block};
 
-pub(crate) const MAX_SIDE: i32 = 32_768;
-pub(crate) const MAX_PIXELS: i64 = 64 * 1024 * 1024;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameSource {
+    Screen,
+    Window,
+    ScreenFallback,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frame {
@@ -11,6 +15,7 @@ pub struct Frame {
     pub width: u32,
     pub height: u32,
     pub bgra: Vec<u8>,
+    pub source: FrameSource,
 }
 
 impl Frame {
@@ -24,13 +29,14 @@ impl Frame {
         }
         let overlap = overlap(self.rect(), rect)?;
         let mut cropped = Self::black(Point::new(overlap.x, overlap.y), overlap.width as u32, overlap.height as u32);
+        cropped.source = self.source;
         cropped.paste(self).ok()?;
         Some(cropped)
     }
 
     pub(crate) fn black(origin: Point, width: u32, height: u32) -> Self {
         let length = width as usize * height as usize * BYTES_PER_PIXEL;
-        Self { origin, width, height, bgra: vec![0; length] }
+        Self { origin, width, height, bgra: vec![0; length], source: FrameSource::Screen }
     }
 
     pub(crate) fn is_well_formed(&self) -> bool {
@@ -77,26 +83,8 @@ pub(crate) fn overlap(a: Rect, b: Rect) -> Option<Rect> {
     (width > 0 && height > 0).then(|| Rect::new(left, top, width as i32, height as i32))
 }
 
-pub(crate) fn validate_capture_rect(rect: Rect) -> Result<()> {
-    if rect.width <= 0 || rect.height <= 0 {
-        return Err(Error::invalid("capture rectangle is empty"));
-    }
-    if rect.width > MAX_SIDE || rect.height > MAX_SIDE {
-        return Err(Error::invalid(format!("capture rectangle sides must be at most {MAX_SIDE} px")));
-    }
-    if i64::from(rect.width) * i64::from(rect.height) > MAX_PIXELS {
-        return Err(Error::invalid(format!("capture rectangle must hold at most {MAX_PIXELS} pixels")));
-    }
-    if rect.x.checked_add(rect.width).is_none() || rect.y.checked_add(rect.height).is_none() {
-        return Err(Error::invalid("capture rectangle extends past the coordinate range"));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
-
     use super::*;
 
     fn gradient(origin: Point, width: u32, height: u32) -> Frame {
@@ -131,6 +119,13 @@ mod tests {
     }
 
     #[test]
+    fn crop_keeps_the_source() {
+        let mut frame = gradient(Point::new(0, 0), 10, 10);
+        frame.source = FrameSource::Window;
+        assert_eq!(frame.crop(Rect::new(2, 2, 3, 3)).unwrap().source, FrameSource::Window);
+    }
+
+    #[test]
     fn crop_without_overlap_is_none() {
         let frame = gradient(Point::new(0, 0), 10, 10);
         assert_eq!(frame.crop(Rect::new(10, 0, 5, 5)), None);
@@ -149,22 +144,8 @@ mod tests {
 
     #[test]
     fn crop_of_a_malformed_frame_is_none() {
-        let frame = Frame { origin: Point::new(0, 0), width: 10, height: 10, bgra: vec![0; 12] };
+        let mut frame = Frame::black(Point::new(0, 0), 10, 10);
+        frame.bgra.truncate(12);
         assert_eq!(frame.crop(Rect::new(0, 0, 5, 5)), None);
-    }
-
-    #[test]
-    fn capture_rect_validation() {
-        assert!(validate_capture_rect(Rect::new(-100, -100, 200, 100)).is_ok());
-        let failures = [
-            Rect::new(0, 0, 0, 10),
-            Rect::new(0, 0, 10, -1),
-            Rect::new(0, 0, MAX_SIDE + 1, 10),
-            Rect::new(0, 0, MAX_SIDE, MAX_SIDE),
-            Rect::new(i32::MAX - 5, 0, 10, 10),
-        ];
-        for rect in failures {
-            assert_eq!(validate_capture_rect(rect).unwrap_err().code, ErrorCode::InvalidArgument, "{rect:?}");
-        }
     }
 }

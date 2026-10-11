@@ -44,11 +44,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
-        event::KeyStroke,
-        send::{MAX_INPUTS_PER_CALL, split_into_calls},
-        test_layout::FakeLayout,
-    };
+    use crate::{event::KeyStroke, test_layout::FakeLayout};
 
     fn unicode(unit: u16, up: bool) -> KeyStroke {
         let flags = if up { KEYEVENTF_UNICODE | KEYEVENTF_KEYUP } else { KEYEVENTF_UNICODE };
@@ -114,12 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn long_text_is_chunked_at_512() {
-        let text = "x".repeat(2_000);
-        let events = text_events(&text, &FakeLayout);
-        assert_eq!(events.len(), 4_000);
-        let sizes: Vec<usize> = split_into_calls(&events).map(<[InputEvent]>::len).collect();
-        assert_eq!(sizes, vec![512, 512, 512, 512, 512, 512, 512, 416]);
-        assert!(sizes.iter().all(|&size| size <= MAX_INPUTS_PER_CALL));
+    fn long_text_has_two_events_per_character() {
+        assert_eq!(text_events(&"x".repeat(2_000), &FakeLayout).len(), 4_000);
     }
 }

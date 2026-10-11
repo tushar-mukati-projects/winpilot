@@ -12,11 +12,19 @@ use windows::Win32::{
     },
 };
 
-use crate::global_memory::{LockedGlobal, OwnedGlobal};
+use crate::{
+    clipboard_history::history_exclusion_markers,
+    global_memory::{LockedGlobal, OwnedGlobal},
+};
 
 const OPEN_ATTEMPTS: u32 = 20;
 const OPEN_RETRY_GAP: Duration = Duration::from_millis(10);
 const TEXT_FORMATS: [u32; 4] = [CF_UNICODETEXT.0 as u32, CF_TEXT.0 as u32, CF_OEMTEXT.0 as u32, CF_LOCALE.0 as u32];
+
+pub(crate) struct ClipboardData {
+    pub(crate) format: u32,
+    pub(crate) memory: OwnedGlobal,
+}
 
 struct OpenClipboardGuard {
     _bound_to_thread: PhantomData<*const ()>,
@@ -53,14 +61,13 @@ pub fn get_text() -> Result<Option<String>> {
 }
 
 pub fn set_text(text: &str) -> Result<()> {
-    let units: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
-    let memory = filled_global(&units)?;
-    let _clipboard = OpenClipboardGuard::open()?;
-    unsafe { EmptyClipboard() }.context("emptying the clipboard")?;
-    unsafe { SetClipboardData(u32::from(CF_UNICODETEXT.0), Some(HANDLE(memory.handle().0))) }
-        .context("writing clipboard text")?;
-    let _owned_by_clipboard = memory.into_raw();
-    Ok(())
+    replace_contents(vec![text_data(text)?])
+}
+
+pub fn set_text_transient(text: &str) -> Result<()> {
+    let mut contents = history_exclusion_markers()?;
+    contents.push(text_data(text)?);
+    replace_contents(contents)
 }
 
 pub fn clear() -> Result<()> {
@@ -74,16 +81,29 @@ pub fn holds_only_text() -> Result<bool> {
     Ok(formats.iter().all(|format| TEXT_FORMATS.contains(format)))
 }
 
-fn filled_global(units: &[u16]) -> Result<OwnedGlobal> {
-    let memory = OwnedGlobal::moveable(size_of_val(units))?;
-    let mut locked = LockedGlobal::lock(memory.handle())?;
-    let destination = locked.utf16_units_mut();
-    let Some(prefix) = destination.get_mut(..units.len()) else {
-        return Err(Error::internal("clipboard memory is smaller than requested"));
-    };
-    prefix.copy_from_slice(units);
-    drop(locked);
-    Ok(memory)
+fn text_data(text: &str) -> Result<ClipboardData> {
+    let memory = OwnedGlobal::with_bytes(&nul_terminated_utf16_bytes(text))?;
+    Ok(ClipboardData { format: u32::from(CF_UNICODETEXT.0), memory })
+}
+
+fn nul_terminated_utf16_bytes(text: &str) -> Vec<u8> {
+    text.encode_utf16().chain(std::iter::once(0)).flat_map(u16::to_le_bytes).collect()
+}
+
+fn replace_contents(contents: Vec<ClipboardData>) -> Result<()> {
+    let _clipboard = OpenClipboardGuard::open()?;
+    unsafe { EmptyClipboard() }.context("emptying the clipboard")?;
+    let placed = contents.into_iter().try_for_each(place);
+    if placed.is_err() {
+        let _ = unsafe { EmptyClipboard() };
+    }
+    placed
+}
+
+fn place(data: ClipboardData) -> Result<()> {
+    unsafe { SetClipboardData(data.format, Some(HANDLE(data.memory.handle().0))) }.context("writing clipboard data")?;
+    let _owned_by_clipboard = data.memory.into_raw();
+    Ok(())
 }
 
 fn clipboard_formats() -> Result<Vec<u32>> {
@@ -123,6 +143,12 @@ mod tests {
     }
 
     #[test]
+    fn text_is_stored_as_nul_terminated_utf16() {
+        assert_eq!(nul_terminated_utf16_bytes("hé"), vec![b'h', 0, 0xE9, 0, 0, 0]);
+        assert_eq!(nul_terminated_utf16_bytes(""), vec![0, 0]);
+    }
+
+    #[test]
     fn text_stops_at_first_nul() {
         let units: Vec<u16> = "hi\0junk".encode_utf16().collect();
         assert_eq!(text_before_nul(&units), "hi");
@@ -136,6 +162,16 @@ mod tests {
         set_text("deckhand ✓ test").unwrap();
         assert_eq!(get_text().unwrap().as_deref(), Some("deckhand ✓ test"));
         assert!(holds_only_text().unwrap());
+        set_text(saved.as_deref().unwrap_or_default()).unwrap();
+    }
+
+    #[test]
+    #[ignore = "writes the clipboard"]
+    fn transient_text_round_trips_with_history_markers() {
+        let saved = get_text().unwrap();
+        set_text_transient("deckhand transient").unwrap();
+        assert_eq!(get_text().unwrap().as_deref(), Some("deckhand transient"));
+        assert!(!holds_only_text().unwrap());
         set_text(saved.as_deref().unwrap_or_default()).unwrap();
     }
 

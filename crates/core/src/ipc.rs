@@ -13,7 +13,7 @@ pub const MAX_FRAME_BYTES: usize = 64 << 20;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToWorker {
-    Init { config: Box<Config> },
+    Init { config: Box<Config>, epoch: u32 },
     Call { id: u64, call: Call },
     Cancel { id: u64 },
 }
@@ -37,12 +37,7 @@ pub fn write_frame<W: Write, T: Serialize>(writer: &mut W, message: &T) -> io::R
 }
 
 pub fn read_frame<R: Read, T: DeserializeOwned>(reader: &mut R) -> io::Result<Option<T>> {
-    let mut header = [0u8; 4];
-    match reader.read_exact(&mut header) {
-        Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => return Ok(None),
-        Err(error) => return Err(error),
-    }
+    let Some(header) = read_header(reader)? else { return Ok(None) };
     let length = u32::from_le_bytes(header) as usize;
     if length > MAX_FRAME_BYTES {
         return Err(io::Error::new(io::ErrorKind::InvalidData, format!("frame of {length} bytes is too large")));
@@ -50,6 +45,27 @@ pub fn read_frame<R: Read, T: DeserializeOwned>(reader: &mut R) -> io::Result<Op
     let mut body = vec![0u8; length];
     reader.read_exact(&mut body)?;
     serde_json::from_slice(&body).map(Some).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+}
+
+fn read_header<R: Read>(reader: &mut R) -> io::Result<Option<[u8; 4]>> {
+    let mut header = [0u8; 4];
+    let mut filled = 0;
+    while filled < header.len() {
+        match reader.read(&mut header[filled..]) {
+            Ok(0) => return partial_header(filled),
+            Ok(count) => filled += count,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(Some(header))
+}
+
+fn partial_header(filled: usize) -> io::Result<Option<[u8; 4]>> {
+    if filled == 0 {
+        return Ok(None);
+    }
+    Err(io::Error::new(io::ErrorKind::InvalidData, format!("stream ended inside a frame header after {filled} bytes")))
 }
 
 #[cfg(test)]
@@ -76,6 +92,30 @@ mod tests {
         write_frame(&mut buffer, &ToWorker::Cancel { id: 1 }).unwrap();
         buffer.pop();
         assert!(read_frame::<_, ToWorker>(&mut buffer.as_slice()).is_err());
+    }
+
+    #[test]
+    fn partial_header_is_an_error_not_a_clean_end() {
+        for length in 1..4 {
+            let bytes = vec![1u8; length];
+            let error = read_frame::<_, ToWorker>(&mut bytes.as_slice()).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData, "{length}");
+        }
+        assert_eq!(read_frame::<_, ToWorker>(&mut [].as_slice()).unwrap(), None);
+    }
+
+    #[test]
+    fn header_split_across_reads_is_reassembled() {
+        let mut buffer = Vec::new();
+        write_frame(&mut buffer, &ToWorker::Cancel { id: 9 }).unwrap();
+        let mut reader = buffer[..2].chain(&buffer[2..]);
+        assert_eq!(read_frame::<_, ToWorker>(&mut reader).unwrap(), Some(ToWorker::Cancel { id: 9 }));
+    }
+
+    #[test]
+    fn zero_length_frame_is_invalid_json() {
+        let error = read_frame::<_, ToWorker>(&mut [0u8, 0, 0, 0].as_slice()).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]

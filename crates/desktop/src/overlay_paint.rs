@@ -12,28 +12,6 @@ pub(crate) fn premultiplied(color: Rgb, alpha: u8) -> u32 {
     (u32::from(alpha) << 24) | (scale(color.red) << 16) | (scale(color.green) << 8) | scale(color.blue)
 }
 
-pub(crate) fn paint_border(pixels: &mut [u32], width: usize, thickness: usize, pixel: u32) {
-    if width == 0 {
-        return;
-    }
-    let height = pixels.len() / width;
-    for (row_index, row) in pixels.chunks_exact_mut(width).enumerate() {
-        let in_band = row_index < thickness || row_index + thickness >= height;
-        if in_band {
-            row.fill(pixel);
-        } else {
-            paint_row_edges(row, thickness, pixel);
-        }
-    }
-}
-
-fn paint_row_edges(row: &mut [u32], thickness: usize, pixel: u32) {
-    let edge = thickness.min(row.len());
-    row[..edge].fill(pixel);
-    let right_start = row.len() - edge;
-    row[right_start..].fill(pixel);
-}
-
 pub(crate) fn paint_disc(pixels: &mut [u32], diameter: usize, color: Rgb, alpha: u8) {
     if diameter == 0 {
         return;
@@ -58,29 +36,6 @@ mod tests {
         let half = premultiplied(Rgb { red: 200, green: 100, blue: 50 }, 128);
         assert_eq!(half >> 24, 128);
         assert_eq!((half >> 16) & 0xFF, 200 * 128 / 255);
-    }
-
-    #[test]
-    fn border_paints_only_the_ring() {
-        let (width, height) = (10, 8);
-        let mut pixels = vec![0u32; width * height];
-        paint_border(&mut pixels, width, 3, 7);
-        let at = |x: usize, y: usize| pixels[y * width + x];
-        assert_eq!(at(0, 0), 7);
-        assert_eq!(at(9, 7), 7);
-        assert_eq!(at(2, 4), 7);
-        assert_eq!(at(7, 4), 7);
-        assert_eq!(at(3, 3), 0);
-        assert_eq!(at(6, 4), 0);
-        assert_eq!(pixels.iter().filter(|&&p| p == 0).count(), 4 * 2);
-    }
-
-    #[test]
-    fn thick_border_on_tiny_bitmap_fills_everything_without_panicking() {
-        let mut pixels = vec![0u32; 4 * 4];
-        paint_border(&mut pixels, 4, 9, 1);
-        assert!(pixels.iter().all(|&p| p == 1));
-        paint_border(&mut [], 0, 3, 1);
     }
 
     #[test]

@@ -1,10 +1,16 @@
+mod app_data;
 mod audit;
+mod backoff;
 mod config;
+mod deadline;
+mod death;
 mod job;
+mod lifecycle;
 mod link;
 mod mcp;
 mod render;
 mod spawn;
+mod status;
 mod summary;
 mod supervisor;
 #[cfg(test)]
@@ -21,7 +27,7 @@ use crate::{
     supervisor::Supervisor,
 };
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+use deckhand_core::VERSION;
 const USAGE: &str = "usage: deckhand [mcp | worker | --version]
   mcp        run the MCP server on stdio (the default)
   worker     run the desktop worker (the server starts it)
@@ -89,7 +95,10 @@ fn serve() -> Result<()> {
 
 async fn run_server() -> Result<()> {
     let loaded = config::load();
-    let audit = Audit::open(&loaded.config.log);
+    let audit = Audit::open();
+    if loaded.problem.is_none() {
+        audit.prune_expired(loaded.config.log.retention_days);
+    }
     let settings = Settings::new(&loaded);
     let supervisor = Supervisor::new(Box::new(ProcessSpawner), loaded.config);
     mcp::serve_stdio(DeckhandServer::new(supervisor, audit, settings)).await

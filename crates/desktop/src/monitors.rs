@@ -7,7 +7,10 @@ use windows::{
         Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO},
         UI::{
             HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI},
-            WindowsAndMessaging::MONITORINFOF_PRIMARY,
+            WindowsAndMessaging::{
+                GetSystemMetrics, MONITORINFOF_PRIMARY, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+                SM_YVIRTUALSCREEN, SYSTEM_METRICS_INDEX,
+            },
         },
     },
     core::BOOL,
@@ -33,6 +36,19 @@ pub fn monitors() -> Result<Vec<Monitor>> {
     }
     sort_and_index(&mut found);
     Ok(found)
+}
+
+pub(crate) fn virtual_screen() -> Rect {
+    Rect::new(
+        metric(SM_XVIRTUALSCREEN),
+        metric(SM_YVIRTUALSCREEN),
+        metric(SM_CXVIRTUALSCREEN),
+        metric(SM_CYVIRTUALSCREEN),
+    )
+}
+
+fn metric(index: SYSTEM_METRICS_INDEX) -> i32 {
+    unsafe { GetSystemMetrics(index) }
 }
 
 fn display_monitors() -> Result<Vec<HMONITOR>> {
@@ -110,5 +126,14 @@ mod tests {
         assert!(primary.rect.contains(Point::new(0, 0)));
         assert!(list.iter().all(|m| m.scale_percent >= 100));
         assert_eq!(list.iter().filter(|m| m.primary).count(), 1);
+    }
+
+    #[test]
+    fn virtual_screen_covers_every_monitor() {
+        let screen = virtual_screen();
+        assert!(!screen.is_empty());
+        for monitor in monitors().unwrap() {
+            assert_eq!(monitor.rect.intersection(screen), Some(monitor.rect));
+        }
     }
 }

@@ -1,17 +1,9 @@
-use deckhand_core::{Context, Point, Rect, Result};
-use windows::Win32::Foundation::{LPARAM, RECT};
+use deckhand_core::{Rect, Result};
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory1, IDXGIOutput};
-use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, HDC, HMONITOR};
-use windows_core::BOOL;
 
 use crate::convert::rect_from_win32;
+use crate::monitor_list::{Monitor, enumerate_monitors, order_key};
 use crate::output::{DxgiSource, Output};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Monitor {
-    id: isize,
-    rect: Rect,
-}
 
 #[derive(Default)]
 pub(crate) struct Displays {
@@ -43,18 +35,27 @@ impl Displays {
         self.outputs.iter().map(Output::mode).collect()
     }
 
+    #[cfg(test)]
+    pub(crate) fn served(&self) -> Vec<crate::output::Served> {
+        self.outputs.iter().map(Output::served).collect()
+    }
+
     fn is_current(&self, monitors: &[Monitor]) -> bool {
         let factory_current = self.factory.as_ref().is_none_or(|factory| unsafe { factory.IsCurrent() }.as_bool());
-        self.built && factory_current && self.monitors == monitors && !self.outputs.iter().any(Output::access_lost)
+        self.built && factory_current && self.monitors == monitors && !self.outputs.iter().any(Output::needs_rebuild)
     }
 
     fn rebuild(&mut self, monitors: Vec<Monitor>) {
         let factory = unsafe { CreateDXGIFactory1::<IDXGIFactory1>() }.ok();
         let mut outputs = factory.as_ref().map(dxgi_outputs).unwrap_or_default();
         add_gdi_only_monitors(&mut outputs, &monitors);
-        put_primary_first(&mut outputs, Output::rect);
+        outputs.sort_by_key(|output| order_key(is_primary(&monitors, output.monitor_id()), output.rect()));
         *self = Self { factory, monitors, outputs, built: true };
     }
+}
+
+fn is_primary(monitors: &[Monitor], monitor_id: isize) -> bool {
+    monitors.iter().any(|monitor| monitor.id == monitor_id && monitor.primary)
 }
 
 fn dxgi_outputs(factory: &IDXGIFactory1) -> Vec<Output> {
@@ -95,52 +96,18 @@ fn add_gdi_only_monitors(outputs: &mut Vec<Output>, monitors: &[Monitor]) {
     }
 }
 
-fn put_primary_first<T>(items: &mut Vec<T>, rect_of: impl Fn(&T) -> Rect) {
-    let Some(index) = items.iter().position(|item| rect_of(item).contains(Point::new(0, 0))) else {
-        return;
-    };
-    let primary = items.remove(index);
-    items.insert(0, primary);
-}
-
-fn enumerate_monitors() -> Result<Vec<Monitor>> {
-    let mut monitors: Vec<Monitor> = Vec::new();
-    let collector = LPARAM(&raw mut monitors as isize);
-    unsafe { EnumDisplayMonitors(None, None, Some(collect_monitor), collector) }.ok().context("EnumDisplayMonitors")?;
-    Ok(monitors)
-}
-
-unsafe extern "system" fn collect_monitor(monitor: HMONITOR, _: HDC, area: *mut RECT, collector: LPARAM) -> BOOL {
-    let monitors = unsafe { &mut *(collector.0 as *mut Vec<Monitor>) };
-    if let Some(area) = unsafe { area.as_ref() } {
-        monitors.push(Monitor { id: monitor.0 as isize, rect: rect_from_win32(*area) });
-    }
-    BOOL::from(true)
-}
-
 #[cfg(test)]
 mod tests {
+    use deckhand_core::Point;
+
     use super::*;
 
-    #[test]
-    fn primary_moves_to_the_front_and_order_is_kept() {
-        let mut rects =
-            vec![Rect::new(-1920, 0, 1920, 1080), Rect::new(2560, 0, 1920, 1080), Rect::new(0, 0, 2560, 1600)];
-        put_primary_first(&mut rects, |rect| *rect);
-        assert_eq!(rects[0], Rect::new(0, 0, 2560, 1600));
-        assert_eq!(rects[1], Rect::new(-1920, 0, 1920, 1080));
-        assert_eq!(rects[2], Rect::new(2560, 0, 1920, 1080));
+    fn monitor(id: isize, rect: Rect, primary: bool, orientation: u32) -> Monitor {
+        Monitor { id, rect, primary, orientation }
     }
 
     #[test]
-    fn order_is_unchanged_without_a_primary() {
-        let mut rects = vec![Rect::new(10, 10, 5, 5), Rect::new(20, 20, 5, 5)];
-        put_primary_first(&mut rects, |rect| *rect);
-        assert_eq!(rects, vec![Rect::new(10, 10, 5, 5), Rect::new(20, 20, 5, 5)]);
-    }
-
-    #[test]
-    fn live_displays_cover_the_origin() {
+    fn live_displays_put_the_primary_first_and_stay_current() {
         crate::dpi::make_thread_per_monitor_aware().unwrap();
         let mut displays = Displays::default();
         displays.refresh().unwrap();
@@ -150,5 +117,37 @@ mod tests {
         let monitors = enumerate_monitors().unwrap();
         assert_eq!(monitors.len(), rects.len());
         assert!(displays.is_current(&monitors));
+    }
+
+    #[test]
+    fn a_rotation_alone_makes_the_displays_stale() {
+        crate::dpi::make_thread_per_monitor_aware().unwrap();
+        let mut displays = Displays::default();
+        displays.refresh().unwrap();
+        let mut rotated = displays.monitors.clone();
+        rotated[0].orientation ^= 2;
+        assert!(!displays.is_current(&rotated));
+        assert!(displays.is_current(&displays.monitors.clone()));
+    }
+
+    #[test]
+    fn primary_lookup_uses_the_monitor_flag() {
+        let monitors =
+            [monitor(1, Rect::new(-1920, 0, 1920, 1080), false, 0), monitor(2, Rect::new(0, 0, 10, 10), true, 2)];
+        assert!(is_primary(&monitors, 2));
+        assert!(!is_primary(&monitors, 1));
+        assert!(!is_primary(&monitors, 3));
+    }
+
+    #[test]
+    fn monitors_without_dxgi_get_gdi_outputs() {
+        let monitors = [monitor(7, Rect::new(0, 0, 10, 10), true, 0)];
+        let mut outputs = Vec::new();
+        add_gdi_only_monitors(&mut outputs, &monitors);
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(
+            (outputs[0].monitor_id(), outputs[0].rect(), outputs[0].mode()),
+            (7, Rect::new(0, 0, 10, 10), "gdi")
+        );
     }
 }

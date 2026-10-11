@@ -8,6 +8,7 @@ use crate::{
     element::{Element, Snapshot, WindowInfo},
     error::{Error, Result},
     geometry::{ImageMapping, Rect},
+    keys::parse_keys,
     refs::ImageRef,
     target::{Target, TargetSpec, parse_text_target},
 };
@@ -80,6 +81,7 @@ pub struct ScreenshotArgs {
     pub monitor: Option<u32>,
     #[schemars(description = "Maximum image width in pixels (default 1280).")]
     pub max_width: Option<u32>,
+    #[schemars(description = "Image format: jpeg (default) or png for lossless crops of small text.")]
     pub format: ImageFormat,
     #[schemars(description = "Draw element ref labels (e12) on interactive elements.")]
     pub marks: bool,
@@ -145,7 +147,7 @@ pub enum Direction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "do", rename_all = "snake_case")]
+#[serde(tag = "do", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Step {
     Click {
         target: TargetSpec,
@@ -218,6 +220,7 @@ pub enum Step {
     },
     WaitFor(Condition),
     Wait {
+        #[schemars(description = "Milliseconds to pause (at most 60000), capped at 5 s when run.")]
         ms: u64,
     },
 }
@@ -241,13 +244,18 @@ pub struct Condition {
     )]
     pub until: Until,
     #[serde(default)]
+    #[schemars(description = "Element ref or selector to watch, for appears/disappears.")]
     pub target: Option<String>,
     #[serde(default)]
+    #[schemars(description = "Text to wait for, for until=text.")]
     pub text: Option<String>,
     #[serde(default)]
     #[schemars(description = "Window title text for window/window_closed, or the window to watch for the others.")]
     pub window: Option<String>,
     #[serde(default)]
+    #[schemars(
+        description = "How long the UI must stay quiet, for until=idle (default 300, must be shorter than timeout_ms)."
+    )]
     pub ms: Option<u64>,
     #[serde(default)]
     #[schemars(description = "Give up after this long (default 5000, max 60000).")]
@@ -275,31 +283,61 @@ impl Condition {
     }
 
     pub fn validate(&self) -> Result<WaitCondition> {
-        let required = |value: &Option<String>, field: &str| {
-            value
-                .as_deref()
-                .map(str::trim)
-                .filter(|text| !text.is_empty())
-                .map(str::to_string)
-                .ok_or_else(|| Error::invalid(format!("until={} needs \"{field}\"", until_name(self.until))))
-        };
-        Ok(match self.until {
-            Until::Appears => WaitCondition::Appears {
-                target: parse_text_target(&required(&self.target, "target")?)?,
-                window: self.window.clone(),
-            },
-            Until::Disappears => WaitCondition::Disappears {
-                target: parse_text_target(&required(&self.target, "target")?)?,
-                window: self.window.clone(),
-            },
-            Until::Window => WaitCondition::WindowOpens { title: required(&self.window, "window")? },
-            Until::WindowClosed => WaitCondition::WindowCloses { title: required(&self.window, "window")? },
-            Until::Text => WaitCondition::Text { text: required(&self.text, "text")?, window: self.window.clone() },
-            Until::Idle => {
-                WaitCondition::Idle { quiet: self.ms.map_or(DEFAULT_IDLE, Duration::from_millis).min(MAX_WAIT) }
-            }
-        })
+        match self.until {
+            Until::Appears => self.appears(),
+            Until::Disappears => self.disappears(),
+            Until::Window => self.window_opens(),
+            Until::WindowClosed => self.window_closes(),
+            Until::Text => self.text_appears(),
+            Until::Idle => self.idle(),
+        }
     }
+
+    fn appears(&self) -> Result<WaitCondition> {
+        Ok(WaitCondition::Appears { target: self.required_target()?, window: non_blank(self.window.as_ref()) })
+    }
+
+    fn disappears(&self) -> Result<WaitCondition> {
+        Ok(WaitCondition::Disappears { target: self.required_target()?, window: non_blank(self.window.as_ref()) })
+    }
+
+    fn window_opens(&self) -> Result<WaitCondition> {
+        Ok(WaitCondition::WindowOpens { title: self.required(self.window.as_ref(), "window")? })
+    }
+
+    fn window_closes(&self) -> Result<WaitCondition> {
+        Ok(WaitCondition::WindowCloses { title: self.required(self.window.as_ref(), "window")? })
+    }
+
+    fn text_appears(&self) -> Result<WaitCondition> {
+        let text = self.required(self.text.as_ref(), "text")?;
+        Ok(WaitCondition::Text { text, window: non_blank(self.window.as_ref()) })
+    }
+
+    fn idle(&self) -> Result<WaitCondition> {
+        let quiet = self.ms.map_or(DEFAULT_IDLE, Duration::from_millis);
+        let timeout = self.timeout();
+        if quiet >= timeout {
+            return Err(Error::invalid(format!(
+                "idle ms must be shorter than timeout_ms (quiet {} ms, timeout {} ms)",
+                quiet.as_millis(),
+                timeout.as_millis()
+            )));
+        }
+        Ok(WaitCondition::Idle { quiet })
+    }
+
+    fn required_target(&self) -> Result<Target> {
+        parse_text_target(&self.required(self.target.as_ref(), "target")?)
+    }
+
+    fn required(&self, value: Option<&String>, field: &str) -> Result<String> {
+        non_blank(value).ok_or_else(|| Error::invalid(format!("until={} needs \"{field}\"", until_name(self.until))))
+    }
+}
+
+fn non_blank(value: Option<&String>) -> Option<String> {
+    value.map(|text| text.trim()).filter(|text| !text.is_empty()).map(str::to_string)
 }
 
 const fn until_name(until: Until) -> &'static str {
@@ -375,6 +413,7 @@ pub struct ReadTextArgs {
     pub target: Option<String>,
     #[schemars(description = "Screen rectangle to OCR instead.")]
     pub region: Option<Rect>,
+    #[schemars(description = "auto (default: UI Automation text first, OCR as fallback), uia, or ocr.")]
     pub method: TextMethod,
     #[schemars(description = "Maximum characters (default 20000).")]
     pub max_chars: Option<u32>,
@@ -569,6 +608,8 @@ const STEP_BUDGET: Duration = Duration::from_secs(6);
 const ACT_OVERHEAD: Duration = Duration::from_secs(10);
 const MAX_DEADLINE: Duration = Duration::from_secs(180);
 const DEFAULT_PICK: Duration = Duration::from_secs(15);
+const CHARS_PER_EXTRA_SECOND: u64 = 2000;
+const KEY_PRESS_BUDGET: Duration = Duration::from_millis(100);
 
 impl Call {
     pub const fn name(&self) -> &'static str {
@@ -615,7 +656,7 @@ impl Call {
             Self::PickFile(args) => {
                 args.timeout_ms.map_or(DEFAULT_PICK, Duration::from_millis).min(MAX_WAIT) + ACT_OVERHEAD
             }
-            Self::Act(args) => ACT_OVERHEAD + args.steps.iter().map(step_budget).sum::<Duration>(),
+            Self::Act(args) => args.steps.iter().map(step_budget).fold(ACT_OVERHEAD, Duration::saturating_add),
         };
         deadline.min(MAX_DEADLINE)
     }
@@ -625,13 +666,28 @@ fn step_budget(step: &Step) -> Duration {
     match step {
         Step::WaitFor(condition) => condition.timeout() + Duration::from_secs(1),
         Step::Wait { ms } => Duration::from_millis(*ms).min(MAX_PLAIN_WAIT) + Duration::from_secs(1),
+        Step::Type { text, .. } => STEP_BUDGET.saturating_add(typing_time(text)),
+        Step::SetValue { value, .. } => STEP_BUDGET.saturating_add(typing_time(value)),
+        Step::Key { keys, repeat, .. } => STEP_BUDGET.saturating_add(key_time(keys, *repeat)),
         _ => STEP_BUDGET,
     }
+}
+
+fn typing_time(text: &str) -> Duration {
+    let chars = text.chars().count() as u64;
+    Duration::from_secs(chars.div_ceil(CHARS_PER_EXTRA_SECOND))
+}
+
+fn key_time(keys: &str, repeat: u32) -> Duration {
+    let chords = parse_keys(keys).map_or(1, |chords| chords.len());
+    let presses = u32::try_from(chords).unwrap_or(u32::MAX).saturating_mul(repeat);
+    KEY_PRESS_BUDGET.saturating_mul(presses)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorCode;
 
     #[test]
     fn steps_deserialize_with_defaults() {
@@ -678,7 +734,7 @@ mod tests {
     fn condition_validation_requires_fields() {
         let missing =
             Condition { until: Until::Text, target: None, text: None, window: None, ms: None, timeout_ms: None };
-        assert_eq!(missing.validate().unwrap_err().code, crate::error::ErrorCode::InvalidArgument);
+        assert_eq!(missing.validate().unwrap_err().code, ErrorCode::InvalidArgument);
         let idle = Condition {
             until: Until::Idle,
             target: None,
@@ -705,5 +761,102 @@ mod tests {
         assert!(Call::Status.is_read_only());
         let set = ClipboardArgs { action: ClipboardAction::Set, text: Some("x".to_string()) };
         assert!(!Call::Clipboard(set).is_read_only());
+    }
+
+    fn step(json: &str) -> Step {
+        serde_json::from_str(json).unwrap()
+    }
+
+    fn step_error(json: &str) -> String {
+        serde_json::from_str::<Step>(json).unwrap_err().to_string()
+    }
+
+    fn condition(json: &str) -> Condition {
+        serde_json::from_str(json).unwrap()
+    }
+
+    fn invalid_message(result: Result<impl std::fmt::Debug>) -> String {
+        let error = result.unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidArgument);
+        error.message
+    }
+
+    #[test]
+    fn misspelled_step_fields_are_rejected() {
+        let cases = [
+            (r#"{"do":"click","target":"e1","modifier":"ctrl"}"#, "modifier"),
+            (r#"{"do":"type","text":"hi","press_enter":true}"#, "press_enter"),
+            (r#"{"do":"type","into":"e3","text":"hi"}"#, "into"),
+            (r#"{"do":"click","target":"e1","buton":"right"}"#, "buton"),
+            (r#"{"do":"wait_for","until":"idle","bogus":1}"#, "bogus"),
+        ];
+        for (json, field) in cases {
+            let message = step_error(json);
+            assert!(message.contains(&format!("unknown field `{field}`")), "{json}: {message}");
+        }
+        assert!(serde_json::from_str::<Step>(r#"{"do":"click","target":{"x":1,"y":2,"image":"i3"}}"#).is_err());
+    }
+
+    #[test]
+    fn correctly_spelled_steps_still_parse() {
+        assert_eq!(step(r#"{"do":"wait","ms":10}"#), Step::Wait { ms: 10 });
+        let Step::WaitFor(wait) = step(r#"{"do":"wait_for","until":"window","window":"Save As"}"#) else {
+            panic!("expected wait_for")
+        };
+        assert_eq!(wait.window.as_deref(), Some("Save As"));
+        let Step::Click { target, .. } = step(r#"{"do":"click","target":{"x":1,"y":2,"img":"i3"}}"#) else {
+            panic!("expected click")
+        };
+        assert_eq!(target, TargetSpec::Point(crate::target::PointSpec { x: 1, y: 2, img: Some("i3".to_string()) }));
+    }
+
+    #[test]
+    fn blank_condition_strings_count_as_missing() {
+        let appears = condition(r#"{"until":"appears","target":"e1","window":"  "}"#);
+        assert_eq!(
+            appears.validate().unwrap(),
+            WaitCondition::Appears { target: Target::Element(crate::refs::ElementRef(1)), window: None }
+        );
+        let text = condition(r#"{"until":"text","text":"Done","window":""}"#);
+        assert_eq!(text.validate().unwrap(), WaitCondition::Text { text: "Done".to_string(), window: None });
+        let watched = condition(r#"{"until":"disappears","target":"e2","window":" Notepad "}"#);
+        assert!(
+            matches!(watched.validate().unwrap(), WaitCondition::Disappears { window: Some(title), .. } if title == "Notepad")
+        );
+        let blank_target = condition(r#"{"until":"appears","target":"   "}"#);
+        assert_eq!(invalid_message(blank_target.validate()), "until=appears needs \"target\"");
+        let blank_window = condition(r#"{"until":"window_closed","window":" "}"#);
+        assert_eq!(invalid_message(blank_window.validate()), "until=window_closed needs \"window\"");
+    }
+
+    #[test]
+    fn idle_quiet_time_must_be_shorter_than_the_timeout() {
+        let long = condition(r#"{"until":"idle","ms":30000}"#);
+        assert_eq!(
+            invalid_message(long.validate()),
+            "idle ms must be shorter than timeout_ms (quiet 30000 ms, timeout 5000 ms)"
+        );
+        let equal = condition(r#"{"until":"idle","ms":2000,"timeout_ms":2000}"#);
+        assert!(equal.validate().is_err());
+        let default_quiet = condition(r#"{"until":"idle","timeout_ms":200}"#);
+        assert!(default_quiet.validate().is_err());
+        let fine = condition(r#"{"until":"idle","ms":1999,"timeout_ms":2000}"#);
+        assert_eq!(fine.validate().unwrap(), WaitCondition::Idle { quiet: Duration::from_millis(1999) });
+        assert_eq!(condition(r#"{"until":"idle"}"#).validate().unwrap(), WaitCondition::Idle { quiet: DEFAULT_IDLE });
+    }
+
+    #[test]
+    fn act_deadline_accounts_for_typing_and_key_repeats() {
+        let act = |step: Step| Call::Act(ActArgs { steps: vec![step], after: AfterMode::Diff, stop_on_error: true });
+        let short = Step::Type { target: None, text: "hi".to_string(), enter: false, how: TypeHow::Auto };
+        assert_eq!(act(short).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(1));
+        let long = Step::Type { target: None, text: "a".repeat(10_000), enter: false, how: TypeHow::Auto };
+        assert_eq!(act(long).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(5));
+        let empty = Step::Type { target: None, text: String::new(), enter: false, how: TypeHow::Auto };
+        assert_eq!(act(empty).deadline(), ACT_OVERHEAD + STEP_BUDGET);
+        let keys = Step::Key { keys: "ctrl+k ctrl+s".to_string(), target: None, repeat: 50 };
+        assert_eq!(act(keys).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(10));
+        let unparsable = Step::Key { keys: "bogus".to_string(), target: None, repeat: u32::MAX };
+        assert_eq!(act(unparsable).deadline(), MAX_DEADLINE);
     }
 }

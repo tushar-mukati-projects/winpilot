@@ -1,13 +1,13 @@
 use deckhand_core::{
     Error, Result,
-    keys::{Chord, Modifiers},
+    keys::{Chord, Key, Modifiers},
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_MENU};
+use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
 
 use crate::{
     batch::{Batch, with_modifiers_held},
     keyboard::{key_tap, push_unicode_tap},
-    keymap::{ResolvedKey, merge_modifiers, not_on_layout, resolve_key},
+    keymap::{ResolvedKey, is_dead_key_char, merge_modifiers, not_on_layout, resolve_key},
     layout::{KeyboardLayout, SystemLayout},
     send::send_batch,
 };
@@ -17,15 +17,13 @@ pub fn press_chord(chord: &Chord) -> Result<()> {
     send_batch(&chord_batch(chord, &layout)?)
 }
 
-pub fn tap_alt() -> Result<()> {
-    let layout = SystemLayout::of_foreground_window();
-    send_batch(&Batch::plain(key_tap(VK_MENU, &layout).to_vec()))
-}
-
 pub fn chord_batch(chord: &Chord, layout: &impl KeyboardLayout) -> Result<Batch> {
     let Some(key) = chord.key else {
         return modifier_only_batch(chord.modifiers, layout);
     };
+    if let Some(c) = lone_dead_key_char(chord, layout) {
+        return Ok(unicode_batch(c));
+    }
     match resolve_key(key, layout)? {
         ResolvedKey::Virtual(found) => {
             Ok(held_key_batch(merge_modifiers(chord.modifiers, found.modifiers), found.vk, layout))
@@ -33,6 +31,13 @@ pub fn chord_batch(chord: &Chord, layout: &impl KeyboardLayout) -> Result<Batch>
         ResolvedKey::Unicode(c) if chord.modifiers.is_empty() => Ok(unicode_batch(c)),
         ResolvedKey::Unicode(c) => Err(not_on_layout(c)),
     }
+}
+
+fn lone_dead_key_char(chord: &Chord, layout: &impl KeyboardLayout) -> Option<char> {
+    let Some(Key::Char(c)) = chord.key else {
+        return None;
+    };
+    (chord.modifiers.is_empty() && is_dead_key_char(c, layout)).then_some(c)
 }
 
 fn modifier_only_batch(modifiers: Modifiers, layout: &impl KeyboardLayout) -> Result<Batch> {
@@ -54,19 +59,16 @@ fn unicode_batch(c: char) -> Batch {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{
-        ErrorCode,
-        keys::{Key, NamedKey},
-    };
+    use deckhand_core::{ErrorCode, keys::NamedKey};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, VK_CONTROL, VK_F5, VK_LEFT,
-        VK_LWIN, VK_SHIFT,
+        VK_LWIN, VK_MENU, VK_SHIFT,
     };
 
     use super::*;
     use crate::{
         event::{InputEvent, KeyStroke},
-        test_layout::FakeLayout,
+        test_layout::{DEAD_CIRCUMFLEX, FakeLayout},
     };
 
     const DOWN: KEYBD_EVENT_FLAGS = KEYBD_EVENT_FLAGS(0);
@@ -168,6 +170,24 @@ mod tests {
         ];
         assert_eq!(batch.events, expected);
         assert!(batch.release_on_failure.is_empty());
+    }
+
+    #[test]
+    fn lone_dead_key_character_is_typed_as_unicode() {
+        let batch = chord_batch(&chord(Modifiers::NONE, Some(Key::Char('^'))), &FakeLayout).unwrap();
+        let expected = vec![
+            InputEvent::Key(KeyStroke { vk: VIRTUAL_KEY(0), scan: 0x5E, flags: KEYEVENTF_UNICODE }),
+            InputEvent::Key(KeyStroke { vk: VIRTUAL_KEY(0), scan: 0x5E, flags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP }),
+        ];
+        assert_eq!(batch.events, expected);
+    }
+
+    #[test]
+    fn dead_key_with_modifiers_stays_on_its_virtual_key() {
+        let ctrl = Modifiers { ctrl: true, ..Modifiers::NONE };
+        let batch = chord_batch(&chord(ctrl, Some(Key::Char('^'))), &FakeLayout).unwrap();
+        let order: Vec<VIRTUAL_KEY> = strokes(&batch.events).into_iter().map(|(vk, _)| vk).collect();
+        assert_eq!(order, vec![VK_CONTROL, DEAD_CIRCUMFLEX, DEAD_CIRCUMFLEX, VK_CONTROL]);
     }
 
     #[test]

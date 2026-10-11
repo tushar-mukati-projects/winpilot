@@ -20,6 +20,7 @@ pub struct NamedMutex {
 
 pub struct NamedMutexGuard<'a> {
     mutex: &'a NamedMutex,
+    abandoned: bool,
     _owned_by_this_thread: PhantomData<*const ()>,
 }
 
@@ -35,12 +36,21 @@ impl NamedMutex {
     pub fn lock(&self, timeout: Duration) -> Result<Option<NamedMutexGuard<'_>>> {
         let outcome = unsafe { WaitForSingleObject(raw(&self.handle), finite_millis(timeout)) };
         match outcome {
-            WAIT_OBJECT_0 | WAIT_ABANDONED => {
-                Ok(Some(NamedMutexGuard { mutex: self, _owned_by_this_thread: PhantomData }))
-            }
+            WAIT_OBJECT_0 => Ok(Some(self.guard(false))),
+            WAIT_ABANDONED => Ok(Some(self.guard(true))),
             WAIT_TIMEOUT => Ok(None),
             _ => Err(windows::core::Error::from_thread()).context("waiting for a mutex"),
         }
+    }
+
+    fn guard(&self, abandoned: bool) -> NamedMutexGuard<'_> {
+        NamedMutexGuard { mutex: self, abandoned, _owned_by_this_thread: PhantomData }
+    }
+}
+
+impl NamedMutexGuard<'_> {
+    pub fn was_abandoned(&self) -> bool {
+        self.abandoned
     }
 }
 
@@ -114,6 +124,7 @@ mod tests {
         let name = unique_name("mutex");
         let mutex = NamedMutex::create(&name).unwrap();
         let guard = mutex.lock(Duration::from_millis(100)).unwrap().unwrap();
+        assert!(!guard.was_abandoned());
         let (to_main, from_contender) = mpsc::channel();
         let (to_contender, from_main) = mpsc::channel::<()>();
         let contender = thread::spawn(move || {
@@ -127,6 +138,22 @@ mod tests {
         to_contender.send(()).unwrap();
         assert!(from_contender.recv().unwrap(), "contender never got the released mutex");
         contender.join().unwrap();
+    }
+
+    #[test]
+    fn a_holder_that_dies_leaves_the_mutex_abandoned() {
+        let name = unique_name("abandoned");
+        let mutex = NamedMutex::create(&name).unwrap();
+        let holder = thread::spawn(move || {
+            let same = NamedMutex::create(&name).unwrap();
+            std::mem::forget(same.lock(Duration::from_millis(100)).unwrap().unwrap());
+        });
+        holder.join().unwrap();
+        let guard = mutex.lock(Duration::from_secs(2)).unwrap().unwrap();
+        assert!(guard.was_abandoned());
+        drop(guard);
+        let again = mutex.lock(Duration::from_millis(100)).unwrap().unwrap();
+        assert!(!again.was_abandoned());
     }
 
     #[test]

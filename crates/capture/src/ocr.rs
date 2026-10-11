@@ -1,4 +1,5 @@
-use std::borrow::Cow;
+use std::sync::mpsc;
+use std::time::Duration;
 
 use deckhand_core::{Context, Error, Point, Rect, Result};
 use windows::Foundation::Rect as WinRect;
@@ -6,11 +7,13 @@ use windows::Globalization::Language;
 use windows::Graphics::Imaging::{BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap};
 use windows::Media::Ocr::{OcrEngine, OcrLine as WinOcrLine, OcrResult};
 use windows::Security::Cryptography::CryptographicBuffer;
-use windows_core::HSTRING;
+use windows_future::{AsyncOperationCompletedHandler, IAsyncOperation};
 
 use crate::com::ComApartment;
 use crate::frame::Frame;
-use crate::resize::resize_bgra;
+use crate::resize::{Fit, fit, fitted_pixels};
+
+const RECOGNITION_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OcrLine {
@@ -25,6 +28,16 @@ struct Scaling {
     y: f64,
 }
 
+impl Scaling {
+    fn between(frame: &Frame, fitted: Fit) -> Self {
+        Self {
+            origin: frame.origin,
+            x: f64::from(frame.width) / f64::from(fitted.width),
+            y: f64::from(frame.height) / f64::from(fitted.height),
+        }
+    }
+}
+
 pub fn ocr(frame: &Frame) -> Result<Vec<OcrLine>> {
     if !frame.is_well_formed() {
         return Err(Error::invalid("frame size does not match its pixel buffer"));
@@ -32,36 +45,50 @@ pub fn ocr(frame: &Frame) -> Result<Vec<OcrLine>> {
     let _apartment = ComApartment::enter_any()?;
     let engine = create_engine()?;
     let limit = OcrEngine::MaxImageDimension().context("reading the OCR size limit")?;
-    let (pixels, width, height) = fit_within(frame, limit)?;
-    let scaling = Scaling {
-        origin: frame.origin,
-        x: f64::from(frame.width) / f64::from(width),
-        y: f64::from(frame.height) / f64::from(height),
-    };
-    let bitmap = software_bitmap(&pixels, width, height)?;
-    let result = engine.RecognizeAsync(&bitmap).context("starting OCR")?.join().context("running OCR")?;
-    collect_lines(&result, scaling)
+    let fitted = fit(frame.width, frame.height, limit, limit);
+    let pixels = fitted_pixels(frame, fitted)?;
+    let bitmap = software_bitmap(&pixels, fitted.width, fitted.height)?;
+    let operation = engine.RecognizeAsync(&bitmap).context("starting OCR")?;
+    let result = finish_within(&operation, RECOGNITION_TIMEOUT)?;
+    collect_lines(&result, Scaling::between(frame, fitted))
 }
 
 fn create_engine() -> Result<OcrEngine> {
     if let Ok(engine) = OcrEngine::TryCreateFromUserProfileLanguages() {
         return Ok(engine);
     }
-    Language::CreateLanguage(&HSTRING::from("en-US"))
-        .and_then(|language| OcrEngine::TryCreateFromLanguage(&language))
-        .map_err(|_| Error::unsupported("no OCR language installed"))
+    first_available_language()
+        .and_then(|language| OcrEngine::TryCreateFromLanguage(&language).ok())
+        .ok_or_else(|| Error::unsupported("no OCR language installed"))
 }
 
-fn fit_within(frame: &Frame, limit: u32) -> Result<(Cow<'_, [u8]>, u32, u32)> {
-    let limit = limit.max(1);
-    if frame.width <= limit && frame.height <= limit {
-        return Ok((Cow::Borrowed(&frame.bgra), frame.width, frame.height));
+fn first_available_language() -> Option<Language> {
+    let languages = OcrEngine::AvailableRecognizerLanguages().ok()?;
+    if languages.Size().ok()? == 0 {
+        return None;
     }
-    let scale = (f64::from(frame.width) / f64::from(limit)).max(f64::from(frame.height) / f64::from(limit));
-    let shrink = |side: u32| ((f64::from(side) / scale).floor() as u32).clamp(1, limit);
-    let (width, height) = (shrink(frame.width), shrink(frame.height));
-    let pixels = resize_bgra(&frame.bgra, (frame.width, frame.height), (width, height))?;
-    Ok((Cow::Owned(pixels), width, height))
+    languages.GetAt(0).ok()
+}
+
+fn finish_within(operation: &IAsyncOperation<OcrResult>, timeout: Duration) -> Result<OcrResult> {
+    let (finished, completion) = mpsc::channel();
+    let handler = AsyncOperationCompletedHandler::new(move |_, status| {
+        let _ = finished.send(status);
+        Ok(())
+    });
+    operation.SetCompleted(&handler).context("waiting for OCR")?;
+    if completion.recv_timeout(timeout).is_err() {
+        return Err(cancelled_after(operation, timeout));
+    }
+    operation.GetResults().context("running OCR")
+}
+
+fn cancelled_after(operation: &IAsyncOperation<OcrResult>, timeout: Duration) -> Error {
+    let outcome = match operation.Cancel() {
+        Ok(()) => "it was cancelled",
+        Err(_) => "cancelling it failed",
+    };
+    Error::timeout(format!("OCR did not finish within {} s; {outcome}", timeout.as_secs()))
 }
 
 fn software_bitmap(bgra: &[u8], width: u32, height: u32) -> Result<SoftwareBitmap> {
@@ -99,21 +126,32 @@ fn convert_line(line: &WinOcrLine, scaling: Scaling) -> Result<OcrLine> {
 }
 
 fn union_to_screen(boxes: &[WinRect], scaling: Scaling) -> Rect {
-    let Some(first) = boxes.first() else {
+    let Some(union) = union_of(boxes) else {
         return Rect::new(scaling.origin.x, scaling.origin.y, 0, 0);
     };
-    let start = (first.X, first.Y, first.X + first.Width, first.Y + first.Height);
-    let (left, top, right, bottom) = boxes.iter().fold(start, |(left, top, right, bottom), word| {
-        (left.min(word.X), top.min(word.Y), right.max(word.X + word.Width), bottom.max(word.Y + word.Height))
-    });
-    let to_screen = |value: f32, factor: f64, origin: i32, round: fn(f64) -> f64| {
-        f64::from(origin) + round(f64::from(value) * factor)
-    };
-    let left = to_screen(left, scaling.x, scaling.origin.x, f64::floor);
-    let top = to_screen(top, scaling.y, scaling.origin.y, f64::floor);
-    let right = to_screen(right, scaling.x, scaling.origin.x, f64::ceil);
-    let bottom = to_screen(bottom, scaling.y, scaling.origin.y, f64::ceil);
+    let left = floor_to_screen(union.X, scaling.x, scaling.origin.x);
+    let top = floor_to_screen(union.Y, scaling.y, scaling.origin.y);
+    let right = ceil_to_screen(union.X + union.Width, scaling.x, scaling.origin.x);
+    let bottom = ceil_to_screen(union.Y + union.Height, scaling.y, scaling.origin.y);
     Rect::new(left as i32, top as i32, (right - left) as i32, (bottom - top) as i32)
+}
+
+fn union_of(boxes: &[WinRect]) -> Option<WinRect> {
+    boxes.iter().copied().reduce(|union, word| {
+        let left = union.X.min(word.X);
+        let top = union.Y.min(word.Y);
+        let right = (union.X + union.Width).max(word.X + word.Width);
+        let bottom = (union.Y + union.Height).max(word.Y + word.Height);
+        WinRect { X: left, Y: top, Width: right - left, Height: bottom - top }
+    })
+}
+
+fn floor_to_screen(image: f32, factor: f64, origin: i32) -> f64 {
+    f64::from(origin) + (f64::from(image) * factor).floor()
+}
+
+fn ceil_to_screen(image: f32, factor: f64, origin: i32) -> f64 {
+    f64::from(origin) + (f64::from(image) * factor).ceil()
 }
 
 #[cfg(test)]
@@ -130,6 +168,7 @@ mod tests {
     use windows_core::{Owned, w};
 
     use super::*;
+    use crate::frame::FrameSource;
     use crate::gdi::{GdiSurface, Selection};
 
     fn draw_text_frame(width: u32, height: u32, text_left: i32, origin: Point) -> Frame {
@@ -165,7 +204,7 @@ mod tests {
         let mut area = RECT { left: text_left, top: 20, right: width as i32, bottom: height as i32 };
         let drawn = unsafe { DrawTextW(dc, &mut text, &raw mut area, DT_LEFT | DT_SINGLELINE | DT_NOPREFIX) };
         assert!(drawn > 0);
-        let frame = surface.to_frame(origin).unwrap();
+        let frame = surface.to_frame(origin, FrameSource::Screen).unwrap();
         drop(selection);
         frame
     }
@@ -209,8 +248,40 @@ mod tests {
     }
 
     #[test]
+    fn an_engine_exists_for_some_installed_language() {
+        let _apartment = ComApartment::enter_any().unwrap();
+        assert!(create_engine().is_ok());
+        assert!(first_available_language().is_some());
+    }
+
+    #[test]
+    fn recognition_finishes_before_its_timeout_and_a_zero_timeout_times_out() {
+        let _apartment = ComApartment::enter_any().unwrap();
+        let frame = draw_text_frame(400, 140, 10, Point::new(0, 0));
+        let bitmap = software_bitmap(&frame.bgra, frame.width, frame.height).unwrap();
+        let engine = create_engine().unwrap();
+        let operation = engine.RecognizeAsync(&bitmap).unwrap();
+        let result = finish_within(&operation, RECOGNITION_TIMEOUT).unwrap();
+        assert!(result.Lines().unwrap().Size().unwrap() > 0);
+        let slow = engine.RecognizeAsync(&bitmap).unwrap();
+        match finish_within(&slow, Duration::ZERO) {
+            Ok(_) => {}
+            Err(error) => assert_eq!(error.code, deckhand_core::ErrorCode::Timeout),
+        }
+    }
+
+    #[test]
+    fn scaling_follows_each_axis_of_the_fit() {
+        let frame = Frame::black(Point::new(-5, 9), 300, 200);
+        let scaling = Scaling::between(&frame, Fit { width: 150, height: 99, scale: 2.0 });
+        assert_eq!(scaling.origin, Point::new(-5, 9));
+        assert!((scaling.x - 2.0).abs() < 1e-12 && (scaling.y - 200.0 / 99.0).abs() < 1e-12);
+    }
+
+    #[test]
     fn malformed_frames_are_rejected() {
-        let frame = Frame { origin: Point::new(0, 0), width: 5, height: 5, bgra: Vec::new() };
+        let mut frame = Frame::black(Point::new(0, 0), 5, 5);
+        frame.bgra.clear();
         assert!(ocr(&frame).is_err());
     }
 }

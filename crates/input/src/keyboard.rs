@@ -28,6 +28,10 @@ pub fn key_event(vk: VIRTUAL_KEY, transition: KeyTransition, layout: &impl Keybo
     InputEvent::Key(KeyStroke { vk, scan: scan_byte(code), flags })
 }
 
+pub fn unscanned_key_event(vk: VIRTUAL_KEY, transition: KeyTransition) -> InputEvent {
+    InputEvent::Key(KeyStroke { vk, scan: 0, flags: release_flag(transition) })
+}
+
 pub fn key_tap(vk: VIRTUAL_KEY, layout: &impl KeyboardLayout) -> [InputEvent; 2] {
     [key_event(vk, KeyTransition::Press, layout), key_event(vk, KeyTransition::Release, layout)]
 }
@@ -102,6 +106,12 @@ mod tests {
     fn pause_prefix_drops_the_misleading_scan_code() {
         let down = stroke(key_event(VK_PAUSE, KeyTransition::Press, &FakeLayout));
         assert_eq!(down, KeyStroke { vk: VK_PAUSE, scan: 0, flags: KEYBD_EVENT_FLAGS::default() });
+    }
+
+    #[test]
+    fn unscanned_key_has_no_scan_code_or_extended_flag() {
+        let up = stroke(unscanned_key_event(VK_LEFT, KeyTransition::Release));
+        assert_eq!(up, KeyStroke { vk: VK_LEFT, scan: 0, flags: KEYEVENTF_KEYUP });
     }
 
     #[test]

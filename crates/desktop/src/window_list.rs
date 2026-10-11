@@ -9,10 +9,10 @@ use windows::{
 
 use crate::{
     process::ProcessLookup,
-    window_facts::{
-        Foreground, class_name, current_foreground, hwnd_of, is_cloaked, is_live, is_tool_window, is_visible,
-        live_hwnd, owning_pid, ref_of, show_state, title, visible_rect,
-    },
+    window_foreground::{Foreground, current_foreground},
+    window_geometry::visible_rect,
+    window_identity::{class_name, hwnd_of, is_live, live_hwnd, owning_pid, ref_of, title},
+    window_visibility::{is_cloaked, is_tool_window, is_visible, show_state},
 };
 
 const DIALOG_CLASS: &str = "#32770";

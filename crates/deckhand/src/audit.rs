@@ -1,13 +1,15 @@
 use std::{
-    fs::{self, OpenOptions},
+    fs::{self, DirEntry, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
     time::Duration,
 };
 
 use chrono::{DateTime, Days, Local, NaiveDate, SecondsFormat};
-use deckhand_core::{ErrorCode, config::LogConfig};
+use deckhand_core::ErrorCode;
 use serde::Serialize;
+
+use crate::app_data;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Entry<'a> {
@@ -35,17 +37,27 @@ pub struct Audit {
     pid: u32,
 }
 
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Pruned {
+    pub removed: usize,
+    pub failures: Vec<String>,
+}
+
 impl Audit {
-    pub fn open(config: &LogConfig) -> Self {
+    pub fn open() -> Self {
         let Some(dir) = default_dir() else {
-            eprintln!("deckhand: LOCALAPPDATA is not set, so the audit log is off");
+            eprintln!("deckhand: LOCALAPPDATA is not an absolute path, so the audit log is off");
             return Self::disabled();
         };
         if let Err(error) = fs::create_dir_all(&dir) {
             eprintln!("deckhand: could not create the audit log folder {}: {error}", dir.display());
         }
-        prune_quietly(&dir, Local::now().date_naive(), config.retention_days);
         Self::in_dir(dir)
+    }
+
+    pub fn prune_expired(&self, retention_days: u32) {
+        let Some(dir) = &self.dir else { return };
+        report_pruning(dir, prune(dir, Local::now().date_naive(), retention_days));
     }
 
     pub fn in_dir(dir: PathBuf) -> Self {
@@ -92,7 +104,7 @@ impl Audit {
 }
 
 fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("LOCALAPPDATA").map(|dir| PathBuf::from(dir).join("deckhand").join("logs"))
+    app_data::dir_from_env("LOCALAPPDATA").map(|dir| dir.join("deckhand").join("logs"))
 }
 
 fn file_name(date: NaiveDate) -> String {
@@ -112,28 +124,44 @@ pub fn log_date(name: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(stem, "%Y-%m-%d").ok()
 }
 
-fn prune_quietly(dir: &Path, today: NaiveDate, retention_days: u32) {
-    if let Err(error) = prune(dir, today, retention_days) {
-        eprintln!("deckhand: could not clean old audit logs in {}: {error}", dir.display());
+fn report_pruning(dir: &Path, outcome: io::Result<Pruned>) {
+    match outcome {
+        Ok(pruned) => {
+            for failure in pruned.failures {
+                eprintln!("deckhand: could not delete an old audit log: {failure}");
+            }
+        }
+        Err(error) => eprintln!("deckhand: could not clean old audit logs in {}: {error}", dir.display()),
     }
 }
 
-pub fn prune(dir: &Path, today: NaiveDate, retention_days: u32) -> io::Result<usize> {
-    let Some(cutoff) = today.checked_sub_days(Days::new(u64::from(retention_days))) else { return Ok(0) };
-    let mut removed = 0;
+pub fn prune(dir: &Path, today: NaiveDate, retention_days: u32) -> io::Result<Pruned> {
+    let mut pruned = Pruned::default();
+    let Some(cutoff) = today.checked_sub_days(Days::new(u64::from(retention_days))) else { return Ok(pruned) };
     for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let expired = entry.file_name().to_str().and_then(log_date).is_some_and(|date| date < cutoff);
-        if expired && entry.file_type()?.is_file() {
-            fs::remove_file(entry.path())?;
-            removed += 1;
+        match entry.and_then(|entry| remove_if_expired(&entry, cutoff)) {
+            Ok(removed) => pruned.removed += usize::from(removed),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => pruned.failures.push(error.to_string()),
         }
     }
-    Ok(removed)
+    Ok(pruned)
+}
+
+fn remove_if_expired(entry: &DirEntry, cutoff: NaiveDate) -> io::Result<bool> {
+    let expired = entry.file_name().to_str().and_then(log_date).is_some_and(|date| date < cutoff);
+    if !expired || !entry.file_type()?.is_file() {
+        return Ok(false);
+    }
+    let path = entry.path();
+    fs::remove_file(&path).map_err(|error| io::Error::new(error.kind(), format!("{}: {error}", path.display())))?;
+    Ok(true)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::os::windows::fs::OpenOptionsExt;
+
     use super::*;
     use crate::testing::TempDir;
 
@@ -169,8 +197,8 @@ mod tests {
             fs::write(temp.path().join(name), "{}\n").unwrap();
         }
         fs::create_dir(temp.path().join("2026-08-01.jsonl")).unwrap();
-        let removed = prune(temp.path(), date("2026-10-11"), 14).unwrap();
-        assert_eq!(removed, 1);
+        let pruned = prune(temp.path(), date("2026-10-11"), 14).unwrap();
+        assert_eq!(pruned, Pruned { removed: 1, failures: Vec::new() });
         let mut left: Vec<String> =
             fs::read_dir(temp.path()).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect();
         left.sort();
@@ -185,6 +213,35 @@ mod tests {
                 "keep.jsonl"
             ]
         );
+    }
+
+    #[test]
+    fn prune_keeps_going_past_a_file_it_cannot_delete() {
+        let temp = TempDir::new("audit-prune-locked");
+        let names = ["2026-09-01.jsonl", "2026-09-02.jsonl", "2026-09-03.jsonl"];
+        for name in names {
+            fs::write(
+                temp.path().join(name),
+                "{}
+",
+            )
+            .unwrap();
+        }
+        let locked = OpenOptions::new().read(true).share_mode(0).open(temp.path().join(names[1])).unwrap();
+        let pruned = prune(temp.path(), date("2026-10-11"), 14).unwrap();
+        assert_eq!(pruned.removed, 2);
+        assert_eq!(pruned.failures.len(), 1);
+        assert!(pruned.failures[0].contains(names[1]), "{}", pruned.failures[0]);
+        drop(locked);
+        let left: Vec<String> =
+            fs::read_dir(temp.path()).unwrap().map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect();
+        assert_eq!(left, [names[1]]);
+    }
+
+    #[test]
+    fn prune_of_a_missing_folder_is_an_error_not_a_panic() {
+        let temp = TempDir::new("audit-prune-missing");
+        assert!(prune(&temp.path().join("absent"), date("2026-10-11"), 14).is_err());
     }
 
     #[test]

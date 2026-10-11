@@ -244,9 +244,9 @@ fn classify(part: &str, spec: &str) -> Result<Part> {
 fn modifier_named(name: &str) -> Option<Modifier> {
     match name {
         "ctrl" | "control" | "ctl" => Some(Modifier::Ctrl),
-        "alt" | "option" | "menu" => Some(Modifier::Alt),
+        "alt" | "option" => Some(Modifier::Alt),
         "shift" => Some(Modifier::Shift),
-        "win" | "windows" | "meta" | "super" | "cmd" => Some(Modifier::Win),
+        "win" | "windows" | "meta" | "super" => Some(Modifier::Win),
         _ => None,
     }
 }
@@ -273,7 +273,7 @@ fn named_key(name: &str) -> Option<NamedKey> {
         "capslock" => NamedKey::CapsLock,
         "numlock" => NamedKey::NumLock,
         "scrolllock" => NamedKey::ScrollLock,
-        "contextmenu" | "apps" | "application" => NamedKey::ContextMenu,
+        "contextmenu" | "menu" | "apps" | "application" => NamedKey::ContextMenu,
         "volumeup" => NamedKey::VolumeUp,
         "volumedown" => NamedKey::VolumeDown,
         "volumemute" | "mute" => NamedKey::VolumeMute,
@@ -408,13 +408,11 @@ mod tests {
             ("ctl", CTRL),
             ("alt", ALT),
             ("option", ALT),
-            ("menu", ALT),
             ("shift", SHIFT),
             ("win", WIN),
             ("windows", WIN),
             ("meta", WIN),
             ("super", WIN),
-            ("cmd", WIN),
         ];
         for (alias, modifiers) in cases {
             assert_eq!(parse_chord(&format!("{alias}+x")).unwrap(), chord(modifiers, ch('x')), "{alias}");
@@ -461,6 +459,7 @@ mod tests {
             ("numlock", NamedKey::NumLock),
             ("scrolllock", NamedKey::ScrollLock),
             ("contextmenu", NamedKey::ContextMenu),
+            ("menu", NamedKey::ContextMenu),
             ("apps", NamedKey::ContextMenu),
             ("application", NamedKey::ContextMenu),
             ("volumeup", NamedKey::VolumeUp),
@@ -481,6 +480,17 @@ mod tests {
             assert_eq!(parse_chord(&alias.to_uppercase()).unwrap(), named_chord(key), "{alias}");
             assert_eq!(parse_chord(&format!("alt+{alias}")).unwrap(), chord(ALT, named(key)), "{alias}");
         }
+    }
+
+    #[test]
+    fn risky_aliases_are_not_modifiers() {
+        assert_eq!(parse_chord("menu").unwrap(), named_chord(NamedKey::ContextMenu));
+        assert_eq!(parse_chord("shift+menu").unwrap(), chord(SHIFT, named(NamedKey::ContextMenu)));
+        assert_eq!(error_message("cmd+l"), "unknown key 'cmd' in 'cmd+l'");
+        assert_eq!(
+            error_message("menu+f"),
+            "two keys 'menu' and 'f' in one chord in 'menu+f'; a chord is modifiers plus at most one key"
+        );
     }
 
     #[test]

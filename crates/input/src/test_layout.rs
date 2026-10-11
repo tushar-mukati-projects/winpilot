@@ -5,6 +5,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 
 use crate::layout::{KeyboardLayout, LayoutKey};
 
+pub const DEAD_CIRCUMFLEX: VIRTUAL_KEY = VIRTUAL_KEY(0xDD);
+
 pub struct FakeLayout;
 
 impl KeyboardLayout for FakeLayout {
@@ -15,6 +17,7 @@ impl KeyboardLayout for FakeLayout {
             'a'..='z' => Some(LayoutKey { vk: VIRTUAL_KEY(c.to_ascii_uppercase() as u16), modifiers: Modifiers::NONE }),
             'A'..='Z' => Some(LayoutKey { vk: VIRTUAL_KEY(c as u16), modifiers: shift }),
             '@' => Some(LayoutKey { vk: VIRTUAL_KEY(0x51), modifiers: altgr }),
+            '^' => Some(LayoutKey { vk: DEAD_CIRCUMFLEX, modifiers: Modifiers::NONE }),
             _ => None,
         }
     }
@@ -32,5 +35,9 @@ impl KeyboardLayout for FakeLayout {
             VK_TAB => 0x0F,
             _ => 0x1E,
         }
+    }
+
+    fn is_dead_key(&self, vk: VIRTUAL_KEY) -> bool {
+        vk == DEAD_CIRCUMFLEX
     }
 }

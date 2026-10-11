@@ -1,7 +1,7 @@
 use deckhand_core::keys::Modifiers;
 use windows::Win32::UI::{
     Input::KeyboardAndMouse::{
-        GetKeyboardLayout, HKL, MAPVK_VK_TO_VSC_EX, MapVirtualKeyExW, VIRTUAL_KEY, VkKeyScanExW,
+        GetKeyboardLayout, HKL, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC_EX, MapVirtualKeyExW, VIRTUAL_KEY, VkKeyScanExW,
     },
     WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
 };
@@ -12,6 +12,7 @@ const SHIFT_STATE_ALT: u8 = 4;
 const REPRODUCIBLE_SHIFT_STATES: u8 = SHIFT_STATE_SHIFT | SHIFT_STATE_CTRL | SHIFT_STATE_ALT;
 const NO_KEY: u8 = 0xFF;
 const CURRENT_THREAD: u32 = 0;
+const DEAD_KEY_BIT: u32 = 0x8000_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LayoutKey {
@@ -22,6 +23,7 @@ pub struct LayoutKey {
 pub trait KeyboardLayout {
     fn char_key(&self, c: char) -> Option<LayoutKey>;
     fn scan_code(&self, vk: VIRTUAL_KEY) -> u32;
+    fn is_dead_key(&self, vk: VIRTUAL_KEY) -> bool;
 }
 
 pub struct SystemLayout {
@@ -45,6 +47,11 @@ impl KeyboardLayout for SystemLayout {
     fn scan_code(&self, vk: VIRTUAL_KEY) -> u32 {
         unsafe { MapVirtualKeyExW(u32::from(vk.0), MAPVK_VK_TO_VSC_EX, Some(self.handle)) }
     }
+
+    fn is_dead_key(&self, vk: VIRTUAL_KEY) -> bool {
+        let character = unsafe { MapVirtualKeyExW(u32::from(vk.0), MAPVK_VK_TO_CHAR, Some(self.handle)) };
+        marks_dead_key(character)
+    }
 }
 
 fn foreground_thread_id() -> u32 {
@@ -57,6 +64,10 @@ fn foreground_thread_id() -> u32 {
 
 fn thread_layout(thread_id: u32) -> HKL {
     unsafe { GetKeyboardLayout(thread_id) }
+}
+
+fn marks_dead_key(character: u32) -> bool {
+    character & DEAD_KEY_BIT != 0
 }
 
 pub fn decode_vk_scan(result: i16) -> Option<LayoutKey> {
@@ -100,6 +111,14 @@ mod tests {
         let key = decode_vk_scan(0x0651).unwrap();
         assert_eq!(key.vk, VIRTUAL_KEY(0x51));
         assert_eq!(key.modifiers, Modifiers { ctrl: true, alt: true, ..Modifiers::NONE });
+    }
+
+    #[test]
+    fn only_the_top_bit_marks_a_dead_key() {
+        assert!(marks_dead_key(0x8000_005E));
+        assert!(!marks_dead_key(0x5E));
+        assert!(!marks_dead_key(0x8B5E));
+        assert!(!marks_dead_key(0));
     }
 
     #[test]

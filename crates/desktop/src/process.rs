@@ -40,6 +40,11 @@ impl ProcessLookup {
     }
 }
 
+pub(crate) fn runs_above_own_integrity(pid: u32) -> bool {
+    let Some(process) = open_for_query(pid) else { return true };
+    outranks(process_integrity_level(raw(&process)), own_integrity_level())
+}
+
 fn inspect(pid: u32, own_integrity: Option<u32>) -> ProcessFacts {
     let Some(process) = open_for_query(pid) else {
         return ProcessFacts { name: UNKNOWN_PROCESS.to_string(), elevated: true };
@@ -102,6 +107,12 @@ mod tests {
         let facts = lookup.facts(std::process::id());
         assert!(facts.name.to_ascii_lowercase().ends_with(".exe"));
         assert!(!facts.elevated);
+    }
+
+    #[test]
+    fn own_process_does_not_outrank_itself_but_a_missing_one_does() {
+        assert!(!runs_above_own_integrity(std::process::id()));
+        assert!(runs_above_own_integrity(u32::MAX - 3));
     }
 
     #[test]

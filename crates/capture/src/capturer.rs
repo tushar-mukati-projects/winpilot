@@ -63,6 +63,11 @@ impl Capturer {
         self.call(Request::Modes)
     }
 
+    #[cfg(test)]
+    fn served(&self) -> Result<Vec<crate::output::Served>> {
+        self.call(Request::Served)
+    }
+
     fn call<T>(&self, request: impl FnOnce(Reply<T>) -> Request) -> Result<T> {
         let stopped = || Error::internal("capture thread has stopped");
         let (reply, response) = mpsc::channel();
@@ -85,6 +90,9 @@ mod tests {
 
     use super::*;
     use crate::encode::{EncodeOptions, encode};
+    use crate::frame::FrameSource;
+    use crate::freshness::FRESHNESS_WINDOW;
+    use crate::output::Served;
 
     fn shared() -> &'static Capturer {
         static CAPTURER: OnceLock<Capturer> = OnceLock::new();
@@ -155,13 +163,24 @@ mod tests {
         assert_eq!(gone.code, ErrorCode::NotFound);
     }
 
+    fn assert_served_fresh(capturer: &Capturer) {
+        for served in capturer.served().unwrap() {
+            match served {
+                Served::Nothing | Served::LiveGdi => {}
+                Served::Staging(age) => assert!(age < FRESHNESS_WINDOW, "staging image was {age:?} old"),
+            }
+        }
+    }
+
     fn median_of_warm_captures(capturer: &Capturer, rect: Rect) -> (f64, f64) {
         let mut warm: Vec<f64> = (0..8)
             .map(|_| {
                 let started = Instant::now();
                 let frame = capturer.screen(rect).unwrap();
+                let elapsed = milliseconds(started);
                 assert_eq!(frame.rect(), rect);
-                milliseconds(started)
+                assert_served_fresh(capturer);
+                elapsed
             })
             .collect();
         warm.sort_by(f64::total_cmp);
@@ -172,10 +191,11 @@ mod tests {
         capturer.output_modes().unwrap().first().copied().unwrap_or("none")
     }
 
-    fn wait_for_a_gpu_image(capturer: &Capturer, primary: Rect) -> bool {
+    fn wait_for_fresh_dxgi(capturer: &Capturer, primary: Rect) -> bool {
         let deadline = Instant::now() + Duration::from_secs(3);
         while Instant::now() < deadline {
             capturer.screen(Rect::new(primary.x, primary.y, 1, 1)).unwrap();
+            assert_served_fresh(capturer);
             if primary_mode(capturer) == "dxgi" {
                 return true;
             }
@@ -185,33 +205,64 @@ mod tests {
     }
 
     #[test]
-    fn warm_full_monitor_capture_and_encode() {
-        let capturer = shared();
+    fn warm_full_monitor_capture_is_fresh_and_timed() {
+        let capturer = Capturer::spawn().unwrap();
         let primary = capturer.monitor_rects().unwrap()[0];
         let started = Instant::now();
         let first = capturer.monitor(0).unwrap();
         let cold = milliseconds(started);
-        assert_eq!(first.rect(), primary);
-        let (median, best) = median_of_warm_captures(capturer, primary);
+        assert_eq!((first.rect(), first.source), (primary, FrameSource::Screen));
+        assert_eq!(capturer.served().unwrap()[0], Served::LiveGdi);
+        let (median, best) = median_of_warm_captures(&capturer, primary);
         let (width, height) = (primary.width, primary.height);
+        let mode = primary_mode(&capturer);
         eprintln!(
-            "timing: {width}x{height} capture via {}: first {cold:.1} ms, warm median {median:.2} ms, best {best:.2} ms",
-            primary_mode(capturer)
+            "timing: {width}x{height} capture via {mode}: first {cold:.1} ms, warm median {median:.2} ms, best {best:.2} ms"
         );
-        if wait_for_a_gpu_image(capturer, primary) {
-            let (median, best) = median_of_warm_captures(capturer, primary);
+        if wait_for_fresh_dxgi(&capturer, primary) {
+            let (median, best) = median_of_warm_captures(&capturer, primary);
             eprintln!(
-                "timing: {width}x{height} capture via dxgi staging: warm median {median:.2} ms, best {best:.2} ms"
+                "timing: {width}x{height} capture via fresh dxgi staging: warm median {median:.2} ms, best {best:.2} ms"
             );
         } else {
-            eprintln!("timing: the screen did not change for 3 s, so the dxgi staging path was not timed");
+            eprintln!("timing: dxgi delivered no fresh frame within 3 s, so every capture was a live gdi read");
         }
+        let (median, best) = median_of_warm_captures(&capturer, primary);
+        eprintln!(
+            "timing: {width}x{height} capture after the dxgi probe ({}): warm median {median:.2} ms, best {best:.2} ms",
+            primary_mode(&capturer)
+        );
         let options = EncodeOptions { max_width: 1280, max_height: 1280, format: ImageFormat::Jpeg, quality: 75 };
         let started = Instant::now();
         let encoded = encode(&first, &options, &[]).unwrap();
         let encode_ms = milliseconds(started);
         let size = (encoded.width, encoded.height, encoded.bytes.len());
         eprintln!("timing: encode of the captured screen to {size:?} (w, h, bytes) JPEG q75: {encode_ms:.1} ms");
+    }
+
+    #[test]
+    fn region_capture_timing() {
+        let capturer = Capturer::spawn().unwrap();
+        let primary = capturer.monitor_rects().unwrap()[0];
+        let region = Rect::new(primary.x, primary.y, primary.width / 2, primary.height / 2);
+        let (median, best) = median_of_warm_captures(&capturer, region);
+        let (width, height) = (region.width, region.height);
+        eprintln!(
+            "timing: {width}x{height} region capture via {}: warm median {median:.2} ms, best {best:.2} ms",
+            primary_mode(&capturer)
+        );
+    }
+
+    #[test]
+    fn outputs_serve_only_live_or_recent_pixels() {
+        let capturer = Capturer::spawn().unwrap();
+        let primary = capturer.monitor_rects().unwrap()[0];
+        for _ in 0..5 {
+            capturer.monitor(0).unwrap();
+            assert_served_fresh(&capturer);
+            capturer.screen(Rect::new(primary.x, primary.y, 8, 8)).unwrap();
+            assert_served_fresh(&capturer);
+        }
     }
 
     #[test]
@@ -223,6 +274,7 @@ mod tests {
         let size = size_of::<RECT>() as u32;
         unsafe { DwmGetWindowAttribute(taskbar, DWMWA_EXTENDED_FRAME_BOUNDS, (&raw mut bounds).cast(), size) }.unwrap();
         let frame = shared().window(WindowRef(taskbar.0 as i64)).unwrap();
+        assert!(matches!(frame.source, FrameSource::Window | FrameSource::ScreenFallback));
         assert_eq!(frame.origin, Point::new(bounds.left, bounds.top));
         assert_eq!(frame.width as i32, bounds.right - bounds.left);
         assert_eq!(frame.height as i32, bounds.bottom - bounds.top);

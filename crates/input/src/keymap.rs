@@ -27,6 +27,10 @@ pub fn resolve_key(key: Key, layout: &impl KeyboardLayout) -> Result<ResolvedKey
     }
 }
 
+pub fn is_dead_key_char(c: char, layout: &impl KeyboardLayout) -> bool {
+    layout.char_key(c).is_some_and(|found| layout.is_dead_key(found.vk))
+}
+
 pub fn not_on_layout(c: char) -> Error {
     Error::invalid(format!("key '{c}' is not on the current keyboard layout"))
 }
@@ -172,6 +176,13 @@ mod tests {
         let expected = LayoutKey { vk: VIRTUAL_KEY(0x41), modifiers: Modifiers { shift: true, ..Modifiers::NONE } };
         assert_eq!(resolved, ResolvedKey::Virtual(expected));
         assert_eq!(resolve_key(Key::Char('€'), &FakeLayout).unwrap(), ResolvedKey::Unicode('€'));
+    }
+
+    #[test]
+    fn dead_key_characters_are_recognised() {
+        assert!(is_dead_key_char('^', &FakeLayout));
+        assert!(!is_dead_key_char('a', &FakeLayout));
+        assert!(!is_dead_key_char('€', &FakeLayout));
     }
 
     #[test]

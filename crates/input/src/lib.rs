@@ -1,17 +1,24 @@
 mod activity;
 mod batch;
+mod call_split;
 mod chord;
 mod drag;
 mod event;
-mod hooks;
+mod foreground_unlock;
 mod hotkey;
+mod hotkey_binding;
 mod input_clock;
 mod keyboard;
 mod keymap;
 mod layout;
 mod message_thread;
 mod mouse;
+mod physical_button;
+mod raw_input;
+mod raw_input_registration;
+mod raw_input_sink;
 mod send;
+mod stuck_inputs;
 #[cfg(test)]
 mod test_layout;
 mod text;
@@ -19,9 +26,11 @@ mod thread_timer;
 mod virtual_desktop;
 
 pub use activity::ActivityMonitor;
-pub use chord::{press_chord, tap_alt};
+pub use chord::press_chord;
 pub use deckhand_core::INJECTION_MARK;
 pub use drag::drag;
+pub use foreground_unlock::tap_alt;
 pub use hotkey::HotkeyListener;
 pub use mouse::{click, cursor_position, move_to, scroll};
+pub use stuck_inputs::release_stuck_inputs;
 pub use text::type_text;

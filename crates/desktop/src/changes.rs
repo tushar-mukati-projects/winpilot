@@ -40,8 +40,12 @@ impl ChangeMonitor {
         board().wait_quiet(pid, quiet, max)
     }
 
+    pub fn wait_change(&self, pid: Option<u32>, since: Instant, timeout: Duration) -> bool {
+        board().wait_change(pid, since, timeout)
+    }
+
     pub fn wait_any_change(&self, since: Instant, timeout: Duration) -> bool {
-        board().wait_any_change(since, timeout)
+        self.wait_change(None, since, timeout)
     }
 
     pub fn windows_opened_since(&self, since: Instant) -> Vec<WindowRef> {
@@ -66,7 +70,8 @@ mod tests {
         let second = ChangeMonitor::spawn().unwrap();
         let started = Instant::now();
         let _changed = monitor.wait_any_change(started, Duration::from_millis(200));
-        assert!(started.elapsed() < Duration::from_millis(1200));
+        let _own = monitor.wait_change(Some(std::process::id()), started, Duration::from_millis(50));
+        assert!(started.elapsed() < Duration::from_millis(1500));
         let _opened = second.windows_opened_since(started);
         let _last = second.last_change(std::process::id());
         assert!(!monitor.wait_quiet(1, Duration::from_millis(50), Duration::from_millis(10)));

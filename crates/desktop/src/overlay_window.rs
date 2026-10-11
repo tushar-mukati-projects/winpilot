@@ -14,8 +14,8 @@ use windows::{
         UI::{
             HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext},
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, DestroyWindow, HTTRANSPARENT, HWND_TOPMOST, KillTimer, MA_NOACTIVATE,
-                MSG, RegisterClassExW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetTimer,
+                CreateWindowExW, DefWindowProcW, DestroyWindow, HTTRANSPARENT, HWND_TOPMOST, MA_NOACTIVATE, MSG,
+                RegisterClassExW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
                 SetWindowDisplayAffinity, SetWindowPos, ShowWindow, WDA_EXCLUDEFROMCAPTURE, WM_APP, WM_MOUSEACTIVATE,
                 WM_NCHITTEST, WM_TIMER, WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
                 WS_EX_TRANSPARENT, WS_POPUP,
@@ -26,10 +26,12 @@ use windows::{
 };
 
 use crate::{
-    frame::inflate,
+    edge_strips::{EDGE_COUNT, border_strips},
     layered_window::present,
     message_thread::ThreadMessages,
-    overlay_paint::{ACCENT, paint_border, paint_disc, premultiplied},
+    monitors::virtual_screen,
+    overlay_paint::{ACCENT, paint_disc, premultiplied},
+    window_timer::WindowTimer,
 };
 
 pub(crate) const WAKE_OVERLAY: u32 = WM_APP + 0x0D;
@@ -51,6 +53,11 @@ pub(crate) enum OverlayCommand {
     Hide,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct OverlayStatus {
+    pub(crate) capture_excluded: bool,
+}
+
 struct OverlayWindow(HWND);
 
 impl OverlayWindow {
@@ -65,6 +72,13 @@ impl OverlayWindow {
 
     fn exclude_from_capture(&self) -> bool {
         unsafe { SetWindowDisplayAffinity(self.0, WDA_EXCLUDEFROMCAPTURE) }.is_ok()
+    }
+
+    fn show_strip(&self, strip: Option<Rect>, pixel: u32) {
+        let painted = strip.is_some_and(|rect| {
+            present(self.0, Point::new(rect.x, rect.y), rect.width, rect.height, |pixels| pixels.fill(pixel)).is_ok()
+        });
+        if painted { self.show_on_top() } else { self.hide() }
     }
 
     fn show_on_top(&self) {
@@ -85,24 +99,30 @@ impl Drop for OverlayWindow {
 }
 
 pub(crate) struct OverlayWindows {
-    border: OverlayWindow,
+    ripple_timer: Option<WindowTimer>,
+    edges: [OverlayWindow; EDGE_COUNT],
     ripple: OverlayWindow,
     commands: Receiver<OverlayCommand>,
 }
 
 impl OverlayWindows {
-    pub(crate) fn create(commands: Receiver<OverlayCommand>) -> Result<(Self, bool)> {
+    pub(crate) fn create(commands: Receiver<OverlayCommand>) -> Result<(Self, OverlayStatus)> {
         let _previous_awareness = unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
         let instance = module_instance()?;
         ensure_class_registered(instance)?;
-        let border = OverlayWindow::create(instance)?;
+        let edges = [
+            OverlayWindow::create(instance)?,
+            OverlayWindow::create(instance)?,
+            OverlayWindow::create(instance)?,
+            OverlayWindow::create(instance)?,
+        ];
         let ripple = OverlayWindow::create(instance)?;
-        let border_excluded = border.exclude_from_capture();
-        let ripple_excluded = ripple.exclude_from_capture();
-        Ok((Self { border, ripple, commands }, border_excluded && ripple_excluded))
+        let exposed = edges.iter().chain([&ripple]).filter(|window| !window.exclude_from_capture()).count();
+        let status = OverlayStatus { capture_excluded: exposed == 0 };
+        Ok((Self { ripple_timer: None, edges, ripple, commands }, status))
     }
 
-    fn apply_pending(&self) {
+    fn apply_pending(&mut self) {
         while let Ok(command) = self.commands.try_recv() {
             match command {
                 OverlayCommand::ShowTarget(rect) => self.show_target(rect),
@@ -113,40 +133,44 @@ impl OverlayWindows {
     }
 
     fn show_target(&self, target: Rect) {
-        let outline = inflate(target, BORDER_THICKNESS);
         let pixel = premultiplied(ACCENT, BORDER_ALPHA);
-        let width = outline.width.max(0) as usize;
-        let painted =
-            present(self.border.0, Point::new(outline.x, outline.y), outline.width, outline.height, |pixels| {
-                paint_border(pixels, width, BORDER_THICKNESS as usize, pixel);
-            });
-        if painted.is_ok() { self.border.show_on_top() } else { self.border.hide() }
+        let strips = border_strips(target, BORDER_THICKNESS, virtual_screen());
+        for (edge, strip) in self.edges.iter().zip(strips) {
+            edge.show_strip(strip, pixel);
+        }
     }
 
-    fn flash_point(&self, point: Point) {
+    fn flash_point(&mut self, point: Point) {
+        self.ripple_timer = None;
         let origin = Point::new(point.x.saturating_sub(RIPPLE_SIZE / 2), point.y.saturating_sub(RIPPLE_SIZE / 2));
         let painted = present(self.ripple.0, origin, RIPPLE_SIZE, RIPPLE_SIZE, |pixels| {
             paint_disc(pixels, RIPPLE_SIZE as usize, ACCENT, RIPPLE_ALPHA);
         });
         if painted.is_err() {
-            self.end_ripple();
+            self.ripple.hide();
             return;
         }
         self.ripple.show_on_top();
-        let timer = unsafe { SetTimer(Some(self.ripple.0), RIPPLE_TIMER, RIPPLE_LIFETIME_MS, None) };
-        if timer == 0 {
-            self.end_ripple();
+        self.ripple_timer = WindowTimer::start(self.ripple.0, RIPPLE_TIMER, RIPPLE_LIFETIME_MS);
+        if self.ripple_timer.is_none() {
+            self.ripple.hide();
         }
     }
 
-    fn end_ripple(&self) {
-        let _ = unsafe { KillTimer(Some(self.ripple.0), RIPPLE_TIMER) };
+    fn end_ripple(&mut self) {
+        self.ripple_timer = None;
         self.ripple.hide();
     }
 
-    fn hide_all(&self) {
-        self.border.hide();
+    fn hide_all(&mut self) {
+        for edge in &self.edges {
+            edge.hide();
+        }
         self.end_ripple();
+    }
+
+    fn is_ripple_timer(&self, message: &MSG) -> bool {
+        self.ripple_timer.as_ref().is_some_and(|timer| timer.fired(message.hwnd, message.wParam.0))
     }
 }
 
@@ -156,7 +180,7 @@ impl ThreadMessages for OverlayWindows {
             self.apply_pending();
             return true;
         }
-        if message.message == WM_TIMER && message.hwnd == self.ripple.0 && message.wParam.0 == RIPPLE_TIMER {
+        if message.message == WM_TIMER && self.is_ripple_timer(message) {
             self.end_ripple();
             return true;
         }

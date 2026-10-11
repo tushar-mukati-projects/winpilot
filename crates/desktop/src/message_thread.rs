@@ -20,6 +20,7 @@ pub(crate) trait ThreadMessages {
     fn on_message(&mut self, message: &MSG) -> bool;
 }
 
+#[derive(Debug)]
 pub(crate) struct MessageThread {
     thread_id: u32,
     handle: Option<JoinHandle<()>>,
@@ -110,7 +111,7 @@ fn dispatch(message: &MSG) {
 mod tests {
     use std::sync::{
         Arc,
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
     };
 
     use windows::Win32::UI::WindowsAndMessaging::WM_APP;
@@ -126,6 +127,20 @@ mod tests {
                 return true;
             }
             false
+        }
+    }
+
+    struct Idle(Arc<AtomicBool>);
+
+    impl ThreadMessages for Idle {
+        fn on_message(&mut self, _message: &MSG) -> bool {
+            false
+        }
+    }
+
+    impl Drop for Idle {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
         }
     }
 
@@ -149,8 +164,18 @@ mod tests {
     }
 
     #[test]
+    fn thread_tears_down_its_state_when_dropped() {
+        let stopped = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&stopped);
+        let (thread, ()) = MessageThread::spawn("test-idle", move || Ok((Idle(flag), ()))).unwrap();
+        assert!(!stopped.load(Ordering::SeqCst));
+        drop(thread);
+        assert!(stopped.load(Ordering::SeqCst));
+    }
+
+    #[test]
     fn setup_failure_is_reported() {
         let outcome = MessageThread::spawn("test-fail", || Err::<(Counter, ()), _>(Error::internal("nope")));
-        assert!(outcome.is_err());
+        assert_eq!(outcome.unwrap_err().message, "nope");
     }
 }

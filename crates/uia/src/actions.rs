@@ -1,28 +1,19 @@
 use deckhand_core::{ElementRef, Error, Result};
 use windows::Win32::UI::Accessibility::{
     IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern, IUIAutomationLegacyIAccessiblePattern,
-    IUIAutomationScrollItemPattern, IUIAutomationSelectionItemPattern, IUIAutomationTogglePattern,
-    IUIAutomationValuePattern, ToggleState_On, UIA_ExpandCollapsePatternId, UIA_InvokePatternId,
-    UIA_LegacyIAccessiblePatternId, UIA_ScrollItemPatternId, UIA_SelectionItemPatternId, UIA_TogglePatternId,
-    UIA_ValuePatternId,
+    IUIAutomationScrollItemPattern, IUIAutomationSelectionItemPattern, IUIAutomationValuePattern,
+    UIA_ExpandCollapsePatternId, UIA_InvokePatternId, UIA_LegacyIAccessiblePatternId, UIA_ScrollItemPatternId,
+    UIA_SelectionItemPatternId, UIA_ValuePatternId,
 };
 use windows_core::BSTR;
 
-use crate::{automation::Uia, failure::UiaResult};
+use crate::{automation::Uia, failure::UiaResult, pattern::current_pattern};
 
 impl Uia {
     pub fn invoke(&mut self, id: ElementRef) -> Result<()> {
         let target = self.resolve(id)?;
         let pattern: IUIAutomationInvokePattern = target.pattern(UIA_InvokePatternId, "Invoke")?;
         unsafe { pattern.Invoke() }.uia(&target.doing("invoking"))
-    }
-
-    pub fn toggle(&mut self, id: ElementRef) -> Result<bool> {
-        let target = self.resolve(id)?;
-        let pattern: IUIAutomationTogglePattern = target.pattern(UIA_TogglePatternId, "Toggle")?;
-        unsafe { pattern.Toggle() }.uia(&target.doing("toggling"))?;
-        let state = unsafe { pattern.CurrentToggleState() }.uia(&target.doing("reading the toggle state of"))?;
-        Ok(state == ToggleState_On)
     }
 
     pub fn select(&mut self, id: ElementRef) -> Result<()> {
@@ -59,10 +50,13 @@ impl Uia {
         if target.info.state.password {
             return Ok(None);
         }
-        let Some(pattern) = target.optional_pattern::<IUIAutomationValuePattern>(UIA_ValuePatternId, "Value")? else {
+        let reading = target.doing("reading the value of");
+        let Some(pattern) =
+            current_pattern::<IUIAutomationValuePattern>(&target.element, UIA_ValuePatternId, &reading)?
+        else {
             return Ok(None);
         };
-        let value = unsafe { pattern.CurrentValue() }.uia(&target.doing("reading the value of"))?;
+        let value = unsafe { pattern.CurrentValue() }.uia(&reading)?;
         Ok(Some(value.to_string()))
     }
 

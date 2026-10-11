@@ -10,7 +10,8 @@ use windows::Win32::{
     UI::WindowsAndMessaging::{ULW_ALPHA, UpdateLayeredWindow},
 };
 
-pub(crate) const MAX_LAYER_SIDE: i32 = 16_384;
+const MAX_LAYER_SIDE: i32 = 32_767;
+const MAX_LAYER_PIXELS: i64 = 1 << 22;
 
 struct MemoryDc(HDC);
 
@@ -102,7 +103,7 @@ pub(crate) fn present(
     height: i32,
     paint: impl FnOnce(&mut [u32]),
 ) -> Result<()> {
-    if !(1..=MAX_LAYER_SIDE).contains(&width) || !(1..=MAX_LAYER_SIDE).contains(&height) {
+    if !is_layer_size_allowed(width, height) {
         return Err(Error::invalid(format!("overlay size {width}x{height} is out of range")));
     }
     let dc = MemoryDc::new()?;
@@ -112,6 +113,11 @@ pub(crate) fn present(
     paint(pixels);
     let _selection = Selection::new(&dc, &section)?;
     update_layer(hwnd, &dc, origin, SIZE { cx: width, cy: height })
+}
+
+fn is_layer_size_allowed(width: i32, height: i32) -> bool {
+    let sides_fit = (1..=MAX_LAYER_SIDE).contains(&width) && (1..=MAX_LAYER_SIDE).contains(&height);
+    sides_fit && i64::from(width) * i64::from(height) <= MAX_LAYER_PIXELS
 }
 
 fn update_layer(hwnd: HWND, dc: &MemoryDc, origin: Point, size: SIZE) -> Result<()> {
@@ -137,4 +143,24 @@ fn update_layer(hwnd: HWND, dc: &MemoryDc, origin: Point, size: SIZE) -> Result<
         )
     }
     .context("updating the overlay window")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn long_thin_strips_and_small_ripples_are_allowed() {
+        assert!(is_layer_size_allowed(32_767, 3));
+        assert!(is_layer_size_allowed(3, 20_000));
+        assert!(is_layer_size_allowed(28, 28));
+    }
+
+    #[test]
+    fn empty_oversized_or_huge_layers_are_refused() {
+        assert!(!is_layer_size_allowed(0, 3));
+        assert!(!is_layer_size_allowed(40_000, 3));
+        assert!(!is_layer_size_allowed(3_840, 2_160));
+        assert!(!is_layer_size_allowed(-1, -1));
+    }
 }

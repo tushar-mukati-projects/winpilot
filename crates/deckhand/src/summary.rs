@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use deckhand_core::{
     Rect, TargetSpec,
     protocol::{
@@ -15,9 +17,9 @@ pub fn describe(call: &Call, log_text: bool) -> String {
         Call::Find(args) => find(args),
         Call::Screenshot(args) => screenshot(args),
         Call::Act(args) => act(args, log_text),
-        Call::WaitFor(condition) => wait_for(condition),
-        Call::Windows(args) => windows(args),
-        Call::PickFile(args) => pick_file(args),
+        Call::WaitFor(condition) => wait_for(condition, log_text),
+        Call::Windows(args) => windows(args, log_text),
+        Call::PickFile(args) => pick_file(args, log_text),
         Call::ReadText(args) => read_text(args),
         Call::Clipboard(args) => clipboard(args, log_text),
         Call::Status => String::new(),
@@ -74,7 +76,7 @@ fn step_summary(step: &Step, log_text: bool) -> String {
         Step::Expand { target } => format!("expand {target}"),
         Step::Collapse { target } => format!("collapse {target}"),
         Step::Focus { target } => format!("focus {target}"),
-        Step::WaitFor(condition) => format!("wait_for {}", wait_for(condition)),
+        Step::WaitFor(condition) => format!("wait_for {}", wait_for(condition, log_text)),
         Step::Wait { ms } => format!("wait {ms}ms"),
     }
 }
@@ -107,10 +109,10 @@ fn on(target: Option<&TargetSpec>) -> String {
     target.map(|target| format!(" on {target}")).unwrap_or_default()
 }
 
-fn wait_for(condition: &Condition) -> String {
+fn wait_for(condition: &Condition, log_text: bool) -> String {
     let details = fields(&[
         ("target", condition.target.clone()),
-        ("text", condition.text.clone()),
+        ("text", condition.text.as_deref().map(|text| typed(text, log_text))),
         ("window", condition.window.clone()),
         ("ms", condition.ms.map(|ms| ms.to_string())),
         ("timeout_ms", condition.timeout_ms.map(|ms| ms.to_string())),
@@ -118,22 +120,32 @@ fn wait_for(condition: &Condition) -> String {
     joined(&wire_name(&condition.until), &details)
 }
 
-fn windows(args: &WindowsArgs) -> String {
+fn windows(args: &WindowsArgs, log_text: bool) -> String {
     let details = fields(&[
         ("window", args.window.clone()),
         ("app", args.app.clone()),
-        ("args", args.args.clone()),
+        ("args", args.args.as_deref().map(|text| typed(text, log_text))),
         ("rect", args.rect.map(rect)),
     ]);
     joined(&wire_name(&args.action), &details)
 }
 
-fn pick_file(args: &PickFileArgs) -> String {
+fn pick_file(args: &PickFileArgs, log_text: bool) -> String {
+    let (label, paths) = if log_text { ("paths", args.paths.join("|")) } else { ("names", base_names(&args.paths)) };
     fields(&[
-        ("paths", Some(args.paths.join("|"))),
+        ("files", Some(args.paths.len().to_string())),
+        (label, Some(paths)),
         ("open_with", args.open_with.as_ref().map(ToString::to_string)),
         ("overwrite", flag(args.overwrite)),
     ])
+}
+
+fn base_names(paths: &[String]) -> String {
+    paths.iter().map(|path| base_name(path)).collect::<Vec<_>>().join("|")
+}
+
+fn base_name(path: &str) -> String {
+    Path::new(path).file_name().map_or_else(|| typed(path, false), |name| name.to_string_lossy().into_owned())
 }
 
 fn read_text(args: &ReadTextArgs) -> String {
@@ -188,7 +200,7 @@ fn clip(summary: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::protocol::{AfterMode, ClickHow, ClipboardAction, Direction, TypeHow, Until};
+    use deckhand_core::protocol::{AfterMode, ClickHow, ClipboardAction, Direction, TypeHow, Until, WindowAction};
 
     use super::*;
 
@@ -224,6 +236,84 @@ mod tests {
         let clipboard = Call::Clipboard(ClipboardArgs { action: ClipboardAction::Set, text: Some("pw".to_string()) });
         assert_eq!(describe(&clipboard, false), "set <2 chars>");
         assert_eq!(describe(&clipboard, true), "set \"pw\"");
+    }
+
+    fn launch(args: &str) -> Call {
+        Call::Windows(WindowsArgs {
+            action: WindowAction::Launch,
+            window: None,
+            app: Some("notepad".to_string()),
+            args: Some(args.to_string()),
+            rect: None,
+        })
+    }
+
+    fn pick(paths: &[&str]) -> Call {
+        Call::PickFile(PickFileArgs {
+            paths: paths.iter().map(|path| (*path).to_string()).collect(),
+            open_with: Some(text_target("name:Upload")),
+            overwrite: false,
+            timeout_ms: None,
+        })
+    }
+
+    fn text_condition(text: &str) -> Condition {
+        Condition {
+            until: Until::Text,
+            target: None,
+            text: Some(text.to_string()),
+            window: Some("Bank".to_string()),
+            ms: None,
+            timeout_ms: None,
+        }
+    }
+
+    #[test]
+    fn launch_arguments_are_redacted() {
+        let call = launch("C:\\Users\\me\\tax-2025.pdf");
+        assert_eq!(describe(&call, false), "launch app=notepad args=<24 chars>");
+        assert_eq!(describe(&call, true), "launch app=notepad args=\"C:\\\\Users\\\\me\\\\tax-2025.pdf\"");
+    }
+
+    #[test]
+    fn picked_paths_keep_only_the_count_and_base_names() {
+        let call = pick(&["C:\\Users\\me\\Private\\tax-2025.pdf", "C:\\Users\\me\\Private\\id.png"]);
+        let summary = describe(&call, false);
+        assert_eq!(summary, "files=2 names=tax-2025.pdf|id.png open_with=name:Upload");
+        assert!(!summary.contains("Private"));
+        let full = describe(&call, true);
+        assert_eq!(
+            full,
+            "files=2 paths=C:\\Users\\me\\Private\\tax-2025.pdf|C:\\Users\\me\\Private\\id.png open_with=name:Upload"
+        );
+    }
+
+    #[test]
+    fn a_path_without_a_file_name_is_redacted_whole() {
+        assert_eq!(describe(&pick(&["C:\\"]), false), "files=1 names=<3 chars> open_with=name:Upload");
+    }
+
+    #[test]
+    fn waited_for_text_is_redacted_in_wait_for_and_act() {
+        let condition = text_condition("Payment 5000 received");
+        assert_eq!(describe(&Call::WaitFor(condition.clone()), false), "text text=<21 chars> window=Bank");
+        assert_eq!(
+            describe(&Call::WaitFor(condition.clone()), true),
+            "text text=\"Payment 5000 received\" window=Bank"
+        );
+        let step = describe(&act_call(vec![Step::WaitFor(condition)]), false);
+        assert_eq!(step, "wait_for text text=<21 chars> window=Bank return=diff");
+    }
+
+    #[test]
+    fn selectors_and_queries_are_kept() {
+        let find = Call::Find(FindArgs {
+            query: "role:button name:Save".to_string(),
+            window: None,
+            all_windows: true,
+            max: None,
+        });
+        assert_eq!(describe(&find, false), "query=role:button name:Save all_windows=true");
     }
 
     #[test]
