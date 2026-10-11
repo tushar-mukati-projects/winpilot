@@ -12,6 +12,8 @@ pub mod role;
 pub mod selector;
 pub mod target;
 
+pub const INJECTION_MARK: usize = 0x4445_434B;
+
 pub use config::Config;
 pub use element::{Element, ElementState, Patterns, Snapshot, WindowInfo, WindowState};
 pub use error::{Context, Error, ErrorCode, Result};

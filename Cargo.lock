@@ -174,7 +174,6 @@ name = "deckhand-desktop"
 version = "0.1.0"
 dependencies = [
  "deckhand-core",
- "deckhand-input",
  "parking_lot",
  "windows",
  "windows-core",

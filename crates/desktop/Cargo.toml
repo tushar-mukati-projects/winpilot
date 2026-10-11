@@ -10,7 +10,6 @@ deckhand-core.workspace = true
 windows.workspace = true
 windows-core.workspace = true
 parking_lot.workspace = true
-deckhand-input.workspace = true
 
 [lints]
 workspace = true
