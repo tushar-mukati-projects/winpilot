@@ -1,0 +1,77 @@
+use deckhand_core::{Error, ErrorCode, Point, Result, TargetSpec, WindowInfo, protocol::Direction};
+
+use super::{
+    done::Done,
+    locate::refreshed,
+    overlay, settle,
+    target::{Prepared, prepare, prepare_default_window},
+};
+use crate::{call_scope::CallScope, engine::Engine, on_screen::clickable_point, resolve::Reach};
+
+const AT_EDGE: &str = "already at the edge";
+
+pub struct ScrollRequest<'a> {
+    pub target: Option<&'a TargetSpec>,
+    pub direction: Direction,
+    pub amount: u32,
+}
+
+pub fn step(engine: &Engine, request: &ScrollRequest<'_>, call: &CallScope) -> Result<Done> {
+    let prepared = match request.target {
+        Some(spec) => prepare(engine, spec, call)?,
+        None => prepare_default_window(engine, call)?,
+    };
+    let (direction, amount) = (request.direction, request.amount);
+    let wheel_at = current_point(engine, &prepared)?.filter(|point| wheel_lands_in(engine, *point, &prepared.window));
+    let (method, note) = match (wheel_at, prepared.element()) {
+        (Some(point), _) => {
+            deckhand_input::scroll(point, direction, amount)?;
+            overlay::flash(engine, point);
+            ("wheel", None)
+        }
+        (None, Some(element)) => {
+            let id = element.id;
+            let moved = engine.uia.run(move |uia| uia.scroll(id, direction, amount))?;
+            ("pattern", edge_note(moved))
+        }
+        (None, None) => return Err(unreachable_point(&prepared.window)),
+    };
+    settle(engine, &prepared.window, call);
+    Ok(Done::by(method).with_note(note))
+}
+
+pub fn edge_note(moved: u32) -> Option<String> {
+    (moved == 0).then(|| AT_EDGE.to_string())
+}
+
+fn current_point(engine: &Engine, prepared: &Prepared) -> Result<Option<Point>> {
+    let window = deckhand_desktop::window(prepared.window.hwnd)?;
+    Ok(match &prepared.reach {
+        Reach::Element(element) => clickable_point(&refreshed(engine, element.id)?, &window),
+        Reach::Point { point, .. } => Some(*point),
+        Reach::Window => Some(window.rect.center()),
+    })
+}
+
+fn wheel_lands_in(engine: &Engine, point: Point, window: &WindowInfo) -> bool {
+    let landed = engine.uia.run(move |uia| {
+        let hit = uia.element_at(point)?;
+        uia.window_of(hit.id)
+    });
+    landed.is_ok_and(|hwnd| hwnd == window.hwnd)
+}
+
+fn unreachable_point(window: &WindowInfo) -> Error {
+    Error::new(ErrorCode::Obscured, format!("another window covers {} where the wheel would scroll", window.hwnd))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scrolling_nowhere_notes_the_edge() {
+        assert_eq!(edge_note(0).as_deref(), Some(AT_EDGE));
+        assert_eq!(edge_note(3), None);
+    }
+}

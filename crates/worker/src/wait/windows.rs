@@ -1,0 +1,102 @@
+use std::collections::HashSet;
+
+use deckhand_core::{Result, WindowInfo, WindowRef, format::window_line};
+
+use super::check::{Check, unless_gone};
+use crate::{app_windows::app_windows, engine::Engine, resolve};
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WindowsBefore(HashSet<WindowRef>);
+
+impl WindowsBefore {
+    pub fn now(engine: &Engine) -> Self {
+        let windows = app_windows(engine).unwrap_or_default();
+        Self(windows.iter().map(|window| window.hwnd).collect())
+    }
+
+    pub fn contains(&self, hwnd: WindowRef) -> bool {
+        self.0.contains(&hwnd)
+    }
+}
+
+pub fn opens(engine: &Engine, title: &str, before: &WindowsBefore) -> Result<Check> {
+    matching(engine, title).map(|found| window_opens(title, &found, before))
+}
+
+pub fn closes(engine: &Engine, title: &str) -> Result<Check> {
+    matching(engine, title).map(|found| window_closes(title, &found))
+}
+
+pub fn window_opens(title: &str, found: &[WindowInfo], before: &WindowsBefore) -> Check {
+    let (fresh, already): (Vec<&WindowInfo>, Vec<&WindowInfo>) =
+        found.iter().partition(|window| !before.contains(window.hwnd));
+    match (fresh.first(), already.len()) {
+        (Some(window), _) => Check::met(format!("{} is open", window_line(window))),
+        (None, 0) => Check::unmet(format!("no window matches \"{title}\"")),
+        (None, open) => {
+            Check::unmet(format!("no new window matches \"{title}\" ({open} was already open before the wait)"))
+        }
+    }
+}
+
+pub fn window_closes(title: &str, found: &[WindowInfo]) -> Check {
+    match found.first() {
+        Some(window) => Check::unmet(format!("{} is still open", window_line(window))),
+        None => Check::met(format!("no window matches \"{title}\"")),
+    }
+}
+
+fn matching(engine: &Engine, title: &str) -> Result<Vec<WindowInfo>> {
+    Ok(unless_gone(resolve::windows_matching(engine, title))?.unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use deckhand_core::{Rect, WindowState};
+
+    use super::*;
+
+    fn dialog(hwnd: i64) -> WindowInfo {
+        WindowInfo {
+            hwnd: WindowRef(hwnd),
+            title: "Save As".to_string(),
+            process: "notepad.exe".to_string(),
+            pid: 7,
+            class_name: "#32770".to_string(),
+            rect: Rect::new(0, 0, 300, 200),
+            state: WindowState::Normal,
+            foreground: true,
+            elevated: false,
+        }
+    }
+
+    fn before(hwnds: &[i64]) -> WindowsBefore {
+        WindowsBefore(hwnds.iter().copied().map(WindowRef).collect())
+    }
+
+    #[test]
+    fn a_newly_opened_window_satisfies_opens_and_blocks_closes() {
+        let opened = window_opens("Save As", &[dialog(42)], &before(&[]));
+        assert!(opened.met);
+        assert_eq!(opened.detail, "w42 notepad.exe \"Save As\" foreground is open");
+        let still = window_closes("Save As", &[dialog(42)]);
+        assert!(!still.met);
+        assert_eq!(still.detail, "w42 notepad.exe \"Save As\" foreground is still open");
+    }
+
+    #[test]
+    fn windows_open_before_the_wait_do_not_count() {
+        let old = window_opens("Save As", &[dialog(42)], &before(&[42]));
+        assert!(!old.met);
+        assert_eq!(old.detail, "no new window matches \"Save As\" (1 was already open before the wait)");
+        assert!(window_opens("Save As", &[dialog(42), dialog(43)], &before(&[42])).met);
+    }
+
+    #[test]
+    fn no_match_satisfies_closes_only() {
+        assert!(!window_opens("Save As", &[], &before(&[])).met);
+        let closed = window_closes("Save As", &[]);
+        assert!(closed.met);
+        assert_eq!(closed.detail, "no window matches \"Save As\"");
+    }
+}

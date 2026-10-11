@@ -85,7 +85,7 @@ Claude Code ──stdio (MCP)──▶ deckhand.exe mcp            tokio + rmcp;
                                ├─ hotkey thread           RegisterHotKey kill switch (message loop)
                                └─ overlay thread          click-through border + click ripple, hidden from captures
                                │
-                               └──▶ \\.\pipe\deckhand-events   JSON lines: actions, timings, state (any UI may subscribe)
+                               └──▶ %LOCALAPPDATA%\deckhand\logs\YYYY-MM-DD.jsonl   audit lines any UI can tail; the named event Local\deckhand-stopped is the shared kill switch
                                          ▼
                                    Claude Deck "Desktop" panel: live feed, pause/stop, deny-list editor
 ```
@@ -138,17 +138,15 @@ e5 button "Close"
 
 ### `act` steps
 
-`click`, `double_click`, `right_click`, `hover`, `type`, `key` (`"ctrl+s"`), `scroll`, `drag`, `select`, `toggle`, `expand`, `collapse`, `set_value`, `focus`, `wait_for`, `wait` (capped at 5 s).
-
-Each step can set `how:"auto"|"invoke"|"mouse"|"keys"|"paste"`. The result always reports which method actually ran.
+Each step is an object with a `do` field: `click` (`button`, `count` 1–3, `modifiers`, `how: auto|invoke|mouse`), `hover`, `type` (`text`, `enter`, `how: auto|keys|paste`), `set_value` (`value`), `key` (`keys`, `repeat`), `scroll` (`direction`, `amount`), `drag` (`from`, `to`), `select` (`option`), `toggle` (`on`), `expand`, `collapse`, `focus`, `wait_for` (`until` plus its fields) and `wait` (`ms`, capped at 5 s). Unknown fields are rejected. The result always reports which method actually ran.
 
 ```json
 {"steps":[
-  {"click":"role:menuitem name:File"},
-  {"click":"name:\"Save as\""},
-  {"wait_for":{"window":"Save As"}},
-  {"set_value":{"target":"id:1001","text":"C:\\temp\\a.txt"}},
-  {"key":"enter"}
+  {"do":"click","target":"window:\"Notepad\" >> role:menuitem name:File"},
+  {"do":"click","target":"name:\"Save as\""},
+  {"do":"wait_for","until":"window","window":"Save As"},
+  {"do":"set_value","target":"id:1001","value":"C:\\temp\\a.txt"},
+  {"do":"key","keys":"enter"}
 ], "return":"diff"}
 ```
 
@@ -241,7 +239,7 @@ Each phase ends with a measured gate. Effort assumes building it together with C
 | **1. See** (2 days) | Worker process plus IPC and deadlines; CUIAutomation8 setup; subtree snapshot; refs and fingerprints; formatter; window list; warm capture; `observe`, `find`, `screenshot`, `status` | observe p50 ≤60 ms, p95 ≤150 ms on Chrome and Deck; screenshot ≤30 ms warm; start ≤150 ms; Claude describes the screen in 1 call |
 | **2. Act** (3 days) | SendInput library; pattern actions; target resolution and hit-test check; foregrounding; settle and diff; `act` batches; event-driven `wait_for`; actor lock; user yield; kill switch; audit log | Notepad task (open, type 2,000 chars with newlines, save) in ≤4 calls and ≤1 s of tool time; zero read failures while you use the mouse |
 | **3. Apps, dialogs, text** (2 days) | `windows` launch/focus; `pick_file` (open, save, multi-file, `open_with`); `read_text` (TextPattern, OCR); `clipboard`; elevated/UAC detection; Chromium sparse retry; VS Code hang test | Upload through Chrome's native dialog in one `pick_file` call; a VS Code snapshot never hangs the server |
-| **4. Feel and switch over** (2 days) | Overlay; event pipe; Claude Deck "Desktop" panel (live feed, pause/stop, timings, deny-list editor); `desktop` subagent and skill; remove Windows-MCP | Head-to-head on the golden tasks (§13): ≥3× faster wall-clock and ≥40% fewer calls than the Windows-MCP baseline |
+| **4. Feel and switch over** (2 days) | Overlay; audit-log feed; Claude Deck "Desktop" panel (live feed, pause/stop, timings, deny-list editor); `desktop` subagent and skill; remove Windows-MCP | Head-to-head on the golden tasks (§13): ≥3× faster wall-clock and ≥40% fewer calls than the Windows-MCP baseline |
 | **5. Later** | Record/replay macros; CDP fast path for a dedicated automation Chrome profile; signed `uiAccess` build for elevated windows; UIA Remote Operations; OCR "set-of-marks" for canvas apps and games | — |
 
 Total: about 10 focused days to Phase 4.

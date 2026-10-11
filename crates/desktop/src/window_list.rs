@@ -2,7 +2,10 @@ use deckhand_core::{Context, Rect, Result, WindowInfo, WindowRef};
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM},
-        UI::WindowsAndMessaging::{EnumWindows, GW_OWNER, GetWindow},
+        UI::{
+            Input::KeyboardAndMouse::IsWindowEnabled,
+            WindowsAndMessaging::{EnumWindows, GW_OWNER, GetWindow},
+        },
     },
     core::BOOL,
 };
@@ -55,6 +58,11 @@ pub fn is_window(hwnd: WindowRef) -> bool {
     is_live(hwnd_of(hwnd))
 }
 
+pub fn is_enabled(hwnd: WindowRef) -> bool {
+    let handle = hwnd_of(hwnd);
+    is_live(handle) && unsafe { IsWindowEnabled(handle) }.as_bool()
+}
+
 pub fn foreground_window() -> Option<WindowRef> {
     current_foreground().map(ref_of)
 }
@@ -64,7 +72,7 @@ pub fn owner_of(hwnd: WindowRef) -> Option<WindowRef> {
     (!owner.is_invalid()).then(|| ref_of(owner))
 }
 
-fn top_level_windows() -> Result<Vec<HWND>> {
+pub(crate) fn top_level_windows() -> Result<Vec<HWND>> {
     let mut handles: Vec<HWND> = Vec::with_capacity(EXPECTED_TOP_LEVEL_WINDOWS);
     unsafe { EnumWindows(Some(collect_window), LPARAM(std::ptr::from_mut(&mut handles) as isize)) }
         .context("enumerating top-level windows")?;
@@ -147,6 +155,7 @@ mod tests {
         assert!(again.class_name == first.class_name, "class differs");
         assert!(again.process == first.process, "process differs");
         assert!(is_window(first.hwnd));
+        let _either_state_is_valid = is_enabled(first.hwnd);
     }
 
     #[test]
@@ -154,6 +163,7 @@ mod tests {
         let error = window(WindowRef(0)).unwrap_err();
         assert_eq!(error.code, deckhand_core::ErrorCode::NotFound);
         assert!(!is_window(WindowRef(0)));
+        assert!(!is_enabled(WindowRef(0)));
         assert!(owner_of(WindowRef(0)).is_none());
     }
 

@@ -1,5 +1,34 @@
-use deckhand_core::Result;
+mod act;
+mod app_windows;
+mod blackout;
+mod call_scope;
+mod cancel;
+mod clipboard_tool;
+mod com;
+mod default_window;
+mod engine;
+mod epoch;
+mod find;
+mod frames;
+mod guard;
+mod host;
+mod images;
+mod observe;
+mod on_screen;
+mod pick_file;
+mod read_target;
+mod read_text;
+mod resolve;
+mod screenshot;
+mod server;
+mod status;
+#[cfg(test)]
+mod test_fixture;
+mod until;
+mod wait;
+mod watch;
+mod window_classes;
+mod window_spec;
+mod window_tool;
 
-pub fn run() -> Result<()> {
-    todo!()
-}
+pub use server::run;

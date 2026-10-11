@@ -62,7 +62,7 @@ fn outranks(target: Option<u32>, own: Option<u32>) -> bool {
     }
 }
 
-fn open_for_query(pid: u32) -> Option<OwnedHandle> {
+pub(crate) fn open_for_query(pid: u32) -> Option<OwnedHandle> {
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
     adopt(handle)
 }
