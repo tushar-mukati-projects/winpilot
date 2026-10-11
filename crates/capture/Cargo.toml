@@ -1,0 +1,19 @@
+[package]
+name = "deckhand-capture"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+deckhand-core.workspace = true
+windows.workspace = true
+windows-core.workspace = true
+parking_lot.workspace = true
+windows-future.workspace = true
+fast_image_resize.workspace = true
+jpeg-encoder.workspace = true
+png.workspace = true
+
+[lints]
+workspace = true

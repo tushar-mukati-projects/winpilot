@@ -1,0 +1,25 @@
+[package]
+name = "deckhand"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "deckhand"
+path = "src/main.rs"
+
+[dependencies]
+deckhand-core.workspace = true
+deckhand-worker.workspace = true
+rmcp.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+toml.workspace = true
+parking_lot.workspace = true
+windows.workspace = true
+
+[lints]
+workspace = true

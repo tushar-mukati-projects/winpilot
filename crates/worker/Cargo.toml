@@ -1,0 +1,21 @@
+[package]
+name = "deckhand-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+deckhand-core.workspace = true
+deckhand-uia.workspace = true
+deckhand-capture.workspace = true
+deckhand-input.workspace = true
+deckhand-desktop.workspace = true
+windows.workspace = true
+windows-core.workspace = true
+parking_lot.workspace = true
+base64.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

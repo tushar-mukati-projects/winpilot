@@ -1,0 +1,111 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+exclude = ["bench/deskbench"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+
+[workspace.dependencies]
+deckhand-core = { path = "crates/core" }
+deckhand-uia = { path = "crates/uia" }
+deckhand-capture = { path = "crates/capture" }
+deckhand-input = { path = "crates/input" }
+deckhand-desktop = { path = "crates/desktop" }
+deckhand-worker = { path = "crates/worker" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"
+toml = "0.9"
+rmcp = { version = "3.5.1", default-features = false, features = ["server", "macros", "transport-io", "base64"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "sync", "time"] }
+parking_lot = "0.12"
+base64 = "0.22"
+fast_image_resize = "6.1.0"
+jpeg-encoder = { version = "0.7.1", features = ["simd"] }
+png = "0.18"
+windows-core = "0.62.2"
+windows-future = "0.3.2"
+
+[workspace.dependencies.windows]
+version = "0.62.2"
+features = [
+    "Foundation",
+    "Foundation_Collections",
+    "Globalization",
+    "Graphics",
+    "Graphics_Imaging",
+    "Media_Ocr",
+    "Security_Cryptography",
+    "Storage_Streams",
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_JobObjects",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_ProcessStatus",
+    "Win32_System_StationsAndDesktops",
+    "Win32_System_SystemInformation",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+    "Win32_System_WinRT",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+struct_excessive_bools = "allow"
+unwrap_used = "warn"
+expect_used = "warn"
+print_stdout = "deny"
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

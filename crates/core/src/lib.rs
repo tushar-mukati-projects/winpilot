@@ -1,0 +1,21 @@
+pub mod config;
+pub mod diff;
+pub mod element;
+pub mod error;
+pub mod format;
+pub mod geometry;
+pub mod ipc;
+pub mod keys;
+pub mod protocol;
+pub mod refs;
+pub mod role;
+pub mod selector;
+pub mod target;
+
+pub use config::Config;
+pub use element::{Element, ElementState, Patterns, Snapshot, WindowInfo, WindowState};
+pub use error::{Context, Error, ErrorCode, Result};
+pub use geometry::{ImageMapping, Point, Rect};
+pub use refs::{ElementRef, ImageRef, WindowRef};
+pub use role::Role;
+pub use target::{Target, TargetSpec};

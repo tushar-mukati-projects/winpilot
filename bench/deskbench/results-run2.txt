@@ -1,0 +1,79 @@
+deskbench: read-only desktop-control benchmark (process entry 14.8 ms after creation)
+
+[1] Window enumeration (EnumWindows, visible, title+class+process+rect+z), 5 runs
+  visible top-level windows: 17   app-like (titled, uncloaked, non-tool, non-zero): 2
+  fresh pid->name cache: median 0.18 ms (min 0.17)   warm pid cache: median 0.07 ms (min 0.07)
+  app-like windows (z, process, class, flags), titles intentionally not printed:
+    z=25   chrome.exe                   Chrome_WidgetWin_1                   
+    z=26   claude-deck.exe              Tauri Window                         
+  chrome target is the same window as an earlier target; reusing those numbers
+  no explorer window found
+  no electron window found
+
+[2] UI Automation (raw `windows` crate, CUIAutomation8 on a COINIT_MULTITHREADED thread), 5 runs per variant
+  UIA target: foreground (chrome.exe / Chrome_WidgetWin_1)
+  UIA target: webview2/tauri (claude-deck.exe / Tauri Window)
+  UIA target: taskbar (explorer.exe stand-in) (explorer.exe / Shell_TrayWnd)
+  CoCreateInstance(CUIAutomation8): 5.45 ms; IUIAutomation2 timeouts set (connection 2 s, transaction 20 s): true
+  target foreground (chrome.exe / Chrome_WidgetWin_1)
+    first-touch interactive snapshot (cold): 79.6 ms, 161 elements
+    a) TreeWalker uncached                 elements    423  median    456.9 ms  min    429.3  runs 5  on-screen   200  interactive-on-screen    83  invokable     0  text chars    5577
+    b) FindAllBuildCache full              elements    423  median    117.8 ms  min    114.2  runs 5  on-screen   200  interactive-on-screen    83  invokable   148  text chars    5577
+    c) FindAllBuildCache interactive       elements    161  median     64.4 ms  min     61.4  runs 5  on-screen    83  interactive-on-screen    83  invokable   138  text chars    1425
+    d) BuildUpdatedCache tree              elements    423  median     39.9 ms  min     38.7  runs 5  on-screen   200  interactive-on-screen    83  invokable   148  text chars    5577
+    e) FindAllBuildCache full, mode None   elements    423  median    111.2 ms  min    102.3  runs 5  on-screen   200  interactive-on-screen    83  invokable   148  text chars    5577
+    f) BuildUpdatedCache tree interactive  elements    162  median     36.4 ms  min     36.2  runs 5  on-screen    84  interactive-on-screen    83  invokable   138  text chars    1468
+  target webview2/tauri (claude-deck.exe / Tauri Window)
+    first-touch interactive snapshot (cold): 51.6 ms, 49 elements
+    a) TreeWalker uncached                 elements    102  median    141.7 ms  min    138.2  runs 5  on-screen    84  interactive-on-screen    35  invokable     0  text chars    1373
+    b) FindAllBuildCache full              elements    102  median     57.0 ms  min     55.2  runs 5  on-screen    84  interactive-on-screen    35  invokable    39  text chars    1373
+    c) FindAllBuildCache interactive       elements     49  median     45.3 ms  min     43.8  runs 5  on-screen    35  interactive-on-screen    35  invokable    35  text chars    1126
+    d) BuildUpdatedCache tree              elements    102  median     39.2 ms  min     35.9  runs 5  on-screen    84  interactive-on-screen    35  invokable    39  text chars    1373
+    e) FindAllBuildCache full, mode None   elements    102  median     54.3 ms  min     52.2  runs 5  on-screen    84  interactive-on-screen    35  invokable    39  text chars    1373
+    f) BuildUpdatedCache tree interactive  elements     50  median     37.9 ms  min     36.6  runs 5  on-screen    36  interactive-on-screen    35  invokable    35  text chars    1137
+  target taskbar (explorer.exe stand-in) (explorer.exe / Shell_TrayWnd)
+    first-touch interactive snapshot (cold): 11.8 ms, 0 elements
+    a) TreeWalker uncached                 elements      3  median     11.2 ms  min     10.6  runs 5  on-screen     2  interactive-on-screen     0  invokable     0  text chars      27
+    b) FindAllBuildCache full              elements      3  median     9.96 ms  min     9.80  runs 5  on-screen     2  interactive-on-screen     0  invokable     0  text chars      27
+    c) FindAllBuildCache interactive       elements      0  median     9.69 ms  min     8.83  runs 5  on-screen     0  interactive-on-screen     0  invokable     0  text chars       0
+    d) BuildUpdatedCache tree              elements      3  median     10.4 ms  min     8.83  runs 5  on-screen     2  interactive-on-screen     0  invokable     0  text chars      27
+    e) FindAllBuildCache full, mode None   elements      3  median     10.8 ms  min     8.97  runs 5  on-screen     2  interactive-on-screen     0  invokable     0  text chars      27
+    f) BuildUpdatedCache tree interactive  elements      1  median     10.4 ms  min     8.75  runs 5  on-screen     0  interactive-on-screen     0  invokable     0  text chars       7
+  UIA section wall time: 6.5 s
+
+[3] Screen capture, primary monitor 2560x1600 (physical px); frames kept in memory only, never written to disk
+  GDI BitBlt (DC+DIB+blit+copy per call)       cold     42.9   warm med     31.6  min     27.2  2560x1600 non-black 100%
+  DXGI Desktop Duplication (raw)               cold     87.6   warm med     4.40  min     4.14  open 60.5 ms, DuplicateOutput1 via AMD Radeon(TM) Graphics, 2 acquires (1 pointer-only) before first image, 0/5 warm grabs had a new frame, non-black 100%
+  WGC raw, persistent session (latest frame)   cold    129.5   warm med     4.43  min     4.13  device 46.7 ms, 0/5 warm grabs had a new frame, border disabled: true, non-black 100%
+  WGC raw, new session per call (device reused) cold        -   warm med     73.1  min     64.3  item+pool+session+first frame each call
+  windows-capture 2.0.1 WGC one-shot per call  cold    146.6   warm med    132.9  min    130.6  2560x1600, own thread+device+session per call
+  windows-capture 2.0.1 DXGI duplication       cold     50.4   warm med        -  min        -  2560x1600, 5/5 warm grabs timed out (no new frame, no cached copy)
+  xcap 0.9.8 Monitor::capture_image (GDI)      cold     52.8   warm med     49.4  min     48.0  2560x1600, includes Monitor::all() + RGBA convert
+
+[4] Downscale + encode (source frame: DXGI 2560x1600), 5 runs median
+  resize fast_image_resize bilinear 2560x1600 -> 1568x980            5.89 ms    6146560 bytes
+  resize fast_image_resize lanczos3                                  7.66 ms    6146560 bytes
+  resize fast_image_resize interpolation bilinear                    6.42 ms    6146560 bytes
+  resize image crate triangle (reference)                            69.7 ms    6146560 bytes
+  BGRA -> RGB swizzle                                                2.55 ms    4609920 bytes
+  JPEG q75 image crate                                               24.1 ms     112666 bytes
+  JPEG q75 jpeg-encoder (simd, BGRA in)                              8.19 ms      90281 bytes
+  PNG fast image crate                                               2.10 ms     241480 bytes
+  PNG default image crate                                            29.4 ms     205642 bytes
+  WebP lossless image crate                                          4.65 ms     174038 bytes
+  JPEG q75 jpeg-encoder full-res 2560x1600 (reference)               21.4 ms     225139 bytes
+
+[5] OCR (Windows.Media.Ocr); recognised text is never printed or stored
+  recognizer languages: ["en-US"]; MaxImageDimension 10000; TryCreateFromUserProfileLanguages 0.47 ms
+  downscaled 1568x980                      first    110.9 ms  warm med     97.2 ms  (bitmap copy 1.88 ms)  lines   42  words   208
+  full-res 2560x1600                       first     91.2 ms  warm med    126.4 ms  (bitmap copy 4.74 ms)  lines   65  words   275
+
+[6] Process cold start to first UIA result (5 child launches of this binary with --probe)
+  run 1: parent saw result after 125.6 ms (process exit 128.9 ms) | child: create->main=26.7 main->uia_ready=5.6 create->first_uia_result=42.6 create->interactive_snapshot=124.9 snapshot_elements=209 (snapshot itself 81.9)
+  run 2: parent saw result after 125.2 ms (process exit 128.3 ms) | child: create->main=21.2 main->uia_ready=6.9 create->first_uia_result=37.3 create->interactive_snapshot=124.8 snapshot_elements=209 (snapshot itself 86.9)
+  run 3: parent saw result after 118.4 ms (process exit 121.5 ms) | child: create->main=19.8 main->uia_ready=4.9 create->first_uia_result=34.9 create->interactive_snapshot=117.9 snapshot_elements=209 (snapshot itself 82.6)
+  run 4: parent saw result after 119.7 ms (process exit 123.1 ms) | child: create->main=20.7 main->uia_ready=5.9 create->first_uia_result=36.2 create->interactive_snapshot=119.2 snapshot_elements=209 (snapshot itself 82.5)
+  run 5: parent saw result after 123.1 ms (process exit 126.1 ms) | child: create->main=20.4 main->uia_ready=5.6 create->first_uia_result=36.3 create->interactive_snapshot=122.5 snapshot_elements=209 (snapshot itself 85.7)
+  spawn -> interactive snapshot on stdout: first 125.6 ms, median 123.1 ms; process create -> first UIA result: median 36.3 ms
+
+done, total 11.0 s

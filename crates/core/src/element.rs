@@ -1,0 +1,192 @@
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    geometry::Rect,
+    refs::{ElementRef, WindowRef},
+    role::Role,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct ElementState {
+    pub enabled: bool,
+    pub focused: bool,
+    pub focusable: bool,
+    pub offscreen: bool,
+    pub read_only: bool,
+    pub password: bool,
+    pub toggled: Option<bool>,
+    pub expanded: Option<bool>,
+    pub selected: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Patterns {
+    pub invoke: bool,
+    pub value: bool,
+    pub toggle: bool,
+    pub selection_item: bool,
+    pub expand_collapse: bool,
+    pub scroll: bool,
+    pub scroll_item: bool,
+    pub text: bool,
+    pub range_value: bool,
+    pub legacy: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Element {
+    pub id: ElementRef,
+    pub depth: u16,
+    pub role: Role,
+    pub name: String,
+    pub value: Option<String>,
+    pub automation_id: String,
+    pub class_name: String,
+    pub rect: Rect,
+    pub state: ElementState,
+    pub patterns: Patterns,
+}
+
+impl Element {
+    pub fn is_actionable(&self) -> bool {
+        self.role.is_interactive()
+            || self.patterns.invoke
+            || self.patterns.toggle
+            || self.patterns.selection_item
+            || self.patterns.expand_collapse
+            || (self.patterns.value && !self.state.read_only)
+    }
+
+    pub fn is_visible(&self) -> bool {
+        !self.state.offscreen && !self.rect.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowState {
+    Normal,
+    Minimized,
+    Maximized,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WindowInfo {
+    pub hwnd: WindowRef,
+    pub title: String,
+    pub process: String,
+    pub pid: u32,
+    pub class_name: String,
+    pub rect: Rect,
+    pub state: WindowState,
+    pub foreground: bool,
+    pub elevated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Snapshot {
+    pub window: WindowInfo,
+    pub elements: Vec<Element>,
+    pub focused: Option<ElementRef>,
+    pub truncated: bool,
+}
+
+impl Snapshot {
+    pub fn get(&self, id: ElementRef) -> Option<&Element> {
+        self.elements.iter().find(|element| element.id == id)
+    }
+
+    pub fn index_of(&self, id: ElementRef) -> Option<usize> {
+        self.elements.iter().position(|element| element.id == id)
+    }
+
+    pub fn ancestors(&self, index: usize) -> Vec<&Element> {
+        let mut chain = Vec::new();
+        let Some(mut depth) = self.elements.get(index).map(|element| element.depth) else { return chain };
+        for element in self.elements[..index].iter().rev() {
+            if element.depth < depth {
+                depth = element.depth;
+                chain.push(element);
+            }
+        }
+        chain.reverse();
+        chain
+    }
+
+    pub fn descendants(&self, index: usize) -> &[Element] {
+        let Some(depth) = self.elements.get(index).map(|element| element.depth) else { return &[] };
+        let rest = &self.elements[index + 1..];
+        let end = rest.iter().position(|element| element.depth <= depth).unwrap_or(rest.len());
+        &rest[..end]
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod fixtures {
+    use super::*;
+    use crate::geometry::Rect;
+
+    pub fn window(title: &str) -> WindowInfo {
+        WindowInfo {
+            hwnd: WindowRef(0x10),
+            title: title.to_string(),
+            process: "notepad.exe".to_string(),
+            pid: 100,
+            class_name: "Notepad".to_string(),
+            rect: Rect::new(0, 0, 800, 600),
+            state: WindowState::Normal,
+            foreground: true,
+            elevated: false,
+        }
+    }
+
+    pub fn element(id: u32, depth: u16, role: Role, name: &str) -> Element {
+        Element {
+            id: ElementRef(id),
+            depth,
+            role,
+            name: name.to_string(),
+            value: None,
+            automation_id: String::new(),
+            class_name: String::new(),
+            rect: Rect::new(10, 10, 50, 20),
+            state: ElementState { enabled: true, ..ElementState::default() },
+            patterns: Patterns::default(),
+        }
+    }
+
+    pub fn snapshot(elements: Vec<Element>) -> Snapshot {
+        Snapshot { window: window("Untitled - Notepad"), elements, focused: None, truncated: false }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fixtures::{element, snapshot};
+    use super::*;
+
+    fn sample() -> Snapshot {
+        snapshot(vec![
+            element(1, 0, Role::Window, "Notepad"),
+            element(2, 1, Role::MenuBar, "Application"),
+            element(3, 2, Role::MenuItem, "File"),
+            element(4, 2, Role::MenuItem, "Edit"),
+            element(5, 1, Role::Edit, "Text editor"),
+        ])
+    }
+
+    #[test]
+    fn ancestors_walk_up_by_depth() {
+        let snap = sample();
+        let names: Vec<&str> = snap.ancestors(3).iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["Notepad", "Application"]);
+    }
+
+    #[test]
+    fn descendants_stop_at_sibling() {
+        let snap = sample();
+        let names: Vec<&str> = snap.descendants(1).iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, ["File", "Edit"]);
+        assert!(snap.descendants(4).is_empty());
+    }
+}
