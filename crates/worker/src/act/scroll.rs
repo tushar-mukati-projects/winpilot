@@ -3,10 +3,11 @@ use deckhand_core::{Error, ErrorCode, Point, Result, TargetSpec, WindowInfo, pro
 use super::{
     done::Done,
     locate::refreshed,
-    overlay, settle,
+    motion::move_pointer,
+    settle,
     target::{Prepared, prepare, prepare_default_window},
 };
-use crate::{call_scope::CallScope, engine::Engine, on_screen::clickable_point, resolve::Reach};
+use crate::{call_scope::CallScope, engine::Engine, on_screen::clickable_point, overlay, resolve::Reach};
 
 const AT_EDGE: &str = "already at the edge";
 
@@ -14,6 +15,7 @@ pub struct ScrollRequest<'a> {
     pub target: Option<&'a TargetSpec>,
     pub direction: Direction,
     pub amount: u32,
+    pub glide_ms: Option<u64>,
 }
 
 pub fn step(engine: &Engine, request: &ScrollRequest<'_>, call: &CallScope) -> Result<Done> {
@@ -25,8 +27,9 @@ pub fn step(engine: &Engine, request: &ScrollRequest<'_>, call: &CallScope) -> R
     let wheel_at = current_point(engine, &prepared)?.filter(|point| wheel_lands_in(engine, *point, &prepared.window));
     let (method, note) = match (wheel_at, prepared.element()) {
         (Some(point), _) => {
+            move_pointer(engine, point, request.glide_ms)?;
             deckhand_input::scroll(point, direction, amount)?;
-            overlay::flash(engine, point);
+            overlay::click(engine, point, 1);
             ("wheel", None)
         }
         (None, Some(element)) => {

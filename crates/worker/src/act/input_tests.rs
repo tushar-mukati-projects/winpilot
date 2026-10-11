@@ -36,6 +36,7 @@ fn mouse_clicks_count_single_and_double() {
         count,
         modifiers: None,
         how,
+        glide_ms: None,
     };
     let report = act(engine, vec![click(1, ClickHow::Mouse)]);
     assert_eq!(method(&report, 0), Some("mouse"));
@@ -118,9 +119,14 @@ fn scroll_hover_and_drag_use_the_mouse() {
     let engine = engine();
     let Some(fixture) = FixtureApp::launch_on_screen() else { return };
     let steps = vec![
-        Step::Scroll { target: Some(target(&fixture, "id:2009")), direction: Direction::Down, amount: 5 },
-        Step::Hover { target: target(&fixture, "id:2003") },
-        Step::Drag { from: target(&fixture, "id:2001"), to: target(&fixture, "id:2002") },
+        Step::Scroll {
+            target: Some(target(&fixture, "id:2009")),
+            direction: Direction::Down,
+            amount: 5,
+            glide_ms: None,
+        },
+        Step::Hover { target: target(&fixture, "id:2003"), glide_ms: None },
+        Step::Drag { from: target(&fixture, "id:2001"), to: target(&fixture, "id:2002"), glide_ms: None },
     ];
     let report = act(engine, steps);
     assert_eq!(method(&report, 0), Some("wheel"));

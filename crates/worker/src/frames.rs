@@ -1,7 +1,7 @@
 use deckhand_capture::{Frame, FrameSource};
 use deckhand_core::{Error, Rect, Result, WindowInfo, WindowRef, WindowState};
 
-use crate::{blackout, engine::Engine};
+use crate::{blackout, engine::Engine, overlay};
 
 pub fn region(engine: &Engine, rect: Rect) -> Result<Frame> {
     screened(engine, None, || engine.capturer.screen(rect))
@@ -29,7 +29,10 @@ fn capture_window(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> R
         let rect = area.unwrap_or(window.rect);
         return screened(engine, Some(window.hwnd), || engine.capturer.screen(rect));
     }
-    let frame = engine.capturer.window(window.hwnd)?;
+    let frame = {
+        let _hidden = overlay::hidden_for_capture(engine);
+        engine.capturer.window(window.hwnd)?
+    };
     let frame = match area {
         Some(area) => frame.crop(area).ok_or_else(outside_window)?,
         None => frame,
@@ -42,7 +45,10 @@ fn capture_window(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> R
 
 fn screened(engine: &Engine, above: Option<WindowRef>, capture: impl FnOnce() -> Result<Frame>) -> Result<Frame> {
     let covered_before = denied_rects(engine, above)?;
-    let frame = capture()?;
+    let frame = {
+        let _hidden = overlay::hidden_for_capture(engine);
+        capture()?
+    };
     blacked_out(engine, frame, above, covered_before)
 }
 

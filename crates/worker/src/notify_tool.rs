@@ -2,9 +2,11 @@ use deckhand_core::{
     Result,
     protocol::{NotifyArgs, NotifyReport},
 };
-use deckhand_desktop::NotifyOutcome;
+use deckhand_desktop::{NotifyOutcome, QuietReason};
 
 use crate::{call_scope::CallScope, engine::Engine};
+
+const BALLOON_NOTE: &str = "sent as a tray balloon; Windows may hold it back";
 
 pub fn run(engine: &Engine, args: &NotifyArgs, call: &CallScope) -> Result<NotifyReport> {
     args.validate()?;
@@ -14,15 +16,30 @@ pub fn run(engine: &Engine, args: &NotifyArgs, call: &CallScope) -> Result<Notif
 
 fn report(outcome: NotifyOutcome) -> NotifyReport {
     match outcome {
-        NotifyOutcome::Shown => NotifyReport { shown: true, note: None },
-        NotifyOutcome::ShownQuiet(reason) => NotifyReport { shown: false, note: Some(reason.describe().to_string()) },
+        NotifyOutcome::Sent { quiet: None } => NotifyReport { shown: true, note: None },
+        NotifyOutcome::Sent { quiet: Some(reason) } => NotifyReport { shown: true, note: Some(quiet_toast(reason)) },
+        NotifyOutcome::Blocked(block) => NotifyReport { shown: false, note: Some(block.describe().to_string()) },
+        NotifyOutcome::SentAsBalloon { quiet: None } => {
+            NotifyReport { shown: true, note: Some(BALLOON_NOTE.to_string()) }
+        }
+        NotifyOutcome::SentAsBalloon { quiet: Some(reason) } => {
+            NotifyReport { shown: false, note: Some(quiet_balloon(reason)) }
+        }
     }
+}
+
+fn quiet_toast(reason: QuietReason) -> String {
+    format!("sent; Windows may hold the banner back during {}, but it stays in Notification Center", reason.describe())
+}
+
+fn quiet_balloon(reason: QuietReason) -> String {
+    format!("sent as a tray balloon, but Windows holds balloons back during {}", reason.describe())
 }
 
 #[cfg(test)]
 mod tests {
     use deckhand_core::{ErrorCode, format};
-    use deckhand_desktop::QuietReason;
+    use deckhand_desktop::ToastBlock;
 
     use super::*;
     use crate::test_fixture::engine;
@@ -31,11 +48,41 @@ mod tests {
         NotifyArgs { title: title.to_string(), message: message.to_string() }
     }
 
+    fn text(outcome: NotifyOutcome) -> String {
+        format::notify(&report(outcome))
+    }
+
     #[test]
-    fn outcomes_become_reports() {
-        assert_eq!(report(NotifyOutcome::Shown), NotifyReport { shown: true, note: None });
-        let quiet = report(NotifyOutcome::ShownQuiet(QuietReason::QuietHours));
-        assert_eq!(format::notify(&quiet), "notification suppressed by Focus Assist (quiet hours)");
+    fn toasts_read_as_sent_and_say_when_windows_may_keep_them_quiet() {
+        assert_eq!(text(NotifyOutcome::Sent { quiet: None }), "notification sent");
+        assert_eq!(
+            text(NotifyOutcome::Sent { quiet: Some(QuietReason::Presentation) }),
+            "notification sent; Windows may hold the banner back during presentation mode, but it stays in Notification Center"
+        );
+    }
+
+    #[test]
+    fn blocked_toasts_name_the_setting_and_are_not_shown() {
+        let blocked = report(NotifyOutcome::Blocked(ToastBlock::ForApplication));
+        assert!(!blocked.shown);
+        assert_eq!(
+            format::notify(&blocked),
+            "notification not shown: notifications from Deckhand are turned off in Settings > System > Notifications"
+        );
+    }
+
+    #[test]
+    fn balloons_are_reported_honestly() {
+        assert_eq!(
+            text(NotifyOutcome::SentAsBalloon { quiet: None }),
+            "notification sent as a tray balloon; Windows may hold it back"
+        );
+        let quiet = report(NotifyOutcome::SentAsBalloon { quiet: Some(QuietReason::QuietTime) });
+        assert!(!quiet.shown);
+        assert_eq!(
+            format::notify(&quiet),
+            "notification not shown: sent as a tray balloon, but Windows holds balloons back during the first hour after sign-in or a Windows upgrade"
+        );
     }
 
     #[test]

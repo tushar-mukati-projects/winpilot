@@ -1,49 +1,39 @@
-use std::time::{Duration, Instant};
-
-use deckhand_capture::{Frame, Redactor};
+use deckhand_capture::{Frame, Redact};
 use deckhand_core::{Rect, Result, config::GuardConfig};
 use deckhand_desktop::VisibleWindow;
 
 use crate::blackout;
 
-const REFRESH_EVERY: Duration = Duration::from_millis(500);
-
-struct DeniedWindows {
+pub struct DeniedWindows {
     guard: GuardConfig,
     rects: Vec<Rect>,
-    refreshed: Option<Instant>,
     unknown: bool,
 }
 
-pub fn redactor(guard: GuardConfig) -> Redactor {
-    let mut denied = DeniedWindows::new(guard);
-    Box::new(move |frame: &mut Frame| {
-        if denied.is_due(Instant::now()) {
-            denied.refresh(deckhand_desktop::all_visible_windows());
-        }
-        denied.cover(frame);
-    })
+impl DeniedWindows {
+    pub const fn new(guard: GuardConfig) -> Self {
+        Self { guard, rects: Vec::new(), unknown: true }
+    }
+
+    fn update(&mut self, windows: Result<Vec<VisibleWindow>>) -> bool {
+        let guard = &self.guard;
+        let (rects, unknown) = match windows {
+            Ok(windows) => (
+                blackout::covering_rects(&windows, |window| guard.denies_window(&window.process, &window.title), None),
+                false,
+            ),
+            Err(_) => (Vec::new(), true),
+        };
+        let changed = rects != self.rects || unknown != self.unknown;
+        self.rects = rects;
+        self.unknown = unknown;
+        changed
+    }
 }
 
-impl DeniedWindows {
-    const fn new(guard: GuardConfig) -> Self {
-        Self { guard, rects: Vec::new(), refreshed: None, unknown: true }
-    }
-
-    fn is_due(&self, now: Instant) -> bool {
-        self.refreshed.is_none_or(|at| now.saturating_duration_since(at) >= REFRESH_EVERY)
-    }
-
-    fn refresh(&mut self, windows: Result<Vec<VisibleWindow>>) {
-        self.refreshed = Some(Instant::now());
-        let Ok(windows) = windows else {
-            self.unknown = true;
-            return;
-        };
-        let guard = &self.guard;
-        self.rects =
-            blackout::covering_rects(&windows, |window| guard.denies_window(&window.process, &window.title), None);
-        self.unknown = false;
+impl Redact for DeniedWindows {
+    fn refresh(&mut self) -> bool {
+        self.update(deckhand_desktop::all_visible_windows())
     }
 
     fn cover(&self, frame: &mut Frame) {
@@ -93,7 +83,7 @@ mod tests {
         let mut denied = DeniedWindows::new(GuardConfig::default());
         let windows =
             vec![visible("KeePass.exe", Rect::new(110, 60, 5, 4)), visible("notepad.exe", Rect::new(100, 50, 40, 30))];
-        denied.refresh(Ok(windows));
+        assert!(denied.update(Ok(windows)));
         let mut frame = white(Point::new(100, 50), 40, 30);
         denied.cover(&mut frame);
         assert_eq!(black_pixels(&frame), 20);
@@ -105,32 +95,36 @@ mod tests {
         let mut untouched = white(Point::new(0, 0), 8, 8);
         denied.cover(&mut untouched);
         assert_eq!(black_pixels(&untouched), 64);
-        denied.refresh(Err(Error::internal("enumeration failed")));
+        assert!(!denied.update(Err(Error::internal("enumeration failed"))));
         let mut frame = white(Point::new(0, 0), 8, 8);
         denied.cover(&mut frame);
         assert_eq!(black_pixels(&frame), 64);
-        denied.refresh(Ok(Vec::new()));
+        assert!(denied.update(Ok(Vec::new())));
         let mut clear = white(Point::new(0, 0), 8, 8);
         denied.cover(&mut clear);
         assert_eq!(black_pixels(&clear), 0);
     }
 
     #[test]
-    fn the_window_list_is_refreshed_about_twice_a_second() {
+    fn every_refresh_reports_whether_the_denied_areas_changed() {
         let mut denied = DeniedWindows::new(GuardConfig::default());
-        let now = Instant::now();
-        assert!(denied.is_due(now));
-        denied.refresh(Ok(Vec::new()));
-        let refreshed = denied.refreshed.unwrap();
-        assert!(!denied.is_due(refreshed + Duration::from_millis(499)));
-        assert!(denied.is_due(refreshed + REFRESH_EVERY));
+        let vault = || vec![visible("KeePass.exe", Rect::new(0, 0, 10, 10))];
+        assert!(denied.update(Ok(vault())));
+        assert!(!denied.update(Ok(vault())));
+        assert!(denied.update(Ok(vec![visible("KeePass.exe", Rect::new(5, 0, 10, 10))])));
+        assert!(denied.update(Ok(Vec::new())));
+        assert!(!denied.update(Ok(vec![visible("notepad.exe", Rect::new(0, 0, 10, 10))])));
     }
 
     #[test]
     fn the_live_redactor_runs_against_the_real_window_list() {
-        let mut redact = redactor(GuardConfig::default());
+        let mut redactor = DeniedWindows::new(GuardConfig::default());
+        let started = std::time::Instant::now();
+        assert!(redactor.refresh());
+        let elapsed = started.elapsed();
         let mut frame = white(Point::new(-90_000, -90_000), 4, 4);
-        redact(&mut frame);
+        redactor.cover(&mut frame);
         assert_eq!(black_pixels(&frame), 0);
+        eprintln!("timing: denied-window refresh took {:.2} ms", elapsed.as_secs_f64() * 1000.0);
     }
 }

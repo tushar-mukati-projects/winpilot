@@ -8,6 +8,7 @@ use crate::{
     element::{Element, Snapshot, WindowInfo},
     error::{Error, Result},
     geometry::{ImageMapping, Rect},
+    glide::MAX_GLIDE_MS,
     keys::parse_keys,
     refs::ImageRef,
     target::{Target, TargetSpec, parse_text_target},
@@ -85,7 +86,7 @@ pub struct ScreenshotArgs {
     #[schemars(description = "Capture a whole monitor by index (0 = primary).")]
     pub monitor: Option<u32>,
     #[schemars(
-        description = "Size and detail: low (960 px, q60), medium (default, 1280 px, q80), high (1600 px, q88) or max (native size, q95)."
+        description = "Size and detail: low (960 px, q60), medium (default, 1280 px, q80), high (1600 px, q88) or max (native size up to 8000 px per side, q95)."
     )]
     pub preset: Option<Quality>,
     #[schemars(description = "Maximum image width in pixels, 64-2576; overrides the preset.")]
@@ -171,9 +172,19 @@ pub enum Step {
         modifiers: Option<String>,
         #[serde(default)]
         how: ClickHow,
+        #[serde(default)]
+        #[schemars(
+            description = "Milliseconds the cursor glides there first; omit for the configured default, 0 jumps."
+        )]
+        glide_ms: Option<u64>,
     },
     Hover {
         target: TargetSpec,
+        #[serde(default)]
+        #[schemars(
+            description = "Milliseconds the cursor glides there first; omit for the configured default, 0 jumps."
+        )]
+        glide_ms: Option<u64>,
     },
     Type {
         #[serde(default)]
@@ -203,10 +214,50 @@ pub enum Step {
         direction: Direction,
         #[serde(default = "default_scroll_amount")]
         amount: u32,
+        #[serde(default)]
+        #[schemars(
+            description = "Milliseconds the cursor glides there first; omit for the configured default, 0 jumps."
+        )]
+        glide_ms: Option<u64>,
     },
     Drag {
         from: TargetSpec,
         to: TargetSpec,
+        #[serde(default)]
+        #[schemars(
+            description = "Milliseconds the cursor glides there first; omit for the configured default, 0 jumps."
+        )]
+        glide_ms: Option<u64>,
+    },
+    Move {
+        to: TargetSpec,
+        #[serde(default)]
+        #[schemars(
+            description = "Milliseconds the cursor glides there first; omit for the configured default, 0 jumps."
+        )]
+        glide_ms: Option<u64>,
+    },
+    MouseDown {
+        target: TargetSpec,
+        #[serde(default)]
+        button: MouseButton,
+        #[serde(default)]
+        #[schemars(
+            description = "Milliseconds the cursor glides there first; omit for the configured default, 0 jumps."
+        )]
+        glide_ms: Option<u64>,
+    },
+    MouseUp {
+        #[serde(default)]
+        #[schemars(description = "Where to release; omit to release at the current cursor position.")]
+        target: Option<TargetSpec>,
+        #[serde(default)]
+        button: MouseButton,
+        #[serde(default)]
+        #[schemars(
+            description = "Milliseconds the cursor glides there first; omit for the configured default, 0 jumps."
+        )]
+        glide_ms: Option<u64>,
     },
     Select {
         target: TargetSpec,
@@ -716,7 +767,8 @@ impl Call {
             Self::Screenshot(_) => Duration::from_secs(8),
             Self::ReadText(_) => Duration::from_secs(20),
             Self::Status => Duration::from_secs(3),
-            Self::Clipboard(_) | Self::Notify(_) => Duration::from_secs(5),
+            Self::Clipboard(_) => Duration::from_secs(5),
+            Self::Notify(_) => Duration::from_secs(12),
             Self::WaitFor(condition) => condition.timeout() + Duration::from_secs(5),
             Self::PickFile(args) => {
                 args.timeout_ms.map_or(DEFAULT_PICK, Duration::from_millis).min(MAX_WAIT) + ACT_OVERHEAD
@@ -743,8 +795,19 @@ fn step_budget(step: &Step) -> Duration {
         Step::Type { text, .. } => STEP_BUDGET.saturating_add(typing_time(text)),
         Step::SetValue { value, .. } => STEP_BUDGET.saturating_add(typing_time(value)),
         Step::Key { keys, repeat, .. } => STEP_BUDGET.saturating_add(key_time(keys, *repeat)),
+        Step::Click { glide_ms, .. }
+        | Step::Hover { glide_ms, .. }
+        | Step::Scroll { glide_ms, .. }
+        | Step::Move { glide_ms, .. }
+        | Step::MouseDown { glide_ms, .. }
+        | Step::MouseUp { glide_ms, .. } => STEP_BUDGET.saturating_add(glide_time(*glide_ms, 1)),
+        Step::Drag { glide_ms, .. } => STEP_BUDGET.saturating_add(glide_time(*glide_ms, 2)),
         _ => STEP_BUDGET,
     }
+}
+
+fn glide_time(glide_ms: Option<u64>, moves: u32) -> Duration {
+    Duration::from_millis(glide_ms.unwrap_or(0).min(MAX_GLIDE_MS)).saturating_mul(moves)
 }
 
 fn typing_time(text: &str) -> Duration {
@@ -778,7 +841,8 @@ mod tests {
                 button: MouseButton::Left,
                 count: 1,
                 modifiers: None,
-                how: ClickHow::Auto
+                how: ClickHow::Auto,
+                glide_ms: None,
             }
         );
         assert_eq!(args.steps[2], Step::Key { keys: "ctrl+s".to_string(), target: None, repeat: 1 });
@@ -877,7 +941,7 @@ mod tests {
     #[test]
     fn notify_and_monitors_have_names_and_deadlines() {
         assert_eq!(notify_call().name(), "notify");
-        assert_eq!(notify_call().deadline(), Duration::from_secs(5));
+        assert_eq!(notify_call().deadline(), Duration::from_secs(12));
         assert_eq!(windows_call(WindowAction::Monitors).name(), "windows");
         assert_eq!(windows_call(WindowAction::Monitors).deadline(), Duration::from_secs(10));
         assert_eq!(windows_call(WindowAction::Apps).deadline(), Duration::from_secs(10));
@@ -918,6 +982,38 @@ mod tests {
         let error = result.unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidArgument);
         error.message
+    }
+
+    #[test]
+    fn mouse_steps_take_an_optional_glide() {
+        let Step::Click { glide_ms, .. } = step(r#"{"do":"click","target":"e1","glide_ms":300}"#) else {
+            panic!("expected click")
+        };
+        assert_eq!(glide_ms, Some(300));
+        assert_eq!(
+            step(r#"{"do":"move","to":{"x":10,"y":20}}"#),
+            Step::Move { to: TargetSpec::Point(crate::target::PointSpec { x: 10, y: 20, img: None }), glide_ms: None }
+        );
+        assert_eq!(
+            step(r#"{"do":"mouse_down","target":"e4","button":"right"}"#),
+            Step::MouseDown { target: TargetSpec::Text("e4".to_string()), button: MouseButton::Right, glide_ms: None }
+        );
+        assert_eq!(
+            step(r#"{"do":"mouse_up"}"#),
+            Step::MouseUp { target: None, button: MouseButton::Left, glide_ms: None }
+        );
+        assert!(step_error(r#"{"do":"move","target":"e1"}"#).contains("unknown field `target`"));
+        assert!(step_error(r#"{"do":"drag","from":"e1","to":"e2","glide":5}"#).contains("unknown field `glide`"));
+    }
+
+    #[test]
+    fn act_deadline_includes_explicit_glides() {
+        let act = |step: Step| Call::Act(ActArgs { steps: vec![step], after: AfterMode::None, stop_on_error: true });
+        let moved = step(r#"{"do":"move","to":"e1","glide_ms":2000}"#);
+        assert_eq!(act(moved).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(2));
+        let dragged = step(r#"{"do":"drag","from":"e1","to":"e2","glide_ms":1500}"#);
+        assert_eq!(act(dragged).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(3));
+        assert_eq!(act(step(r#"{"do":"mouse_up"}"#)).deadline(), ACT_OVERHEAD + STEP_BUDGET);
     }
 
     #[test]

@@ -8,7 +8,7 @@ use super::{
     settle,
     target::{Prepared, prepare},
 };
-use crate::{call_scope::CallScope, engine::Engine};
+use crate::{call_scope::CallScope, engine::Engine, overlay};
 
 const MOUSE: &str = "mouse";
 
@@ -42,6 +42,9 @@ fn pattern_or_fallback(
         return Err(Error::invalid("how=invoke needs an element target, not a point or a window"));
     };
     if let Some(method) = click_by_pattern(engine, element)? {
+        if !element.rect.is_empty() {
+            overlay::click(engine, element.rect.center(), 1);
+        }
         return Ok(method);
     }
     if options.how == ClickHow::Auto {

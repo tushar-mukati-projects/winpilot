@@ -9,7 +9,7 @@ use super::{
     paste::paste,
     settle,
 };
-use crate::{call_scope::CallScope, engine::Engine};
+use crate::{call_scope::CallScope, engine::Engine, overlay};
 
 const PASTE_THRESHOLD: usize = 200;
 const KEPT_CLIPBOARD: &str = "the clipboard holds more than text, so the text was typed to keep it intact";
@@ -30,6 +30,10 @@ pub struct TypeRequest<'a> {
 
 pub fn step(engine: &Engine, request: &TypeRequest<'_>, call: &CallScope) -> Result<Done> {
     let focused = keyboard_target(engine, request.target, call)?;
+    if let Some(element) = &focused.element {
+        overlay::focus_field(engine, element.rect);
+    }
+    overlay::typing(engine, &focused.window, request.text.chars().count());
     let typing = choose_typing(request.how, request.text.chars().count(), clipboard_holds_only_text);
     let (method, restore_note) = enter_text(engine, &focused, request.text, typing, call)?;
     if request.enter {

@@ -1,43 +1,22 @@
-use std::fs::{self, OpenOptions};
-use std::io::{self, ErrorKind};
+use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
+use deckhand_capture::OutputFile;
 use deckhand_core::{Context, Error, Result, config::RecordConfig, protocol::VideoFormat};
 
 use super::naming::{candidates, default_stem};
 use crate::guard::Guard;
 
-pub struct ReservedFile {
-    path: PathBuf,
-    kept: bool,
-}
-
-impl ReservedFile {
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    pub fn keep(mut self) -> PathBuf {
-        self.kept = true;
-        self.path.clone()
-    }
-}
-
-impl Drop for ReservedFile {
-    fn drop(&mut self) {
-        if !self.kept {
-            let _ = fs::remove_file(&self.path);
-        }
-    }
-}
+const RECORDINGS_SUBFOLDER: &str = "Deckhand";
 
 pub fn reserve(
     guard: &Guard,
     config: &RecordConfig,
     requested: Option<&str>,
     format: VideoFormat,
-) -> Result<ReservedFile> {
+) -> Result<OutputFile> {
     if let Some(text) = requested {
         return reserve_exact(&guard.checked_path(Path::new(text.trim()))?);
     }
@@ -45,11 +24,11 @@ pub fn reserve(
     reserve_in(&folder, &default_stem(Local::now().naive_local()), format)
 }
 
-pub fn reserve_exact(path: &Path) -> Result<ReservedFile> {
+pub fn reserve_exact(path: &Path) -> Result<OutputFile> {
     if !path.parent().is_some_and(Path::is_dir) {
         return Err(Error::invalid(format!("the folder for {} does not exist", path.display())));
     }
-    create_new(path).map_err(|error| match error.kind() {
+    OutputFile::create_new(path).map_err(|error| match error.kind() {
         ErrorKind::AlreadyExists => {
             Error::invalid(format!("{} already exists; record never overwrites a file", path.display()))
         }
@@ -57,11 +36,11 @@ pub fn reserve_exact(path: &Path) -> Result<ReservedFile> {
     })
 }
 
-pub fn reserve_in(folder: &Path, stem: &str, format: VideoFormat) -> Result<ReservedFile> {
+pub fn reserve_in(folder: &Path, stem: &str, format: VideoFormat) -> Result<OutputFile> {
     fs::create_dir_all(folder).context("creating the recordings folder")?;
     for name in candidates(stem, format.extension()) {
         let path = folder.join(name);
-        match create_new(&path) {
+        match OutputFile::create_new(&path) {
             Ok(reserved) => return Ok(reserved),
             Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
             Err(error) => return Err(Error::internal(format!("creating {}: {error}", path.display()))),
@@ -74,16 +53,7 @@ fn recordings_folder(config: &RecordConfig) -> Result<PathBuf> {
     if let Some(folder) = &config.folder {
         return Ok(folder.clone());
     }
-    std::env::var_os("USERPROFILE")
-        .map(PathBuf::from)
-        .filter(|home| home.is_absolute())
-        .map(|home| home.join("Videos").join("Deckhand"))
-        .ok_or_else(|| Error::invalid("USERPROFILE is not set; pass path or set folder in the [record] config"))
-}
-
-fn create_new(path: &Path) -> io::Result<ReservedFile> {
-    OpenOptions::new().write(true).create_new(true).open(path)?;
-    Ok(ReservedFile { path: path.to_path_buf(), kept: false })
+    Ok(deckhand_desktop::videos_folder()?.join(RECORDINGS_SUBFOLDER))
 }
 
 #[cfg(test)]
@@ -131,8 +101,11 @@ mod tests {
         assert!(dropped_path.exists());
         drop(dropped);
         assert!(!dropped_path.exists());
-        let kept = reserve_in(&temp.0, "clip", VideoFormat::Gif).unwrap().keep();
-        assert!(kept.exists());
+        let kept = reserve_in(&temp.0, "clip", VideoFormat::Gif).unwrap();
+        kept.keep();
+        let kept_path = kept.path().to_path_buf();
+        drop(kept);
+        assert!(kept_path.exists());
     }
 
     #[test]
@@ -143,8 +116,10 @@ mod tests {
         assert!(missing_folder.message.contains("does not exist"), "{}", missing_folder.message);
         fs::create_dir_all(&temp.0).unwrap();
         let path = temp.0.join("clip.mp4");
-        let kept = reserve_exact(&path).unwrap().keep();
-        let taken = reserve_exact(&kept).err().unwrap();
+        let kept = reserve_exact(&path).unwrap();
+        kept.keep();
+        drop(kept);
+        let taken = reserve_exact(&path).err().unwrap();
         assert_eq!(taken.code, ErrorCode::InvalidArgument);
         assert!(taken.message.ends_with("already exists; record never overwrites a file"), "{}", taken.message);
     }
@@ -154,6 +129,6 @@ mod tests {
         let config = RecordConfig { folder: Some(PathBuf::from("D:\\Clips")), ..RecordConfig::default() };
         assert_eq!(recordings_folder(&config).unwrap(), PathBuf::from("D:\\Clips"));
         let default = recordings_folder(&RecordConfig::default()).unwrap();
-        assert!(default.ends_with("Videos\\Deckhand"), "{}", default.display());
+        assert_eq!(default, deckhand_desktop::videos_folder().unwrap().join("Deckhand"));
     }
 }

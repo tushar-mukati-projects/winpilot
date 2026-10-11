@@ -23,6 +23,7 @@ pub enum EndReason {
     TimeLimit(u32),
     KillSwitch,
     WindowClosed,
+    MonitorDisconnected,
     CaptureFailed(String),
     EncoderFailed(String),
 }
@@ -34,6 +35,7 @@ pub struct Finished {
     pub seconds: f64,
     pub bytes: u64,
     pub reason: EndReason,
+    pub write_error: Option<String>,
     pub finalize_error: Option<String>,
 }
 
@@ -66,6 +68,10 @@ impl Counters {
         self.finished.load(Ordering::Acquire)
     }
 
+    pub(crate) fn ticks(&self) -> u64 {
+        self.ticks.load(Ordering::Relaxed)
+    }
+
     pub(crate) fn progress(&self, fps: u32) -> Progress {
         Progress {
             frames: self.frames.load(Ordering::Relaxed),
@@ -83,17 +89,28 @@ impl Finished {
             seconds: 0.0,
             bytes: 0,
             reason: EndReason::CaptureFailed("the recording thread stopped unexpectedly".to_string()),
+            write_error: None,
             finalize_error: None,
         }
     }
 
     pub fn note(&self) -> Option<String> {
-        let parts: Vec<String> =
-            [self.reason_note(), self.dropped_note(), self.finalize_error.as_deref().map(unplayable)]
-                .into_iter()
-                .flatten()
-                .collect();
+        let parts: Vec<String> = [
+            self.reason_note(),
+            self.write_error_note(),
+            self.dropped_note(),
+            self.finalize_error.as_deref().map(unplayable),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         (!parts.is_empty()).then(|| parts.join("; "))
+    }
+
+    fn write_error_note(&self) -> Option<String> {
+        let error = self.write_error.as_deref()?;
+        let already_reported = matches!(&self.reason, EndReason::EncoderFailed(reason) if reason == error);
+        (!already_reported).then(|| format!("the last frames could not be encoded: {error}"))
     }
 
     fn reason_note(&self) -> Option<String> {
@@ -102,6 +119,9 @@ impl Finished {
             EndReason::TimeLimit(seconds) => Some(format!("stopped automatically at max_seconds ({seconds} s)")),
             EndReason::KillSwitch => Some("stopped by the kill switch".to_string()),
             EndReason::WindowClosed => Some("stopped because the recorded window closed".to_string()),
+            EndReason::MonitorDisconnected => {
+                Some("stopped because the recorded monitor was disconnected or turned off".to_string())
+            }
             EndReason::CaptureFailed(error) => Some(format!("stopped early because capture failed: {error}")),
             EndReason::EncoderFailed(error) => Some(format!("stopped early because encoding failed: {error}")),
         }
@@ -130,6 +150,7 @@ mod tests {
             seconds: 12.4,
             bytes: 1000,
             reason,
+            write_error: None,
             finalize_error: finalize_error.map(str::to_string),
         }
     }
@@ -145,6 +166,10 @@ mod tests {
         assert_eq!(note(EndReason::TimeLimit(300)), "stopped automatically at max_seconds (300 s)");
         assert_eq!(note(EndReason::KillSwitch), "stopped by the kill switch");
         assert_eq!(note(EndReason::WindowClosed), "stopped because the recorded window closed");
+        assert_eq!(
+            note(EndReason::MonitorDisconnected),
+            "stopped because the recorded monitor was disconnected or turned off"
+        );
         assert_eq!(note(EndReason::CaptureFailed("x".to_string())), "stopped early because capture failed: x");
         assert_eq!(note(EndReason::EncoderFailed("y".to_string())), "stopped early because encoding failed: y");
     }
@@ -159,6 +184,16 @@ mod tests {
     }
 
     #[test]
+    fn a_write_error_is_always_noted_once() {
+        let mut stopped = finished(EndReason::Stopped, 0, None);
+        stopped.write_error = Some("disk full".to_string());
+        assert_eq!(stopped.note().unwrap(), "the last frames could not be encoded: disk full");
+        let mut failed = finished(EndReason::EncoderFailed("disk full".to_string()), 0, None);
+        failed.write_error = Some("disk full".to_string());
+        assert_eq!(failed.note().unwrap(), "stopped early because encoding failed: disk full");
+    }
+
+    #[test]
     fn counters_report_progress_in_timeline_seconds() {
         let counters = Counters::default();
         counters.sent();
@@ -166,6 +201,7 @@ mod tests {
         counters.dropped(4);
         counters.reached(45);
         assert_eq!(counters.progress(30), Progress { frames: 2, dropped: 4, seconds: 1.5 });
+        assert_eq!(counters.ticks(), 45);
         assert!(!counters.is_finished());
         counters.finish();
         assert!(counters.is_finished());

@@ -6,10 +6,11 @@ use deckhand_core::{
 };
 use deckhand_desktop::apps::{self, AppEntry};
 
-use super::app_match;
+use super::{app_match, launch::without_launch_extension};
 use crate::engine::Engine;
 
 const MAX_MATCHES: usize = 30;
+const MAX_LISTED: usize = 150;
 const FRESH_LISTING: Duration = Duration::from_secs(300);
 const RECENT_LISTING: Duration = Duration::from_secs(10);
 
@@ -17,6 +18,7 @@ pub fn apps(engine: &Engine, args: &WindowsArgs) -> Result<WindowsReport> {
     let Some(query) = args.app.as_deref().map(str::trim).filter(|query| !query.is_empty()) else {
         return Ok(every_app(&engine.apps.apps(FRESH_LISTING)?));
     };
+    let query = without_launch_extension(query);
     let catalog = engine.apps.apps(FRESH_LISTING)?;
     if app_match::ranked(&catalog, query).is_empty() {
         return Ok(matching(&engine.apps.apps(RECENT_LISTING)?, query));
@@ -27,8 +29,14 @@ pub fn apps(engine: &Engine, args: &WindowsArgs) -> Result<WindowsReport> {
 fn every_app(catalog: &[AppEntry]) -> WindowsReport {
     let mut apps: Vec<AppInfo> = catalog.iter().map(app_info).collect();
     apps.sort_by_cached_key(|app| app.name.to_lowercase());
-    let note = Some(format!("{} installed apps", apps.len()));
-    WindowsReport { apps, note, ..WindowsReport::default() }
+    let total = apps.len();
+    let note = if total > MAX_LISTED {
+        format!("showing {MAX_LISTED} of {total} installed apps; narrow with app:\"name\"")
+    } else {
+        format!("{total} installed apps")
+    };
+    apps.truncate(MAX_LISTED);
+    WindowsReport { apps, note: Some(note), ..WindowsReport::default() }
 }
 
 fn matching(catalog: &[AppEntry], query: &str) -> WindowsReport {
@@ -115,9 +123,31 @@ mod tests {
     }
 
     #[test]
+    fn the_full_list_is_capped_with_a_hint_to_filter() {
+        let catalog: Vec<AppEntry> = (0..200)
+            .map(|index| entry(&format!("App {index:03}"), &format!("app-{index}"), apps::AppKind::Desktop))
+            .collect();
+        let report = every_app(&catalog);
+        assert_eq!(report.apps.len(), MAX_LISTED);
+        assert_eq!(report.apps[0].name, "App 000");
+        assert_eq!(report.note.as_deref(), Some("showing 150 of 200 installed apps; narrow with app:\"name\""));
+    }
+
+    #[test]
+    fn launch_extensions_are_ignored_in_the_filter() {
+        let catalog = vec![
+            entry("Notepad", "notepad", apps::AppKind::Packaged),
+            entry("Paint", "paint", apps::AppKind::Packaged),
+        ];
+        for query in ["notepad.exe", "Notepad.LNK", "notepad.bat"] {
+            assert_eq!(names(&matching(&catalog, without_launch_extension(query))), ["Notepad"], "{query}");
+        }
+    }
+
+    #[test]
     fn live_apps_list_and_filter() {
         let all = run(engine(), &apps_args(None), &CallScope::relaxed()).unwrap();
-        assert!(!all.apps.is_empty());
+        assert!(!all.apps.is_empty() && all.apps.len() <= MAX_LISTED);
         assert_eq!(format::windows(&all).lines().count(), all.apps.len() + 1);
         let first = all.apps[0].name.clone();
         let filtered = run(engine(), &apps_args(Some(&first)), &CallScope::relaxed()).unwrap();

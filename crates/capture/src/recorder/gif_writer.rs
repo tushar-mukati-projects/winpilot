@@ -1,4 +1,5 @@
-use std::fs::File;
+use std::borrow::Cow;
+use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
@@ -11,6 +12,8 @@ use super::clock::gif_delay;
 use super::layout::{Placement, Size};
 
 const BYTES_PER_PIXEL: usize = 4;
+const MAX_FRAME_DELAY: u64 = u16::MAX as u64;
+const MAX_TOTAL_DELAY: u64 = 100 * 60 * 60 * 24;
 
 struct Pending {
     frame: Frame<'static>,
@@ -32,7 +35,7 @@ impl GifWriter {
         let too_large = || Error::invalid("GIF frames are limited to 65535 px per side");
         let width = u16::try_from(size.width).map_err(|_| too_large())?;
         let height = u16::try_from(size.height).map_err(|_| too_large())?;
-        let file = File::create(path).context("creating the GIF file")?;
+        let file = OpenOptions::new().write(true).truncate(true).open(path).context("opening the reserved GIF file")?;
         let mut encoder = Encoder::new(BufWriter::new(file), width, height, &[]).context("writing the GIF header")?;
         encoder.set_repeat(Repeat::Infinite).context("making the GIF loop")?;
         Ok(Self { encoder, size, fps, speed: gif_speed(quality), shown: Vec::new(), rgba: Vec::new(), pending: None })
@@ -64,8 +67,13 @@ impl GifWriter {
 
     fn flush_pending(&mut self, until_tick: u64) -> Result<()> {
         let Some(Pending { mut frame, first_tick }) = self.pending.take() else { return Ok(()) };
-        frame.delay = gif_delay(first_tick, until_tick, self.fps).max(1);
-        self.encoder.write_frame(&frame).context("writing a GIF frame")
+        let mut delays = frame_delays(gif_delay(first_tick, until_tick, self.fps));
+        frame.delay = delays.next().unwrap_or(1);
+        self.encoder.write_frame(&frame).context("writing a GIF frame")?;
+        for delay in delays {
+            self.encoder.write_frame(&idle_frame(delay)).context("writing a GIF frame")?;
+        }
+        Ok(())
     }
 
     fn quantize(&mut self, bgra: &[u8], area: Placement) -> Result<Frame<'static>> {
@@ -81,6 +89,28 @@ impl GifWriter {
         frame.top = u16::try_from(area.y).map_err(|_| too_large())?;
         frame.dispose = DisposalMethod::Keep;
         Ok(frame)
+    }
+}
+
+fn frame_delays(total: u64) -> impl Iterator<Item = u16> {
+    let mut left = total.clamp(1, MAX_TOTAL_DELAY);
+    std::iter::from_fn(move || {
+        let chunk = left.min(MAX_FRAME_DELAY);
+        left -= chunk;
+        (chunk > 0).then_some(chunk as u16)
+    })
+}
+
+fn idle_frame(delay: u16) -> Frame<'static> {
+    Frame {
+        delay,
+        width: 1,
+        height: 1,
+        transparent: Some(0),
+        palette: Some(vec![0, 0, 0]),
+        buffer: Cow::Owned(vec![0]),
+        dispose: DisposalMethod::Keep,
+        ..Frame::default()
     }
 }
 
@@ -100,7 +130,46 @@ fn copy_as_rgba(bgra: &[u8], size: Size, area: Placement, rgba: &mut Vec<u8>) {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
+    use crate::recorder::output_file::OutputFile;
+
+    fn decoded_delays(path: &Path) -> Vec<u16> {
+        let mut decoder = gif::DecodeOptions::new().read_info(File::open(path).unwrap()).unwrap();
+        let mut delays = Vec::new();
+        while let Some(frame) = decoder.read_next_frame().unwrap() {
+            delays.push(frame.delay);
+        }
+        delays
+    }
+
+    #[test]
+    fn long_idle_delays_are_split_without_losing_time() {
+        assert_eq!(frame_delays(0).collect::<Vec<_>>(), [1]);
+        assert_eq!(frame_delays(500).collect::<Vec<_>>(), [500]);
+        assert_eq!(frame_delays(65_535).collect::<Vec<_>>(), [65_535]);
+        assert_eq!(frame_delays(180_000).collect::<Vec<_>>(), [65_535, 65_535, 48_930]);
+        assert_eq!(frame_delays(u64::MAX).map(u64::from).sum::<u64>(), MAX_TOTAL_DELAY);
+    }
+
+    #[test]
+    fn a_gif_idle_for_twenty_minutes_keeps_its_exact_length() {
+        let folder = std::env::temp_dir().join(format!("deckhand-gif-idle-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("idle.gif");
+        let output = OutputFile::create_new(&path).unwrap();
+        let size = Size::new(4, 2);
+        let mut writer = GifWriter::create(output.path(), size, 1, Quality::Low).unwrap();
+        writer.write(&[40; 32], 0).unwrap();
+        writer.write(&[200; 32], 1200).unwrap();
+        writer.finish(1201).unwrap();
+        let delays = decoded_delays(&path);
+        drop(output);
+        let _ = fs::remove_dir_all(&folder);
+        assert_eq!(delays, [65_535, 54_465, 100]);
+        assert_eq!(delays.iter().map(|&delay| u64::from(delay)).sum::<u64>(), 120_100);
+    }
 
     #[test]
     fn rgba_copies_swap_channels_inside_the_area_only() {

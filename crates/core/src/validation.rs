@@ -3,6 +3,7 @@ use std::{fmt::Display, ops::RangeInclusive};
 use crate::{
     error::{Error, Result},
     geometry::{COORD_LIMIT, Rect},
+    glide::MAX_GLIDE_MS,
     protocol::{
         ActArgs, NOTIFY_MESSAGE_MAX, NOTIFY_TITLE_MAX, NotifyArgs, ReadTextArgs, ScreenshotArgs, Step, WindowsArgs,
     },
@@ -36,16 +37,23 @@ impl ActArgs {
 impl Step {
     pub fn validate(&self) -> Result<()> {
         match self {
-            Self::Click { count, .. } => check_range("click count", *count, &CLICK_COUNTS),
+            Self::Click { count, glide_ms, .. } => {
+                check_range("click count", *count, &CLICK_COUNTS).and_then(|()| check_glide(*glide_ms))
+            }
             Self::Type { text, .. } => check_text_length("text", text),
             Self::SetValue { value, .. } => check_text_length("value", value),
             Self::Key { repeat, .. } => check_range("key repeat", *repeat, &KEY_REPEATS),
-            Self::Scroll { amount, .. } => check_range("scroll amount", *amount, &SCROLL_AMOUNTS),
+            Self::Scroll { amount, glide_ms, .. } => {
+                check_range("scroll amount", *amount, &SCROLL_AMOUNTS).and_then(|()| check_glide(*glide_ms))
+            }
             Self::WaitFor(condition) => condition.validate().map(drop),
             Self::Wait { ms } => check_wait(*ms),
-            Self::Hover { .. }
-            | Self::Drag { .. }
-            | Self::Select { .. }
+            Self::Hover { glide_ms, .. }
+            | Self::Drag { glide_ms, .. }
+            | Self::Move { glide_ms, .. }
+            | Self::MouseDown { glide_ms, .. }
+            | Self::MouseUp { glide_ms, .. } => check_glide(*glide_ms),
+            Self::Select { .. }
             | Self::Toggle { .. }
             | Self::Expand { .. }
             | Self::Collapse { .. }
@@ -59,6 +67,15 @@ fn check_range<T: PartialOrd + Display + Copy>(what: &str, value: T, allowed: &R
         return Ok(());
     }
     Err(Error::invalid(format!("{what} must be from {} to {}, got {value}", allowed.start(), allowed.end())))
+}
+
+fn check_glide(glide_ms: Option<u64>) -> Result<()> {
+    match glide_ms {
+        Some(ms) if ms > MAX_GLIDE_MS => {
+            Err(Error::invalid(format!("glide_ms must be at most {MAX_GLIDE_MS}, got {ms}")))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn check_text_length(what: &str, text: &str) -> Result<()> {
@@ -248,6 +265,9 @@ mod tests {
                 "wait ms must be at most 60000, got 60001; use wait_for to wait for a change",
             ),
             (r#"{"do":"wait_for","until":"text"}"#, "until=text needs \"text\""),
+            (r#"{"do":"move","to":"e1","glide_ms":3001}"#, "glide_ms must be at most 3000, got 3001"),
+            (r#"{"do":"click","target":"e1","glide_ms":9000}"#, "glide_ms must be at most 3000, got 9000"),
+            (r#"{"do":"drag","from":"e1","to":"e2","glide_ms":3001}"#, "glide_ms must be at most 3000, got 3001"),
         ];
         for (json, expected) in cases {
             assert_eq!(invalid_message(step(json).validate()), expected, "{json}");
@@ -258,6 +278,9 @@ mod tests {
             r#"{"do":"scroll","direction":"up","amount":50}"#,
             r#"{"do":"wait","ms":60000}"#,
             r#"{"do":"hover","target":"e1"}"#,
+            r#"{"do":"hover","target":"e1","glide_ms":3000}"#,
+            r#"{"do":"mouse_down","target":"e1","glide_ms":0}"#,
+            r#"{"do":"mouse_up"}"#,
         ] {
             assert!(step(json).validate().is_ok(), "{json}");
         }

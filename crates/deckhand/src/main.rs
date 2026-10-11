@@ -101,7 +101,10 @@ async fn run_server() -> Result<()> {
     }
     let settings = Settings::new(&loaded);
     let supervisor = Supervisor::new(Box::new(ProcessSpawner), loaded.config);
-    mcp::serve_stdio(DeckhandServer::new(supervisor, audit, settings)).await
+    let shutdown = supervisor.shutdown_handle();
+    let served = mcp::serve_stdio(DeckhandServer::new(supervisor, audit, settings)).await;
+    shutdown.shut_down();
+    served
 }
 
 #[cfg(test)]

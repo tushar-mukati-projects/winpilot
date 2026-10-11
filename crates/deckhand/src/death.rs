@@ -25,6 +25,10 @@ impl Death {
         !matches!(self, Self::Shutdown)
     }
 
+    pub const fn lets_the_worker_finish(&self) -> bool {
+        matches!(self, Self::Shutdown)
+    }
+
     fn cause(&self) -> Option<String> {
         let cause = match self {
             Self::Timeout { tool, deadline } => {
@@ -86,6 +90,9 @@ mod tests {
     fn shutdown_is_not_a_restart() {
         assert!(!Death::Shutdown.counts_as_restart());
         assert!(Death::Exited.counts_as_restart());
+        assert!(Death::Shutdown.lets_the_worker_finish());
+        assert!(!Death::Timeout { tool: "act", deadline: Duration::from_secs(1) }.lets_the_worker_finish());
+        assert!(!Death::Unwritable("pipe".to_string()).lets_the_worker_finish());
         let error = Death::Shutdown.error();
         assert_eq!(error.code, ErrorCode::Cancelled);
         assert_eq!(error.message, SHUTTING_DOWN);

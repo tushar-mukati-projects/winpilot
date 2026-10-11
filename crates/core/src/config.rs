@@ -8,6 +8,7 @@ use crate::{
     path_guard,
     quality::Quality,
     recording::VideoFormat,
+    theme::{HexColor, Theme},
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -18,6 +19,7 @@ pub struct Config {
     pub screenshot: ScreenshotConfig,
     pub record: RecordConfig,
     pub overlay: OverlayConfig,
+    pub cursor: CursorConfig,
     pub log: LogConfig,
 }
 
@@ -84,6 +86,18 @@ pub struct RecordConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct OverlayConfig {
     pub enabled: bool,
+    pub animations: bool,
+    pub capturable: bool,
+    pub show_reads: bool,
+    pub theme: Theme,
+    pub colors: Option<Vec<HexColor>>,
+    pub label: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CursorConfig {
+    pub glide_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -175,7 +189,33 @@ impl Default for RecordConfig {
 
 impl Default for OverlayConfig {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            animations: true,
+            capturable: false,
+            show_reads: true,
+            theme: Theme::Aurora,
+            colors: None,
+            label: None,
+        }
+    }
+}
+
+impl OverlayConfig {
+    pub fn palette(&self) -> Vec<[u8; 3]> {
+        let custom = self.colors.as_ref().filter(|colors| !colors.is_empty());
+        custom.cloned().unwrap_or_else(|| self.theme.colors()).into_iter().map(|color| color.0).collect()
+    }
+
+    pub fn display_label(&self, agent: &str) -> String {
+        let configured = self.label.as_deref().map(str::trim).filter(|label| !label.is_empty());
+        configured.map_or_else(|| crate::agent::agent_label(agent), str::to_string)
+    }
+}
+
+impl Default for CursorConfig {
+    fn default() -> Self {
+        Self { glide_ms: 120 }
     }
 }
 
@@ -325,6 +365,56 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let back: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(back, config);
+    }
+
+    #[test]
+    fn overlay_settings_are_additive_with_defaults() {
+        let defaults = Config::default();
+        assert!(defaults.overlay.enabled && defaults.overlay.animations && !defaults.overlay.capturable);
+        assert!(defaults.overlay.show_reads);
+        let quiet: Config = serde_json::from_str(r#"{"overlay":{"show_reads":false}}"#).unwrap();
+        assert!(!quiet.overlay.show_reads && quiet.overlay.enabled);
+        assert_eq!(defaults.overlay.theme, Theme::Aurora);
+        let still: Config = serde_json::from_str(r#"{"overlay":{"animations":false}}"#).unwrap();
+        assert_eq!(still.overlay, OverlayConfig { animations: false, ..OverlayConfig::default() });
+        let demo: Config = serde_json::from_str(r#"{"overlay":{"enabled":true,"capturable":true}}"#).unwrap();
+        assert!(demo.overlay.capturable && demo.overlay.animations);
+        let off: Config = serde_json::from_str(r#"{"overlay":{"enabled":false}}"#).unwrap();
+        assert!(!off.overlay.enabled && off.overlay.animations);
+        assert!(serde_json::from_str::<Config>(r#"{"overlay":{"animation":false}}"#).is_err());
+    }
+
+    #[test]
+    fn overlay_colours_come_from_the_theme_unless_overridden() {
+        let ocean: Config = serde_json::from_str(r#"{"overlay":{"theme":"ocean"}}"#).unwrap();
+        assert_eq!(ocean.overlay.palette()[0], [0x0E, 0xA5, 0xE9]);
+        let custom: Config =
+            serde_json::from_str(r##"{"overlay":{"theme":"ocean","colors":["#FF0000","00ff00"]}}"##).unwrap();
+        assert_eq!(custom.overlay.palette(), vec![[255, 0, 0], [0, 255, 0]]);
+        let empty: Config = serde_json::from_str(r#"{"overlay":{"colors":[]}}"#).unwrap();
+        assert_eq!(empty.overlay.palette().len(), 5);
+        let bad = serde_json::from_str::<Config>(r##"{"overlay":{"colors":["#12"]}}"##).unwrap_err().to_string();
+        assert!(bad.contains("overlay colour \"#12\" is not a hex colour"), "{bad}");
+        assert!(serde_json::from_str::<Config>(r#"{"overlay":{"theme":"neon"}}"#).is_err());
+    }
+
+    #[test]
+    fn the_overlay_label_overrides_the_agent_name() {
+        let config = Config::default();
+        assert_eq!(config.overlay.display_label("claude-code"), "Claude");
+        assert_eq!(config.overlay.display_label(""), "AI agent");
+        let named: Config = serde_json::from_str(r#"{"overlay":{"label":"Helper"}}"#).unwrap();
+        assert_eq!(named.overlay.display_label("claude-code"), "Helper");
+        let blank: Config = serde_json::from_str(r#"{"overlay":{"label":"  "}}"#).unwrap();
+        assert_eq!(blank.overlay.display_label("codex"), "Codex");
+    }
+
+    #[test]
+    fn cursor_glide_defaults_to_120_ms_and_zero_is_instant() {
+        assert_eq!(Config::default().cursor.glide_ms, 120);
+        let instant: Config = serde_json::from_str(r#"{"cursor":{"glide_ms":0}}"#).unwrap();
+        assert_eq!(instant.cursor, CursorConfig { glide_ms: 0 });
+        assert!(serde_json::from_str::<Config>(r#"{"cursor":{"speed":3}}"#).is_err());
     }
 
     #[test]

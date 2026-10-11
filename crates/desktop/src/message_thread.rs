@@ -35,12 +35,21 @@ impl MessageThread {
         R: Send + 'static,
         F: FnOnce() -> Result<(S, R)> + Send + 'static,
     {
+        Self::spawn_within(name, STARTUP_TIMEOUT, setup)
+    }
+
+    pub(crate) fn spawn_within<S, R, F>(name: &str, startup: Duration, setup: F) -> Result<(Self, R)>
+    where
+        S: ThreadMessages,
+        R: Send + 'static,
+        F: FnOnce() -> Result<(S, R)> + Send + 'static,
+    {
         let (ready_sender, ready) = mpsc::channel::<Startup<R>>();
         let handle = thread::Builder::new()
             .name(name.to_string())
             .spawn(move || run(setup, &ready_sender))
             .context(&format!("starting the {name} thread"))?;
-        match ready.recv_timeout(STARTUP_TIMEOUT) {
+        match ready.recv_timeout(startup) {
             Ok(Ok((thread_id, value))) => Ok((Self { thread_id, handle: Some(handle) }, value)),
             Ok(Err(error)) => {
                 let _ = handle.join();
@@ -56,6 +65,11 @@ impl MessageThread {
 
     pub(crate) fn is_finished(&self) -> bool {
         self.handle.as_ref().is_none_or(JoinHandle::is_finished)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn thread_id(&self) -> u32 {
+        self.thread_id
     }
 }
 

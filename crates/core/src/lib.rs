@@ -1,9 +1,11 @@
+pub mod agent;
 pub mod config;
 pub mod diff;
 pub mod element;
 pub mod error;
 pub mod format;
 pub mod geometry;
+pub mod glide;
 pub mod ipc;
 pub mod keys;
 mod matching;
@@ -16,6 +18,7 @@ pub mod refs;
 pub mod role;
 pub mod selector;
 pub mod target;
+pub mod theme;
 mod validation;
 
 pub const INJECTION_MARK: usize = 0x4445_434B;

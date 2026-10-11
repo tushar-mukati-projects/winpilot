@@ -31,6 +31,6 @@ pub use frame::{Frame, FrameSource};
 pub use marks::Mark;
 pub use ocr::{OcrLine, ocr};
 pub use recorder::{
-    EndReason, Finished, Progress, Recorder, RecordingSource, RecordingSpec, Redactor, Started, StopCheck,
-    VideoSettings,
+    EndReason, Finished, OutputFile, Progress, Recorder, RecordingSource, RecordingSpec, Redact, Redactor, Started,
+    StopCheck, VideoSettings,
 };

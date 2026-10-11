@@ -45,6 +45,25 @@ pub fn click(point: Point, button: MouseButton, count: u8, modifiers: Modifiers)
     send_batch(&click_batch(desktop, point, PhysicalButton::current(button), count, modifiers, &layout)?)
 }
 
+pub fn button_down(point: Point, button: MouseButton) -> Result<()> {
+    let desktop = VirtualDesktop::current()?;
+    send(&button_events(desktop, point, PhysicalButton::current(button), ButtonTransition::Press))
+}
+
+pub fn button_up(point: Point, button: MouseButton) -> Result<()> {
+    let desktop = VirtualDesktop::current()?;
+    send(&button_events(desktop, point, PhysicalButton::current(button), ButtonTransition::Release))
+}
+
+pub fn button_events(
+    desktop: VirtualDesktop,
+    point: Point,
+    button: PhysicalButton,
+    transition: ButtonTransition,
+) -> Vec<InputEvent> {
+    vec![move_event(desktop, point), button_event(button, transition)]
+}
+
 pub fn scroll(point: Point, direction: Direction, notches: u32) -> Result<()> {
     let desktop = VirtualDesktop::current()?;
     send(&scroll_events(desktop, point, direction, notches)?)
@@ -252,6 +271,22 @@ mod tests {
                     .unwrap_err();
             assert_eq!(error.code, ErrorCode::InvalidArgument);
         }
+    }
+
+    #[test]
+    fn button_down_and_up_move_first_and_honour_swapped_buttons() {
+        let down = button_events(
+            DESKTOP,
+            Point::new(10, 20),
+            PhysicalButton::of(MouseButton::Left, false),
+            ButtonTransition::Press,
+        );
+        assert_eq!(seen(&down), vec![Seen::Mouse(ABSOLUTE_MOVE), Seen::Mouse(MOUSEEVENTF_LEFTDOWN)]);
+        let swapped = PhysicalButton::of(MouseButton::Left, true);
+        let up = button_events(DESKTOP, Point::new(10, 20), swapped, ButtonTransition::Release);
+        assert_eq!(seen(&up), vec![Seen::Mouse(ABSOLUTE_MOVE), Seen::Mouse(MOUSEEVENTF_RIGHTUP)]);
+        let middle = button_events(DESKTOP, Point::new(0, 0), PhysicalButton::Middle, ButtonTransition::Press);
+        assert_eq!(seen(&middle)[1], Seen::Mouse(MOUSEEVENTF_MIDDLEDOWN));
     }
 
     #[test]

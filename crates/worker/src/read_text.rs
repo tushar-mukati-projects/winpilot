@@ -8,7 +8,7 @@ use crate::{
     call_scope::CallScope,
     default_window::default_window,
     engine::Engine,
-    frames,
+    frames, overlay,
     read_target::{ReadTarget, read_target},
     resolve,
 };
@@ -37,10 +37,16 @@ fn read(engine: &Engine, args: &ReadTextArgs, max: usize, call: &CallScope) -> R
         return ocr_frame(&frames::region(engine, region)?);
     }
     match read_target(args.target.as_deref())? {
-        ReadTarget::DefaultWindow => window_text(engine, &default_window(engine)?, args.method, max),
-        ReadTarget::Window(spec) => window_text(engine, &resolve::window(engine, Some(&spec))?, args.method, max),
+        ReadTarget::DefaultWindow => scanned(engine, &default_window(engine)?, args.method, max),
+        ReadTarget::Window(spec) => scanned(engine, &resolve::window(engine, Some(&spec))?, args.method, max),
         ReadTarget::Element(target) => element_text(engine, &target, args.method, max, call),
     }
+}
+
+fn scanned(engine: &Engine, window: &WindowInfo, method: TextMethod, max: usize) -> Result<Reading> {
+    let reading = window_text(engine, window, method, max)?;
+    overlay::scan(engine, window);
+    Ok(reading)
 }
 
 fn element_text(engine: &Engine, target: &Target, method: TextMethod, max: usize, call: &CallScope) -> Result<Reading> {
@@ -92,9 +98,20 @@ fn main_text_element(snapshot: &Snapshot) -> Option<ElementRef> {
     let window = snapshot.window.rect;
     let candidates = || snapshot.elements.iter().filter(|element| is_main_text_candidate(element, window));
     let largest = |found: Vec<&Element>| found.into_iter().max_by_key(|element| element.rect.area()).map(|e| e.id);
-    largest(candidates().filter(|element| element.role == Role::Document).collect()).or_else(|| {
+    let documents: Vec<&Element> = candidates().filter(|element| element.role == Role::Document).collect();
+    focused_document(snapshot, &documents).or_else(|| largest(documents)).or_else(|| {
         largest(candidates().filter(|element| element.role == Role::Edit && element.patterns.text).collect())
     })
+}
+
+fn focused_document(snapshot: &Snapshot, documents: &[&Element]) -> Option<ElementRef> {
+    let focused = snapshot.index_of(snapshot.focused?)?;
+    let is_document = |element: &Element| documents.iter().any(|document| document.id == element.id);
+    let focused_element = snapshot.elements.get(focused)?;
+    if is_document(focused_element) {
+        return Some(focused_element.id);
+    }
+    snapshot.ancestors(focused).into_iter().rev().find(|ancestor| is_document(ancestor)).map(|ancestor| ancestor.id)
 }
 
 fn is_main_text_candidate(element: &Element, window: Rect) -> bool {
@@ -276,6 +293,26 @@ mod tests {
         assert_eq!(text, "line 1\nline 2\nline 3\nline 4");
         assert_eq!(truncate(text, 20), ("line 1\nline 2\nline 3".to_string(), true));
         assert_eq!(collect_lines(&elements[..3], 20), "line 1\nline 2\nline 3");
+    }
+
+    #[test]
+    fn the_document_holding_the_focus_wins_over_a_larger_one() {
+        let mut focused_field = element(4, 2, Role::Edit, "Reply");
+        focused_field.state.focused = true;
+        let elements = vec![
+            sized(element(1, 0, Role::Document, "Inbox"), Rect::new(0, 0, 800, 500)),
+            sized(element(2, 1, Role::Text, "Message"), Rect::new(0, 0, 800, 100)),
+            sized(element(3, 0, Role::Document, "Compose"), Rect::new(0, 400, 600, 200)),
+            sized(focused_field, Rect::new(10, 420, 500, 40)),
+        ];
+        let mut snapshot = snapshot("Mail", elements);
+        assert_eq!(main_text_element(&snapshot), Some(ElementRef(1)));
+        snapshot.focused = Some(ElementRef(4));
+        assert_eq!(main_text_element(&snapshot), Some(ElementRef(3)));
+        snapshot.focused = Some(ElementRef(1));
+        assert_eq!(main_text_element(&snapshot), Some(ElementRef(1)));
+        snapshot.focused = Some(ElementRef(2));
+        assert_eq!(main_text_element(&snapshot), Some(ElementRef(1)));
     }
 
     #[test]

@@ -6,7 +6,7 @@ use deckhand_core::{
     selector::Selector,
 };
 
-use crate::{app_windows::app_windows, engine::Engine, resolve};
+use crate::{app_windows::app_windows, engine::Engine, overlay, resolve};
 
 pub fn run(engine: &Engine, args: &ObserveArgs) -> Result<Observation> {
     let window = resolve::window(engine, args.window.as_deref())?;
@@ -15,6 +15,7 @@ pub fn run(engine: &Engine, args: &ObserveArgs) -> Result<Observation> {
     if let Some(query) = query {
         observation.snapshot = keep_matches_and_ancestors(&observation.snapshot, &query);
     }
+    overlay::scan(engine, &window);
     Ok(observation)
 }
 

@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 
 struct Mcp {
     child: Child,
-    stdin: ChildStdin,
+    stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
     next_id: u64,
     timings: Vec<(String, Duration)>,
@@ -53,7 +53,7 @@ impl Mcp {
             .stderr(Stdio::inherit())
             .spawn()
             .unwrap();
-        let stdin = child.stdin.take().unwrap();
+        let stdin = child.stdin.take();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         let mut mcp = Self { child, stdin, stdout, next_id: 0, timings: Vec::new(), _home: home };
         mcp.request(
@@ -68,18 +68,32 @@ impl Mcp {
         mcp
     }
 
+    fn send(&mut self, message: &Value) {
+        let stdin = self.stdin.as_mut().unwrap();
+        writeln!(stdin, "{message}").unwrap();
+        stdin.flush().unwrap();
+    }
+
     fn notify(&mut self, method: &str) {
-        let message = json!({ "jsonrpc": "2.0", "method": method });
-        writeln!(self.stdin, "{message}").unwrap();
-        self.stdin.flush().unwrap();
+        self.send(&json!({ "jsonrpc": "2.0", "method": method }));
+    }
+
+    fn close_input_and_wait(&mut self, patience: Duration) -> bool {
+        drop(self.stdin.take());
+        let started = Instant::now();
+        while started.elapsed() < patience {
+            if self.child.try_wait().unwrap().is_some() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        false
     }
 
     fn request(&mut self, method: &str, params: &Value) -> Value {
         self.next_id += 1;
         let id = self.next_id;
-        let message = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
-        writeln!(self.stdin, "{message}").unwrap();
-        self.stdin.flush().unwrap();
+        self.send(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
         loop {
             let mut line = String::new();
             assert!(self.stdout.read_line(&mut line).unwrap() > 0, "the server closed stdout");
@@ -161,6 +175,20 @@ fn fixture_exe() -> PathBuf {
         .join("target")
         .join("debug")
         .join("deckhand-fixture.exe")
+}
+
+fn last_box(bytes: &[u8]) -> Option<[u8; 4]> {
+    let mut position = 0usize;
+    let mut last = None;
+    while let Some(header) = bytes.get(position..position + 8) {
+        let size = u32::from_be_bytes(header[..4].try_into().unwrap()) as usize;
+        last = Some(header[4..8].try_into().unwrap());
+        if size < 8 {
+            break;
+        }
+        position += size;
+    }
+    last
 }
 
 fn wait_for_window(mcp: &mut Mcp, fixture: &Fixture) {
@@ -281,4 +309,19 @@ fn screenshot_point_click_and_window_actions() {
     let listed = mcp.ok("windows", &json!({ "action": "list" }));
     assert!(!listed.contains(&fixture.title), "{listed}");
     mcp.report_timings();
+}
+
+#[test]
+#[ignore = "records the screen"]
+fn closing_the_server_finalizes_a_running_recording() {
+    let folder = TempDir::new("record-shutdown");
+    let path = folder.0.join("shutdown.mp4");
+    let mut mcp = Mcp::start();
+    let region = json!({ "x": 0, "y": 0, "width": 320, "height": 200 });
+    let started = mcp.ok("record", &json!({ "action": "start", "region": region, "path": path.display().to_string() }));
+    assert!(started.starts_with("recording to"), "{started}");
+    std::thread::sleep(Duration::from_millis(1500));
+    assert!(mcp.close_input_and_wait(Duration::from_secs(10)), "the server did not exit after its input closed");
+    let bytes = fs::read(&path).unwrap();
+    assert_eq!(last_box(&bytes).as_ref(), Some(b"mfra"), "the recording was not finalized");
 }

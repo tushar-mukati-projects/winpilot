@@ -1,4 +1,7 @@
 target/
 *.jpg
 *.png
+*.mp4
+*.gif
 !tests/fixtures/**/*.png
+!assets/**

@@ -1,5 +1,6 @@
 use std::{
     collections::VecDeque,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -8,7 +9,11 @@ use deckhand_core::{
     Config, Result, Snapshot, WindowInfo,
     protocol::{Call, Reply, Timing},
 };
-use deckhand_desktop::{Notifier, changes::ChangeMonitor, overlay::Overlay};
+use deckhand_desktop::{
+    Notifier,
+    changes::ChangeMonitor,
+    overlay::{Overlay, OverlayOptions},
+};
 use deckhand_uia::{SnapshotOptions, UiaHandle, UiaOptions};
 use parking_lot::Mutex;
 
@@ -33,7 +38,7 @@ pub struct Engine {
     pub capturer: Capturer,
     pub changes: ChangeMonitor,
     pub guard: Guard,
-    pub overlay: Option<Overlay>,
+    pub overlay: Option<Arc<Overlay>>,
     pub notifier: Notifier,
     pub images: Mutex<ImageStore>,
     pub host: HostProcesses,
@@ -44,13 +49,13 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn start(config: Config, epoch: u32) -> Result<Self> {
+    pub fn start(config: Config, epoch: u32, agent: &str) -> Result<Self> {
         let first_ref = epoch::first_ref(epoch);
         let uia = UiaHandle::spawn(UiaOptions { first_ref, ..UiaOptions::default() })?;
         let capturer = Capturer::spawn()?;
         let changes = ChangeMonitor::spawn()?;
-        let guard = Guard::start(&config.guard)?;
-        let overlay = if config.overlay.enabled { spawn_overlay() } else { None };
+        let overlay = if config.overlay.enabled { spawn_overlay(&config, agent) } else { None };
+        let guard = Guard::start(&config.guard, overlay.clone())?;
         Ok(Self {
             config,
             uia,
@@ -113,6 +118,11 @@ impl Engine {
         }
     }
 
+    pub fn shut_down(&self) {
+        record::shut_down(self);
+        self.notifier.dismiss_all();
+    }
+
     pub fn uptime(&self) -> Duration {
         self.started.elapsed()
     }
@@ -134,6 +144,16 @@ pub fn duration_ms(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
-fn spawn_overlay() -> Option<Overlay> {
-    Overlay::spawn().inspect_err(|error| eprintln!("deckhand worker: overlay unavailable: {error}")).ok()
+fn spawn_overlay(config: &Config, agent: &str) -> Option<Arc<Overlay>> {
+    let hotkey = config.guard.kill_hotkey.trim();
+    let options = OverlayOptions {
+        animations: config.overlay.animations,
+        capturable: config.overlay.capturable,
+        kill_hotkey: (!hotkey.is_empty()).then(|| hotkey.to_string()),
+        label: config.overlay.display_label(agent),
+        palette: config.overlay.palette(),
+    };
+    let spawned =
+        Overlay::spawn(options).inspect_err(|error| eprintln!("deckhand worker: overlay unavailable: {error}"));
+    spawned.ok().map(Arc::new)
 }

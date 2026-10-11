@@ -5,17 +5,18 @@ use std::{
         io::{AsHandle, AsRawHandle, FromRawHandle, OwnedHandle},
     },
     path::Path,
+    time::Duration,
 };
 
 use deckhand_core::{Context, Error, Result};
 use windows::{
     Win32::{
-        Foundation::{HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation},
+        Foundation::{HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation, WAIT_OBJECT_0},
         System::Threading::{
             CREATE_NO_WINDOW, CREATE_SUSPENDED, CreateProcessW, DeleteProcThreadAttributeList,
             EXTENDED_STARTUPINFO_PRESENT, InitializeProcThreadAttributeList, LPPROC_THREAD_ATTRIBUTE_LIST,
             PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROCESS_INFORMATION, ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOEXW,
-            STARTUPINFOW, TerminateProcess, UpdateProcThreadAttribute,
+            STARTUPINFOW, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
         },
     },
     core::{PCWSTR, PWSTR},
@@ -176,11 +177,21 @@ impl Drop for InheritList {
 }
 
 impl WorkerProcess for WorkerChild {
+    fn exits_within(&mut self, patience: Duration) -> bool {
+        exits_within(&self.process, patience)
+    }
+
     fn terminate(&mut self) {
         let Err(error) = self.job.terminate() else { return };
         eprintln!("deckhand: {error}");
         kill(&self.process);
     }
+}
+
+fn exits_within(process: &OwnedHandle, patience: Duration) -> bool {
+    let millis = u32::try_from(patience.as_millis()).unwrap_or(u32::MAX - 1);
+    let waited = unsafe { WaitForSingleObject(raw(process), millis) };
+    waited == WAIT_OBJECT_0
 }
 
 fn attribute_list_size() -> Result<usize> {
@@ -271,6 +282,16 @@ mod tests {
         let mut output = Vec::new();
         stdout.read_to_end(&mut output).unwrap();
         assert!(String::from_utf8_lossy(&output).contains("deckhand-pipe-check"));
+    }
+
+    #[test]
+    fn a_child_that_reads_to_the_end_of_its_input_exits_when_stdin_closes() {
+        let JobbedChild { stdin, stdout, process, job } = launch_in_job(&cmd(), "/d /q").unwrap();
+        let mut child = WorkerChild { process, job };
+        assert!(!child.exits_within(Duration::from_millis(50)));
+        drop(stdin);
+        assert!(child.exits_within(Duration::from_secs(5)));
+        drop(stdout);
     }
 
     #[test]

@@ -10,6 +10,7 @@ pub struct ClickOptions {
     pub count: u8,
     pub modifiers: Modifiers,
     pub how: ClickHow,
+    pub glide_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,14 +31,14 @@ pub enum PatternAction {
 
 impl Default for ClickOptions {
     fn default() -> Self {
-        Self { button: MouseButton::Left, count: 1, modifiers: Modifiers::NONE, how: ClickHow::Auto }
+        Self { button: MouseButton::Left, count: 1, modifiers: Modifiers::NONE, how: ClickHow::Auto, glide_ms: None }
     }
 }
 
 impl ClickOptions {
     pub fn new(button: MouseButton, count: u8, modifiers: Option<&str>, how: ClickHow) -> Result<Self> {
         let modifiers = modifiers.map(parse_modifiers).transpose()?.unwrap_or(Modifiers::NONE);
-        Ok(Self { button, count, modifiers, how })
+        Ok(Self { button, count, modifiers, how, glide_ms: None })
     }
 }
 

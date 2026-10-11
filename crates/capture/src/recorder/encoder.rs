@@ -1,24 +1,37 @@
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use deckhand_core::{Context, Error, Result};
+use deckhand_core::{Context, Error, ErrorCode, Result};
 
+use super::output_file::OutputFile;
+use super::thread_join::join_within;
 use super::video_writer::{VideoWriter, WriterSettings};
 use crate::com::ComApartment;
 
 const QUEUE_DEPTH: usize = 3;
-const START_PATIENCE: Duration = Duration::from_secs(10);
+const START_POLL: Duration = Duration::from_millis(20);
+const ABANDON_GRACE: Duration = Duration::from_millis(250);
 
 pub(crate) enum EncoderInput {
     Frame { tick: u64, pixels: Vec<u8> },
     Repeat { tick: u64 },
+    End { tick: u64 },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Encoded {
     pub write_error: Option<String>,
     pub finalize_error: Option<String>,
+}
+
+pub(crate) struct EncoderStart<'a> {
+    pub settings: WriterSettings,
+    pub output: Arc<OutputFile>,
+    pub stop: &'a AtomicBool,
+    pub deadline: Instant,
 }
 
 pub(crate) struct EncoderThread {
@@ -28,30 +41,55 @@ pub(crate) struct EncoderThread {
 }
 
 impl EncoderThread {
-    pub(crate) fn spawn(settings: WriterSettings) -> Result<Self> {
+    pub(crate) fn spawn(start: EncoderStart<'_>) -> Result<Self> {
+        let EncoderStart { settings, output, stop, deadline } = start;
         let (input, inbox) = mpsc::sync_channel(QUEUE_DEPTH);
         let (recycle, recycled) = mpsc::channel();
         let (ready, started) = mpsc::channel();
         let handle = thread::Builder::new()
             .name("deckhand-encode".to_string())
-            .spawn(move || run(&settings, &inbox, &recycle, &ready))
+            .spawn(move || {
+                let encoded = run(&settings, &inbox, &recycle, &ready);
+                drop(output);
+                encoded
+            })
             .context("starting the video encoder thread")?;
-        match started.recv_timeout(START_PATIENCE) {
-            Ok(Ok(())) => Ok(Self { input, recycled, handle }),
-            Ok(Err(error)) => {
-                let _ = handle.join();
+        match wait_for_start(&started, stop, deadline) {
+            Ok(()) => Ok(Self { input, recycled, handle }),
+            Err(error) => {
+                drop(started);
+                join_within(handle, ABANDON_GRACE);
                 Err(error)
             }
-            Err(_) => Err(Error::timeout("the video encoder did not start within 10 s")),
         }
     }
 
-    pub(crate) fn finish(self) -> Encoded {
+    pub(crate) fn finish(self, end_tick: u64) -> Encoded {
+        let _ = self.input.send(EncoderInput::End { tick: end_tick });
         drop(self.input);
         self.handle.join().unwrap_or_else(|_| Encoded {
             write_error: Some("the encoder thread stopped unexpectedly".to_string()),
             finalize_error: None,
         })
+    }
+}
+
+fn wait_for_start(started: &Receiver<Result<()>>, stop: &AtomicBool, deadline: Instant) -> Result<()> {
+    loop {
+        if stop.load(Ordering::Acquire) {
+            return Err(Error::new(ErrorCode::Cancelled, "the recording was stopped while starting"));
+        }
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(Error::timeout("the video encoder did not start in time"));
+        }
+        match started.recv_timeout(left.min(START_POLL)) {
+            Ok(outcome) => return outcome,
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err(Error::internal("the video encoder stopped while starting"));
+            }
+        }
     }
 }
 
@@ -61,18 +99,28 @@ fn run(
     recycle: &Sender<Vec<u8>>,
     ready: &Sender<Result<()>>,
 ) -> Encoded {
-    let opened = ComApartment::enter_mta().and_then(|apartment| Ok((apartment, VideoWriter::create(settings)?)));
-    let (apartment, mut writer) = match opened {
-        Ok(opened) => opened,
+    let apartment = match ComApartment::enter_mta() {
+        Ok(apartment) => apartment,
         Err(error) => {
             let _ = ready.send(Err(error));
             return Encoded::default();
         }
     };
-    let _ = ready.send(Ok(()));
+    let encoded = match VideoWriter::create(settings) {
+        Ok(writer) if ready.send(Ok(())).is_ok() => encode(writer, inbox, recycle),
+        Ok(_abandoned) => Encoded::default(),
+        Err(error) => {
+            let _ = ready.send(Err(error));
+            Encoded::default()
+        }
+    };
+    drop(apartment);
+    encoded
+}
+
+fn encode(mut writer: VideoWriter, inbox: &Receiver<EncoderInput>, recycle: &Sender<Vec<u8>>) -> Encoded {
     let (end_tick, written) = write_all(&mut writer, inbox, recycle);
     let finalized = writer.finish(end_tick);
-    drop(apartment);
     Encoded {
         write_error: written.err().map(|error| error.message),
         finalize_error: finalized.err().map(|error| error.message),
@@ -80,22 +128,20 @@ fn run(
 }
 
 fn write_all(writer: &mut VideoWriter, inbox: &Receiver<EncoderInput>, recycle: &Sender<Vec<u8>>) -> (u64, Result<()>) {
-    let mut shown: Option<Vec<u8>> = None;
     let mut end_tick = 0;
     for input in inbox {
         let written = match input {
             EncoderInput::Frame { tick, pixels } => {
                 end_tick = tick.saturating_add(1);
                 let written = writer.write(&pixels, tick);
-                if let Some(previous) = shown.replace(pixels) {
-                    let _ = recycle.send(previous);
-                }
+                let _ = recycle.send(pixels);
                 written
             }
             EncoderInput::Repeat { tick } => {
                 end_tick = tick.saturating_add(1);
-                shown.as_ref().map_or(Ok(()), |pixels| writer.repeat(pixels, tick))
+                writer.repeat(tick)
             }
+            EncoderInput::End { tick } => return (end_tick.max(tick), Ok(())),
         };
         if written.is_err() {
             return (end_tick, written);

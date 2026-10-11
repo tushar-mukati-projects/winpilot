@@ -16,6 +16,7 @@ mod images;
 mod notify_tool;
 mod observe;
 mod on_screen;
+mod overlay;
 mod pick_file;
 mod read_target;
 mod read_text;

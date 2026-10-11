@@ -14,7 +14,8 @@ use super::{
     launch_match::{AppIdentity, Before, WindowFacts, is_fresh, pick_launched, switched_to},
 };
 use crate::{
-    act, call_scope::CallScope, engine::Engine, observe, until::until, watch::Watch, window_classes::is_frame_host,
+    act, call_scope::CallScope, engine::Engine, observe, overlay, until::until, watch::Watch,
+    window_classes::is_frame_host,
 };
 
 const WINDOW_WAIT: Duration = Duration::from_secs(20);
@@ -51,6 +52,7 @@ pub fn launch(engine: &Engine, args: &WindowsArgs, call: &CallScope) -> Result<W
         ))
     })?;
     engine.guard.check_window(&window)?;
+    let _presence = overlay::present(engine, &window);
     act::settle(engine, &window, call);
     let window = deckhand_desktop::window(window.hwnd)?;
     let observation = observe::observe_window(engine, &window)?;
@@ -78,7 +80,7 @@ fn has_separator(app: &str) -> bool {
     app.contains(['\\', '/'])
 }
 
-fn without_launch_extension(app: &str) -> &str {
+pub fn without_launch_extension(app: &str) -> &str {
     let lower = app.to_ascii_lowercase();
     LAUNCH_EXTENSIONS
         .iter()

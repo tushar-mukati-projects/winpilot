@@ -116,10 +116,10 @@ fn app_line(app: &AppInfo) -> String {
 
 pub fn notify(report: &NotifyReport) -> String {
     match (report.shown, report.note.as_deref()) {
-        (true, None) => "notification shown".to_string(),
-        (true, Some(note)) => format!("notification shown: {note}"),
-        (false, Some(note)) => format!("notification suppressed by {note}"),
-        (false, None) => "notification suppressed".to_string(),
+        (true, None) => "notification sent".to_string(),
+        (true, Some(note)) => format!("notification {note}"),
+        (false, Some(note)) => format!("notification not shown: {note}"),
+        (false, None) => "notification not shown".to_string(),
     }
 }
 
@@ -190,6 +190,7 @@ fn record_headline(report: &RecordReport) -> String {
     let path = report.path.as_deref().unwrap_or("(no file)");
     match report.state {
         RecordState::Idle => "not recording".to_string(),
+        RecordState::Starting => "the recording is starting; check again with record action status".to_string(),
         RecordState::Recording => recording_line(report, path),
         RecordState::Finished => {
             let frames = frame_count(report.frames);
@@ -1396,13 +1397,16 @@ mod tests {
     #[test]
     fn notify_report_forms() {
         let report = |shown: bool, note: Option<&str>| NotifyReport { shown, note: note.map(str::to_string) };
-        assert_eq!(notify(&report(true, None)), "notification shown");
+        assert_eq!(notify(&report(true, None)), "notification sent");
         assert_eq!(
-            notify(&report(false, Some("Focus Assist (quiet hours)"))),
-            "notification suppressed by Focus Assist (quiet hours)"
+            notify(&report(false, Some("notifications are turned off by group policy"))),
+            "notification not shown: notifications are turned off by group policy"
         );
-        assert_eq!(notify(&report(false, None)), "notification suppressed");
-        assert_eq!(notify(&report(true, Some("queued"))), "notification shown: queued");
+        assert_eq!(notify(&report(false, None)), "notification not shown");
+        assert_eq!(
+            notify(&report(true, Some("sent as a tray balloon; Windows may hold it back"))),
+            "notification sent as a tray balloon; Windows may hold it back"
+        );
     }
 
     #[test]
@@ -1553,6 +1557,10 @@ mod tests {
     #[test]
     fn record_report_forms() {
         assert_eq!(record(&RecordReport::idle()), "not recording");
+        assert_eq!(
+            record(&RecordReport::starting()),
+            "the recording is starting; check again with record action status"
+        );
         assert_eq!(
             record(&recording(RecordState::Recording)),
             "recording to C:\\Videos\\Deckhand\\deckhand-20261011-101500.mp4 · 1920x1200 @ 30 fps · stop with record action stop"

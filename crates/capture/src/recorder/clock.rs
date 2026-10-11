@@ -43,15 +43,11 @@ pub(crate) fn sample_time(tick: u64, fps: u32) -> i64 {
     i64::try_from(units).unwrap_or(i64::MAX)
 }
 
-pub(crate) fn sample_duration(tick: u64, fps: u32) -> i64 {
-    sample_time(tick.saturating_add(1), fps) - sample_time(tick, fps)
-}
-
-pub(crate) fn gif_delay(first_tick: u64, end_tick: u64, fps: u32) -> u16 {
+pub(crate) fn gif_delay(first_tick: u64, end_tick: u64, fps: u32) -> u64 {
     let centiseconds =
         |tick: u64| (u128::from(tick) * u128::from(CENTISECONDS_PER_SECOND)).div_ceil(u128::from(fps.max(1)));
     let delay = centiseconds(end_tick).saturating_sub(centiseconds(first_tick));
-    u16::try_from(delay).unwrap_or(u16::MAX)
+    u64::try_from(delay).unwrap_or(u64::MAX)
 }
 
 pub(crate) fn seconds_of(ticks: u64, fps: u32) -> f64 {
@@ -72,13 +68,14 @@ mod tests {
     }
 
     #[test]
-    fn sample_durations_add_up_to_whole_seconds() {
+    fn consecutive_sample_spans_add_up_to_whole_seconds() {
         for fps in [1, 7, 24, 30, 60] {
-            let total: i64 = (0..u64::from(fps)).map(|tick| sample_duration(tick, fps)).sum();
+            let span = |tick: u64| sample_time(tick + 1, fps) - sample_time(tick, fps);
+            let total: i64 = (0..u64::from(fps)).map(span).sum();
             assert_eq!(total, 10_000_000, "{fps} fps");
         }
-        assert_eq!(sample_duration(0, 30), 333_333);
-        assert_eq!(sample_duration(2, 30), 333_334);
+        assert_eq!(sample_time(1, 30) - sample_time(0, 30), 333_333);
+        assert_eq!(sample_time(3, 30) - sample_time(2, 30), 333_334);
     }
 
     #[test]
@@ -118,10 +115,11 @@ mod tests {
         assert_eq!(gif_delay(0, 1, 15), 7);
         assert_eq!(gif_delay(1, 2, 15), 7);
         assert_eq!(gif_delay(2, 3, 15), 6);
-        let per_frame: u32 = (0..15).map(|tick| u32::from(gif_delay(tick, tick + 1, 15))).sum();
+        let per_frame: u64 = (0..15).map(|tick| gif_delay(tick, tick + 1, 15)).sum();
         assert_eq!(per_frame, 100);
         assert_eq!(gif_delay(0, 40, 20), 200);
         assert_eq!(gif_delay(5, 5, 20), 0);
-        assert_eq!(gif_delay(0, u64::MAX / 200, 1), u16::MAX);
+        assert_eq!(gif_delay(0, 1800 * 20, 20), 180_000);
+        assert_eq!(gif_delay(0, u64::MAX, 1), u64::MAX);
     }
 }

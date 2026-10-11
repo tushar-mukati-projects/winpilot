@@ -13,6 +13,7 @@ use crate::{
     engine::Engine,
     frames,
     images::ImageRecord,
+    overlay,
     read_target::{ReadTarget, read_target},
     resolve,
 };
@@ -20,7 +21,7 @@ use crate::{
 const MIN_WIDTH: u32 = 64;
 const MAX_WIDTH: u32 = 2576;
 const MIN_HEIGHT_LIMIT: u32 = 1568;
-const NATIVE_LIMIT: u32 = u16::MAX as u32;
+const MAX_NATIVE_SIDE: u32 = 8000;
 const MAX_MARKS: usize = 150;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,7 +116,7 @@ fn marks(snapshot: &Snapshot, frame: Rect) -> Vec<Mark> {
 fn encode_options(wanted: ImageQuality, format: ImageFormat) -> EncodeOptions {
     let quality = wanted.quality.clamp(1, 100);
     let Some(max_width) = wanted.max_width else {
-        return EncodeOptions { max_width: NATIVE_LIMIT, max_height: NATIVE_LIMIT, format, quality };
+        return EncodeOptions { max_width: MAX_NATIVE_SIDE, max_height: MAX_NATIVE_SIDE, format, quality };
     };
     let max_width = max_width.clamp(MIN_WIDTH, MAX_WIDTH);
     EncodeOptions { max_width, max_height: max_width.max(MIN_HEIGHT_LIMIT), format, quality }
@@ -131,6 +132,7 @@ fn report(engine: &Engine, shot: &Shot, options: &EncodeOptions, marks: &[Mark])
         window: shot.window.as_ref().map(|window| window.hwnd),
     };
     let image = engine.images.lock().insert(record);
+    overlay::screenshot(engine, shot.frame.rect());
     Ok(ScreenshotReport {
         image,
         mime: encoded.mime.to_string(),
@@ -234,11 +236,11 @@ mod tests {
     }
 
     #[test]
-    fn the_max_preset_keeps_native_resolution() {
+    fn the_max_preset_keeps_native_resolution_up_to_8000_px_per_side() {
         let config = deckhand_core::Config::default();
         let max = ScreenshotArgs { preset: Some(deckhand_core::protocol::Quality::Max), ..args() };
         let options = encode_options(screenshot_quality(&max, &config.screenshot), ImageFormat::Jpeg);
-        assert_eq!((options.max_width, options.max_height, options.quality), (NATIVE_LIMIT, NATIVE_LIMIT, 95));
+        assert_eq!((options.max_width, options.max_height, options.quality), (8000, 8000, 95));
     }
 
     #[test]

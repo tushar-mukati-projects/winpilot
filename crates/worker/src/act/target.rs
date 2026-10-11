@@ -1,10 +1,10 @@
 use deckhand_core::{Error, ErrorCode, Result, TargetSpec, WindowInfo};
 
-use super::overlay;
 use crate::{
     call_scope::CallScope,
     default_window::default_window,
     engine::Engine,
+    overlay,
     resolve::{self, Reach, Resolved},
 };
 
@@ -32,14 +32,14 @@ pub fn foreground_app(engine: &Engine, call: &CallScope) -> Result<WindowInfo> {
     if foreground_window()?.hwnd != window.hwnd {
         return Err(Error::new(ErrorCode::UserActive, FOREGROUND_MOVED));
     }
-    overlay::show_target(engine, &window, call);
+    overlay::begin(engine, &window, call);
     Ok(window)
 }
 
 fn ready(engine: &Engine, resolved: Resolved, call: &CallScope) -> Result<Prepared> {
     engine.host.refuse(&resolved.window)?;
     engine.guard.before_input(Some(&resolved.window), call)?;
-    overlay::show_target(engine, &resolved.window, call);
+    overlay::begin(engine, &resolved.window, call);
     Ok(resolved)
 }
 

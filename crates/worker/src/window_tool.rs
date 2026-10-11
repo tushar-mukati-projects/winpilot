@@ -17,7 +17,7 @@ pub use app_catalog::AppCatalog;
 
 use crate::{
     act, app_windows::app_windows, call_scope::CallScope, default_window::default_window, engine::Engine, observe,
-    resolve, until::until, watch::Watch,
+    overlay, resolve, until::until, watch::Watch,
 };
 
 const CLOSE_WAIT: Duration = Duration::from_secs(3);
@@ -100,17 +100,22 @@ fn move_to(engine: &Engine, args: &WindowsArgs, call: &CallScope) -> Result<Wind
     })
 }
 
-fn controlled<T>(
+fn controlled(
     engine: &Engine,
     args: &WindowsArgs,
     action: &str,
     call: &CallScope,
-    perform: impl FnOnce(&WindowInfo) -> Result<T>,
-) -> Result<T> {
+    perform: impl FnOnce(&WindowInfo) -> Result<WindowsReport>,
+) -> Result<WindowsReport> {
     let window = unique_window(engine, args, action)?;
     let _actor = engine.guard.acquire_actor(call)?;
     engine.guard.before_input(Some(&window), call)?;
-    perform(&window)
+    let presence = overlay::present(engine, &window);
+    let report = perform(&window)?;
+    if let Some(after) = &report.window {
+        presence.follow(after);
+    }
+    Ok(report)
 }
 
 fn unique_window(engine: &Engine, args: &WindowsArgs, action: &str) -> Result<WindowInfo> {

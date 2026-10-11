@@ -7,7 +7,10 @@ use std::{
 
 use deckhand_capture::StopCheck;
 use deckhand_core::{Context, Error, ErrorCode, Result, WindowInfo, config::GuardConfig, keys::parse_chord};
-use deckhand_desktop::sync::{NamedEvent, NamedMutex, NamedMutexGuard};
+use deckhand_desktop::{
+    overlay::Overlay,
+    sync::{NamedEvent, NamedMutex, NamedMutexGuard},
+};
 use deckhand_input::{ActivityMonitor, HotkeyListener};
 
 use crate::call_scope::CallScope;
@@ -28,11 +31,11 @@ pub struct Guard {
 }
 
 impl Guard {
-    pub fn start(config: &GuardConfig) -> Result<Self> {
+    pub fn start(config: &GuardConfig, overlay: Option<Arc<Overlay>>) -> Result<Self> {
         let stop = Arc::new(NamedEvent::create(STOP_EVENT)?);
         let actor = NamedMutex::create(ACTOR_MUTEX)?;
         let activity = ActivityMonitor::spawn().inspect_err(|error| warn("user-activity monitor", error)).ok();
-        let hotkey = spawn_kill_switch(&config.kill_hotkey, &stop);
+        let hotkey = spawn_kill_switch(&config.kill_hotkey, &stop, overlay);
         let elevated = deckhand_desktop::own_process_elevated();
         Ok(Self { config: config.clone(), stop, actor, activity, hotkey, elevated })
     }
@@ -171,16 +174,28 @@ fn busy(cut_short: bool) -> Error {
     Error::new(ErrorCode::Busy, format!("{BUSY}; try again shortly"))
 }
 
-fn spawn_kill_switch(spec: &str, stop: &Arc<NamedEvent>) -> Option<HotkeyListener> {
+fn spawn_kill_switch(spec: &str, stop: &Arc<NamedEvent>, overlay: Option<Arc<Overlay>>) -> Option<HotkeyListener> {
     let chord = parse_chord(spec).inspect_err(|error| warn("kill hotkey", error)).ok()?;
     let stop = Arc::clone(stop);
-    HotkeyListener::spawn(chord, move || toggle(&stop)).inspect_err(|error| warn("kill hotkey", error)).ok()
+    let pressed = move || toggle(&stop, overlay.as_deref());
+    HotkeyListener::spawn(chord, pressed).inspect_err(|error| warn("kill hotkey", error)).ok()
 }
 
-fn toggle(stop: &NamedEvent) {
-    let result = if stop.is_set() { stop.reset() } else { stop.set() };
-    if let Err(error) = result {
-        warn("kill switch", &error);
+fn toggle(stop: &NamedEvent, overlay: Option<&Overlay>) {
+    let stopping = !stop.is_set();
+    let result = if stopping { stop.set() } else { stop.reset() };
+    match result {
+        Ok(()) => announce(overlay, stopping),
+        Err(error) => warn("kill switch", &error),
+    }
+}
+
+fn announce(overlay: Option<&Overlay>, stopping: bool) {
+    let Some(overlay) = overlay else { return };
+    if stopping {
+        overlay.stopped();
+    } else {
+        overlay.resumed();
     }
 }
 

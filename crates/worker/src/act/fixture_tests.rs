@@ -20,7 +20,14 @@ fn target(fixture: &FixtureApp, terms: &str) -> TargetSpec {
 }
 
 fn click(fixture: &FixtureApp, terms: &str, how: ClickHow) -> Step {
-    Step::Click { target: target(fixture, terms), button: MouseButton::Left, count: 1, modifiers: None, how }
+    Step::Click {
+        target: target(fixture, terms),
+        button: MouseButton::Left,
+        count: 1,
+        modifiers: None,
+        how,
+        glide_ms: None,
+    }
 }
 
 fn assert_all_ok(report: &ActReport) {

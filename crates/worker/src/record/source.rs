@@ -1,5 +1,5 @@
 use deckhand_capture::RecordingSource;
-use deckhand_core::{Error, Rect, Result, Target, WindowInfo, WindowState, protocol::RecordArgs};
+use deckhand_core::{Error, Rect, Result, Target, WindowInfo, WindowRef, WindowState, protocol::RecordArgs};
 
 use crate::{
     call_scope::CallScope,
@@ -10,10 +10,16 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Redaction {
+    DeniedWindows,
+    WholeWindowWhileDenied(WindowRef),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Source {
     pub capture: RecordingSource,
     pub area: Rect,
-    pub redact: bool,
+    pub redaction: Redaction,
 }
 
 pub fn resolve(engine: &Engine, args: &RecordArgs, call: &CallScope) -> Result<Source> {
@@ -31,7 +37,7 @@ pub fn resolve(engine: &Engine, args: &RecordArgs, call: &CallScope) -> Result<S
 }
 
 const fn screen(rect: Rect) -> Source {
-    Source { capture: RecordingSource::Screen(rect), area: rect, redact: true }
+    Source { capture: RecordingSource::Screen(rect), area: rect, redaction: Redaction::DeniedWindows }
 }
 
 fn monitor(rects: &[Rect], index: u32) -> Result<Source> {
@@ -52,7 +58,11 @@ fn window_source(window: &WindowInfo, crop: Option<Rect>) -> Result<Source> {
     }
     let area = crop
         .map_or(window.rect, |crop| Rect::new(window.rect.x + crop.x, window.rect.y + crop.y, crop.width, crop.height));
-    Ok(Source { capture: RecordingSource::Window { window: window.hwnd, crop }, area, redact: false })
+    Ok(Source {
+        capture: RecordingSource::Window { window: window.hwnd, crop },
+        area,
+        redaction: Redaction::WholeWindowWhileDenied(window.hwnd),
+    })
 }
 
 fn element(engine: &Engine, target: &Target, call: &CallScope) -> Result<Source> {
@@ -71,7 +81,7 @@ fn crop_within(window: Rect, element: Rect) -> Result<Rect> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ErrorCode, WindowRef};
+    use deckhand_core::ErrorCode;
 
     use super::*;
     use crate::test_fixture;
@@ -79,7 +89,10 @@ mod tests {
     #[test]
     fn regions_and_monitors_are_redacted_screen_recordings() {
         let region = Rect::new(-100, 20, 640, 480);
-        assert_eq!(screen(region), Source { capture: RecordingSource::Screen(region), area: region, redact: true });
+        assert_eq!(
+            screen(region),
+            Source { capture: RecordingSource::Screen(region), area: region, redaction: Redaction::DeniedWindows }
+        );
         let rects = [Rect::new(0, 0, 2560, 1600), Rect::new(-1920, 0, 1920, 1080)];
         assert_eq!(monitor(&rects, 1).unwrap().capture, RecordingSource::Screen(rects[1]));
         let missing = monitor(&rects, 2).unwrap_err();
@@ -88,11 +101,11 @@ mod tests {
     }
 
     #[test]
-    fn windows_record_unredacted_and_elements_crop_relative_to_the_window() {
+    fn windows_are_watched_for_the_deny_list_and_elements_crop_relative_to_the_window() {
         let info = test_fixture::window(42, "app.exe", "App", Rect::new(100, 50, 800, 600));
         let whole = window_source(&info, None).unwrap();
         assert_eq!(whole.capture, RecordingSource::Window { window: WindowRef(42), crop: None });
-        assert_eq!((whole.area, whole.redact), (info.rect, false));
+        assert_eq!((whole.area, whole.redaction), (info.rect, Redaction::WholeWindowWhileDenied(WindowRef(42))));
         let crop = crop_within(info.rect, Rect::new(80, 70, 100, 40)).unwrap();
         assert_eq!(crop, Rect::new(0, 20, 80, 40));
         let cropped = window_source(&info, Some(crop)).unwrap();

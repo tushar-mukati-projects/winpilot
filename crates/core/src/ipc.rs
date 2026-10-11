@@ -13,9 +13,19 @@ pub const MAX_FRAME_BYTES: usize = 64 << 20;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToWorker {
-    Init { config: Box<Config>, epoch: u32 },
-    Call { id: u64, call: Call },
-    Cancel { id: u64 },
+    Init {
+        config: Box<Config>,
+        epoch: u32,
+        #[serde(default)]
+        agent: String,
+    },
+    Call {
+        id: u64,
+        call: Call,
+    },
+    Cancel {
+        id: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

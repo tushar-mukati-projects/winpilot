@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -12,7 +12,9 @@ use deckhand_core::{
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows::Win32::Media::MediaFoundation::{
-    IMFAttributes, IMFSample, MF_MT_FRAME_SIZE, MF_SOURCE_READER_FIRST_VIDEO_STREAM, MFCreateSourceReaderFromURL,
+    IMFAttributes, IMFSample, IMFSourceReader, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE,
+    MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READERF_ENDOFSTREAM, MFCreateMediaType, MFCreateSourceReaderFromURL,
+    MFMediaType_Video, MFVideoFormat_NV12,
 };
 use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
 use windows_core::{HSTRING, w};
@@ -21,7 +23,7 @@ use super::layout::Size;
 use super::media_foundation::MediaFoundation;
 use super::mp4::InputPixels;
 use super::video_writer::{VideoWriter, WriterSettings};
-use super::{EndReason, Recorder, RecordingSource, RecordingSpec, VideoSettings};
+use super::{EndReason, OutputFile, Recorder, RecordingSource, RecordingSpec, Redact, VideoSettings};
 use crate::com::ComApartment;
 use crate::frame::Frame;
 
@@ -57,7 +59,28 @@ fn video(format: VideoFormat, fps: u32, max_width: u32) -> VideoSettings {
 }
 
 fn spec(source: RecordingSource, path: &Path, video: VideoSettings) -> RecordingSpec {
-    RecordingSpec { source, path: path.to_path_buf(), video, redactor: None, kill_switch: Box::new(|| false) }
+    RecordingSpec {
+        source,
+        output: OutputFile::create_new(path).unwrap(),
+        video,
+        redactor: None,
+        kill_switch: Box::new(|| false),
+        stop: Arc::new(AtomicBool::new(false)),
+    }
+}
+
+struct BlackOut {
+    calls: Arc<AtomicUsize>,
+}
+
+impl Redact for BlackOut {
+    fn refresh(&mut self) -> bool {
+        self.calls.fetch_add(1, Ordering::Relaxed) == 0
+    }
+
+    fn cover(&self, frame: &mut Frame) {
+        frame.bgra.fill(0);
+    }
 }
 
 fn primary_monitor() -> Rect {
@@ -77,6 +100,78 @@ fn mp4_frame_size(path: &Path) -> (Size, bool) {
     let mut sample: Option<IMFSample> = None;
     unsafe { reader.ReadSample(stream, 0, None, Some(&raw mut flags), None, Some(&raw mut sample)) }.unwrap();
     (Size::new((packed >> 32) as u32, packed as u32), sample.is_some())
+}
+
+fn mp4_decoded_seconds(path: &Path) -> f64 {
+    let _apartment = ComApartment::enter_any().unwrap();
+    let _media_foundation = MediaFoundation::start().unwrap();
+    let url = HSTRING::from(path.as_os_str());
+    let reader = unsafe { MFCreateSourceReaderFromURL(&url, None::<&IMFAttributes>) }.unwrap();
+    let stream = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
+    let mut end = 0i64;
+    for _ in 0..100_000 {
+        let mut flags = 0u32;
+        let mut sample: Option<IMFSample> = None;
+        unsafe { reader.ReadSample(stream, 0, None, Some(&raw mut flags), None, Some(&raw mut sample)) }.unwrap();
+        if let Some(sample) = sample {
+            let time = unsafe { sample.GetSampleTime() }.unwrap();
+            let duration = unsafe { sample.GetSampleDuration() }.unwrap_or(0);
+            end = end.max(time + duration);
+        }
+        if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
+            break;
+        }
+    }
+    end as f64 / 10_000_000.0
+}
+
+fn first_luma(sample: &IMFSample) -> u8 {
+    let buffer = unsafe { sample.ConvertToContiguousBuffer() }.unwrap();
+    let mut data = std::ptr::null_mut();
+    unsafe { buffer.Lock(&raw mut data, None, None) }.unwrap();
+    let luma = unsafe { *data };
+    unsafe { buffer.Unlock() }.unwrap();
+    luma
+}
+
+fn nv12_reader(path: &Path) -> IMFSourceReader {
+    let url = HSTRING::from(path.as_os_str());
+    let reader = unsafe { MFCreateSourceReaderFromURL(&url, None::<&IMFAttributes>) }.unwrap();
+    let wanted = unsafe { MFCreateMediaType() }.unwrap();
+    unsafe { wanted.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video) }.unwrap();
+    unsafe { wanted.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_NV12) }.unwrap();
+    let stream = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
+    unsafe { reader.SetCurrentMediaType(stream, None, &wanted) }.unwrap();
+    reader
+}
+
+fn decoded_lumas(path: &Path) -> Vec<(i64, u8)> {
+    let _apartment = ComApartment::enter_any().unwrap();
+    let _media_foundation = MediaFoundation::start().unwrap();
+    let reader = nv12_reader(path);
+    let stream = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
+    let mut lumas = Vec::new();
+    for _ in 0..10_000 {
+        let mut flags = 0u32;
+        let mut sample: Option<IMFSample> = None;
+        unsafe { reader.ReadSample(stream, 0, None, Some(&raw mut flags), None, Some(&raw mut sample)) }.unwrap();
+        if let Some(sample) = sample {
+            lumas.push((unsafe { sample.GetSampleTime() }.unwrap(), first_luma(&sample)));
+        }
+        if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
+            break;
+        }
+    }
+    lumas
+}
+
+fn ffprobe_seconds(path: &Path) -> Option<f64> {
+    let output = std::process::Command::new("ffprobe")
+        .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0"])
+        .arg(path)
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&output.stdout).trim().parse().ok()
 }
 
 fn gif_frames(path: &Path) -> (Size, Vec<gif::Frame<'static>>) {
@@ -163,11 +258,7 @@ fn screen_recordings_are_redacted_and_obey_the_kill_switch() {
     let path = scratch.file("redacted.gif");
     let primary = primary_monitor();
     let calls = Arc::new(AtomicUsize::new(0));
-    let counted = Arc::clone(&calls);
-    let redactor = Box::new(move |frame: &mut Frame| {
-        counted.fetch_add(1, Ordering::Relaxed);
-        frame.bgra.fill(0);
-    });
+    let redactor = Box::new(BlackOut { calls: Arc::clone(&calls) });
     let ticks = Arc::new(AtomicUsize::new(0));
     let ticked = Arc::clone(&ticks);
     let kill_switch = Box::new(move || ticked.fetch_add(1, Ordering::Relaxed) >= 15);
@@ -188,6 +279,44 @@ fn screen_recordings_are_redacted_and_obey_the_kill_switch() {
     assert!(calls.load(Ordering::Relaxed) >= 1);
     let (_, frames) = gif_frames(&path);
     assert!(frames.iter().all(|frame| frame.buffer.as_chunks::<4>().0.iter().all(|pixel| pixel[..3] == [0, 0, 0])));
+}
+
+#[test]
+#[ignore = "records the screen"]
+fn two_recordings_in_a_row_from_a_fresh_thread_both_finish() {
+    let scratch = Scratch::new("two-in-a-row");
+    let paths = [scratch.file("first.mp4"), scratch.file("second.gif")];
+    let cycles = thread::spawn(move || {
+        let primary = primary_monitor();
+        let region = RecordingSource::Screen(Rect::new(primary.x, primary.y, 256, 144));
+        let formats = [VideoFormat::Mp4, VideoFormat::Gif];
+        paths
+            .iter()
+            .zip(formats)
+            .map(|(path, format)| {
+                let recorder = Recorder::start(spec(region, path, video(format, 15, 320)), START_PATIENCE).unwrap();
+                thread::sleep(Duration::from_millis(400));
+                recorder.stop()
+            })
+            .collect::<Vec<_>>()
+    });
+    for finished in cycles.join().unwrap() {
+        assert_eq!(finished.reason, EndReason::Stopped);
+        assert!(finished.bytes > 0 && finished.finalize_error.is_none(), "{finished:?}");
+    }
+}
+
+#[test]
+fn a_failed_start_removes_the_reserved_file_within_its_patience() {
+    let scratch = Scratch::new("failed-start");
+    let path = scratch.file("missing-window.mp4");
+    let source = RecordingSource::Window { window: WindowRef(0x7FFF_FFF0), crop: None };
+    let started = Instant::now();
+    let error =
+        Recorder::start(spec(source, &path, video(VideoFormat::Mp4, 30, 1920)), Duration::from_secs(2)).err().unwrap();
+    assert!(started.elapsed() < Duration::from_secs(3));
+    assert_eq!(error.code, deckhand_core::ErrorCode::NotFound);
+    assert!(!path.exists());
 }
 
 #[test]
@@ -228,6 +357,8 @@ fn synthetic_frame(size: Size, step: usize) -> Vec<u8> {
 
 fn time_writer(settings: &WriterSettings, frames: usize) -> f64 {
     let pictures: Vec<Vec<u8>> = (0..8).map(|step| synthetic_frame(settings.size, step)).collect();
+    let output = OutputFile::create_new(&settings.path).unwrap();
+    output.keep();
     let mut writer = VideoWriter::create(settings).unwrap();
     let started = Instant::now();
     for tick in 0..frames {
@@ -253,6 +384,67 @@ fn mp4_encoding_keeps_up_at_1920x1200_and_30_fps() {
             "timing: mp4 1920x1200 @ 30 fps with {input:?} input: {per_frame:.2} ms per frame, {bytes} bytes for 5 s"
         );
         assert!(per_frame < 1000.0 / 30.0, "{input:?} input needs {per_frame:.2} ms per frame");
+    }
+}
+
+#[test]
+#[ignore = "encodes video files"]
+fn an_mp4_dropped_without_finalizing_still_plays_up_to_its_last_fragment() {
+    let _apartment = ComApartment::enter_any().unwrap();
+    let scratch = Scratch::new("unfinalized-mp4");
+    let size = Size::new(1280, 720);
+    let settings = WriterSettings::new(scratch.file("killed.mp4"), VideoFormat::Mp4, size, 30, Quality::High);
+    let output = OutputFile::create_new(&settings.path).unwrap();
+    output.keep();
+    let pictures: Vec<Vec<u8>> = (0..8).map(|step| synthetic_frame(size, step)).collect();
+    let mut writer = VideoWriter::create(&settings).unwrap();
+    for tick in 0..150 {
+        writer.write(&pictures[tick % pictures.len()], tick as u64).unwrap();
+    }
+    drop(writer);
+    let decoded = mp4_decoded_seconds(&settings.path);
+    let (frame_size, has_sample) = mp4_frame_size(&settings.path);
+    let probed = ffprobe_seconds(&settings.path);
+    eprintln!("recording: unfinalized 5 s mp4 decodes {decoded:.2} s with Media Foundation, ffprobe says {probed:?}");
+    assert_eq!(frame_size, size);
+    assert!(has_sample);
+    assert!(decoded >= 3.0, "only {decoded:.2} s of 5 s survived");
+    if let Some(probed) = probed {
+        assert!(probed >= 3.0, "ffprobe reports {probed:.2} s");
+    }
+}
+
+#[test]
+#[ignore = "encodes video files"]
+fn skipped_ticks_hold_the_previous_frame_instead_of_showing_the_next_one_early() {
+    let _apartment = ComApartment::enter_any().unwrap();
+    let scratch = Scratch::new("gapped-mp4");
+    let size = Size::new(320, 240);
+    let gray = |tick: u64| [(tick * 8) as u8, (tick * 8) as u8, (tick * 8) as u8, 255].repeat(size.pixels());
+    for input in [InputPixels::Rgb32, InputPixels::Nv12] {
+        let mut settings = WriterSettings::new(
+            scratch.file(&format!("gapped-{input:?}.mp4")),
+            VideoFormat::Mp4,
+            size,
+            10,
+            Quality::Max,
+        );
+        settings.mp4_inputs = vec![input];
+        let output = OutputFile::create_new(&settings.path).unwrap();
+        output.keep();
+        let mut writer = VideoWriter::create(&settings).unwrap();
+        for tick in (0..10).chain(20..30) {
+            writer.write(&gray(tick), tick).unwrap();
+        }
+        writer.finish(30).unwrap();
+        let lumas = decoded_lumas(&settings.path);
+        let before_gap = lumas.iter().find(|(time, _)| *time == 9_000_000).unwrap().1;
+        let after_gap = lumas.iter().find(|(time, _)| *time == 20_000_000).unwrap().1;
+        let in_gap: Vec<u8> =
+            lumas.iter().filter(|(time, _)| (10_000_000..20_000_000).contains(time)).map(|(_, luma)| *luma).collect();
+        assert!(!in_gap.is_empty(), "{input:?}: {lumas:?}");
+        assert!(after_gap > before_gap + 40, "{input:?}: {lumas:?}");
+        assert!(in_gap.iter().all(|luma| luma.abs_diff(before_gap) <= 4), "{input:?} shows content early: {lumas:?}");
     }
 }
 

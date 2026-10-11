@@ -2,13 +2,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Error, Point, Rect, Result};
+use deckhand_core::{Error, ErrorCode, Point, Rect, Result};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::IsWindow;
 
 use super::gpu::Gpu;
 use super::layout::Size;
 use super::monitor_area::MonitorArea;
+use super::outcome::EndReason;
 use super::spec::RecordingSource;
 use super::staging::{Staging, texture_size};
 use super::wgc::{CaptureSession, CapturedFrame, ensure_supported, monitor_item, window_item};
@@ -32,6 +33,7 @@ pub(crate) struct Source {
     gpu: Gpu,
     geometry: Geometry,
     alive_checked: Instant,
+    monitor_lost: bool,
 }
 
 impl Source {
@@ -46,18 +48,23 @@ impl Source {
         let session = CaptureSession::open(&gpu, item, cursor)?;
         let frame =
             Frame { origin: Point::new(0, 0), width: 0, height: 0, bgra: Vec::new(), source: FrameSource::Screen };
-        let opened = Self { frame, session, staging: Staging::default(), gpu, geometry, alive_checked: Instant::now() };
+        let opened = Self {
+            frame,
+            session,
+            staging: Staging::default(),
+            gpu,
+            geometry,
+            alive_checked: Instant::now(),
+            monitor_lost: false,
+        };
         Ok((opened, clipped))
     }
 
-    pub(crate) fn wait_for_first_frame(&mut self, stop: &AtomicBool) -> Result<()> {
-        let started = Instant::now();
-        while started.elapsed() < FIRST_FRAME_PATIENCE {
+    pub(crate) fn wait_for_first_frame(&mut self, stop: &AtomicBool, deadline: Instant) -> Result<()> {
+        let give_up = Instant::now().checked_add(FIRST_FRAME_PATIENCE).map_or(deadline, |limit| limit.min(deadline));
+        while Instant::now() < give_up {
             if stop.load(Ordering::Acquire) {
-                return Err(Error::new(
-                    deckhand_core::ErrorCode::Cancelled,
-                    "the recording was stopped while starting",
-                ));
+                return Err(Error::new(ErrorCode::Cancelled, "the recording was stopped while starting"));
             }
             if self.grab()? {
                 return Ok(());
@@ -72,6 +79,9 @@ impl Source {
     }
 
     pub(crate) fn grab(&mut self) -> Result<bool> {
+        if !self.follow_monitor() {
+            return Ok(false);
+        }
         let Some(captured) = self.session.latest() else { return Ok(false) };
         let content = self.read(&captured)?;
         drop(captured);
@@ -79,13 +89,32 @@ impl Source {
         Ok(true)
     }
 
-    pub(crate) fn is_gone(&mut self) -> bool {
-        let Geometry::Window { hwnd, .. } = self.geometry else { return false };
+    pub(crate) fn ended(&mut self) -> Option<EndReason> {
+        match self.geometry {
+            Geometry::Window { hwnd, .. } => self.window_closed(hwnd).then_some(EndReason::WindowClosed),
+            Geometry::Screen(_) => {
+                (self.monitor_lost || self.session.is_closed()).then_some(EndReason::MonitorDisconnected)
+            }
+        }
+    }
+
+    fn window_closed(&mut self, hwnd: HWND) -> bool {
+        if self.session.is_closed() {
+            return true;
+        }
         if self.alive_checked.elapsed() < ALIVE_CHECK_EVERY {
             return false;
         }
         self.alive_checked = Instant::now();
         !unsafe { IsWindow(Some(hwnd)) }.as_bool()
+    }
+
+    fn follow_monitor(&mut self) -> bool {
+        let Geometry::Screen(area) = &mut self.geometry else { return true };
+        if area.follow_monitor().is_err() {
+            self.monitor_lost = true;
+        }
+        !self.monitor_lost
     }
 
     fn read(&mut self, captured: &CapturedFrame) -> Result<Size> {

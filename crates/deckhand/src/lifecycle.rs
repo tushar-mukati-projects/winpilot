@@ -57,6 +57,7 @@ pub struct Lifecycle {
     slot: Mutex<Slot>,
     restarts: AtomicU32,
     epochs: AtomicU32,
+    agent: Mutex<String>,
 }
 
 impl Lifecycle {
@@ -68,7 +69,12 @@ impl Lifecycle {
             slot: Mutex::new(Slot { phase: Phase::Idle, failures: 0 }),
             restarts: AtomicU32::new(0),
             epochs: AtomicU32::new(0),
+            agent: Mutex::new(String::new()),
         }
+    }
+
+    pub fn set_agent(&self, name: &str) {
+        name.trim().clone_into(&mut self.agent.lock());
     }
 
     pub fn restarts(&self) -> u32 {
@@ -117,7 +123,8 @@ impl Lifecycle {
         let pipes = self.spawner.spawn().map_err(|error| error.message)?;
         let (link, announced) = Link::start(pipes, self.death_hook(runtime)).map_err(|error| error.message)?;
         let epoch = self.epochs.fetch_add(1, Ordering::SeqCst);
-        if link.send(ToWorker::Init { config: Box::new(self.config.clone()), epoch }).is_err() {
+        let agent = self.agent.lock().clone();
+        if link.send(ToWorker::Init { config: Box::new(self.config.clone()), epoch, agent }).is_err() {
             return Err(EXITED_DURING_STARTUP.to_string());
         }
         let version = match tokio::time::timeout(self.ready_timeout, announced).await {

@@ -27,6 +27,24 @@ impl MonitorArea {
         Ok(Self { monitor, monitor_rect, area })
     }
 
+    pub(crate) fn follow_monitor(&mut self) -> Result<()> {
+        let current = monitor_rect(self.monitor)?;
+        if current != self.monitor_rect {
+            *self = self.moved_to(current);
+        }
+        Ok(())
+    }
+
+    fn moved_to(&self, monitor_rect: Rect) -> Self {
+        let area = if self.area == self.monitor_rect {
+            monitor_rect
+        } else {
+            let relative = self.area_in_monitor();
+            Rect::new(monitor_rect.x + relative.x, monitor_rect.y + relative.y, relative.width, relative.height)
+        };
+        Self { monitor: self.monitor, monitor_rect, area }
+    }
+
     pub(crate) fn is_clipped(&self, wanted: Rect) -> bool {
         self.area != wanted
     }
@@ -64,6 +82,33 @@ mod tests {
         assert_eq!(found.area, wanted);
         assert!(!found.is_clipped(wanted));
         assert_eq!(found.area_in_monitor(), Rect::new(10 - found.monitor_rect.x, 20 - found.monitor_rect.y, 300, 200));
+    }
+
+    #[test]
+    fn a_whole_monitor_follows_a_new_resolution_and_a_region_keeps_its_place_on_the_monitor() {
+        let monitor = HMONITOR(std::ptr::dangling_mut());
+        let whole =
+            MonitorArea { monitor, monitor_rect: Rect::new(0, 0, 2560, 1600), area: Rect::new(0, 0, 2560, 1600) };
+        let resized = whole.moved_to(Rect::new(0, 0, 1920, 1080));
+        assert_eq!(resized.area, Rect::new(0, 0, 1920, 1080));
+        let region = MonitorArea {
+            monitor,
+            monitor_rect: Rect::new(-1920, 0, 1920, 1080),
+            area: Rect::new(-1820, 50, 400, 300),
+        };
+        let rearranged = region.moved_to(Rect::new(2560, 200, 1920, 1080));
+        assert_eq!(rearranged.monitor_rect, Rect::new(2560, 200, 1920, 1080));
+        assert_eq!(rearranged.area, Rect::new(2660, 250, 400, 300));
+        assert_eq!(rearranged.area_in_monitor(), region.area_in_monitor());
+    }
+
+    #[test]
+    fn following_an_unchanged_monitor_keeps_the_area() {
+        crate::dpi::make_thread_per_monitor_aware().unwrap();
+        let mut found = MonitorArea::locate(Rect::new(10, 20, 300, 200)).unwrap();
+        let before = found;
+        found.follow_monitor().unwrap();
+        assert_eq!(found, before);
     }
 
     #[test]

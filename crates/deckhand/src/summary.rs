@@ -86,14 +86,21 @@ fn act(args: &ActArgs, log_text: bool) -> String {
 fn step_summary(step: &Step, log_text: bool) -> String {
     match step {
         Step::Click { target, button, count, .. } => click(target, *button, *count),
-        Step::Hover { target } => format!("hover {target}"),
+        Step::Hover { target, glide_ms } => format!("hover {target}{}", glide(*glide_ms)),
+        Step::Move { to, glide_ms } => format!("move {to}{}", glide(*glide_ms)),
+        Step::MouseDown { target, button, glide_ms } => {
+            format!("mouse_down {target}{}{}", button_name(*button), glide(*glide_ms))
+        }
+        Step::MouseUp { target, button, glide_ms } => {
+            format!("mouse_up{}{}{}", on(target.as_ref()), button_name(*button), glide(*glide_ms))
+        }
         Step::Type { target, text, enter, .. } => type_text(target.as_ref(), text, *enter, log_text),
         Step::SetValue { target, value } => format!("set_value {target} {}", typed(value, log_text)),
         Step::Key { keys, target, repeat } => key(keys, target.as_ref(), *repeat),
-        Step::Scroll { target, direction, amount } => {
+        Step::Scroll { target, direction, amount, .. } => {
             format!("scroll {} {amount}{}", wire_name(direction), on(target.as_ref()))
         }
-        Step::Drag { from, to } => format!("drag {from} -> {to}"),
+        Step::Drag { from, to, glide_ms } => format!("drag {from} -> {to}{}", glide(*glide_ms)),
         Step::Select { target, option } => select(target, option.as_deref()),
         Step::Toggle { target, on } => {
             format!("toggle {target}{}", on.map_or("", |state| if state { " on" } else { " off" }))
@@ -104,6 +111,14 @@ fn step_summary(step: &Step, log_text: bool) -> String {
         Step::WaitFor(condition) => format!("wait_for {}", wait_for(condition, log_text)),
         Step::Wait { ms } => format!("wait {ms}ms"),
     }
+}
+
+fn glide(glide_ms: Option<u64>) -> String {
+    glide_ms.map(|ms| format!(" glide={ms}ms")).unwrap_or_default()
+}
+
+fn button_name(button: MouseButton) -> String {
+    if button == MouseButton::Left { String::new() } else { format!(" {}", wire_name(&button)) }
 }
 
 fn click(target: &TargetSpec, button: MouseButton, count: u8) -> String {
@@ -354,9 +369,10 @@ mod tests {
                 count: 2,
                 modifiers: None,
                 how: ClickHow::Auto,
+                glide_ms: None,
             },
             Step::Key { keys: "ctrl+s".to_string(), target: None, repeat: 1 },
-            Step::Scroll { target: Some(text_target("e3")), direction: Direction::Down, amount: 5 },
+            Step::Scroll { target: Some(text_target("e3")), direction: Direction::Down, amount: 5, glide_ms: None },
             Step::Wait { ms: 200 },
         ];
         assert_eq!(
@@ -432,7 +448,7 @@ mod tests {
 
     #[test]
     fn long_summaries_are_clipped() {
-        let steps = vec![Step::Hover { target: text_target(&"x".repeat(2000)) }];
+        let steps = vec![Step::Hover { target: text_target(&"x".repeat(2000)), glide_ms: None }];
         let summary = describe(&act_call(steps), false);
         assert_eq!(summary.chars().count(), MAX_SUMMARY_CHARS + 1);
         assert!(summary.ends_with('…'));

@@ -10,13 +10,16 @@ Deckhand gives Claude Code fast, safe control of a Windows 11 desktop. It's an M
 .\scripts\install.ps1 -Register
 ```
 
-This does four things:
+This does five things:
 1. Builds a release binary.
 2. Copies it to `%LOCALAPPDATA%\Programs\deckhand\deckhand.exe`.
 3. Checks that the copy's SHA-256 matches the build.
-4. Registers it with Claude Code as the user-scope MCP server `deckhand`.
+4. Registers the notification identity `Deckhand.Agent` (name and icon) under `HKCU\Software\Classes\AppUserModelId`, so `notify` shows real Windows notifications.
+5. Registers it with Claude Code as the user-scope MCP server `deckhand`.
 
-Restart open Claude Code sessions to load it. Re-running the script swaps in a new build safely, even while sessions are using the old one.
+Restart open Claude Code sessions to load it. Re-running the script swaps in a new build safely, even while sessions are using the old one: the running copy is renamed to `deckhand.old-<time>.exe` and deleted by a later run once nothing uses it.
+
+`.\scripts\install.ps1 -Uninstall` removes the MCP registration, the notification identity and the install folder. Your config and logs stay unless you add `-Purge`.
 
 ## Tools
 
@@ -25,14 +28,14 @@ Restart open Claude Code sessions to load it. Re-running the script swaps in a n
 | `observe` | Reads a window as one line per element with a ref (`e12`). It reads the foreground app by default, skipping Claude's own terminal. |
 | `act` | Runs up to 50 steps in one call, then reports a diff of what changed. If a new dialog took over, it returns the dialog's elements instead. |
 | `find` | Searches by selector or text in one window or in all of them. |
-| `screenshot` | Captures a window, element, region or monitor as a JPEG or PNG, optionally with ref labels drawn on. `preset` picks the size and detail: `low`, `medium` (default), `high` or `max` (native pixels). |
+| `screenshot` | Captures a window, element, region or monitor as a JPEG or PNG, optionally with ref labels drawn on. `preset` picks the size and detail: `low`, `medium` (default), `high` or `max` (native pixels, up to 8000 per side). |
 | `record` | Records the screen, a window, an element or a region to MP4 (H.264) or GIF. `start`, `stop` and `status`; one recording at a time. |
 | `wait_for` | Waits until an element appears or disappears, a window opens or closes, some text shows up, or the UI goes idle. |
 | `windows` | Lists, focuses, launches, closes, minimizes, maximizes, restores or moves windows. `apps` lists installed apps (optionally filtered by name), and `monitors` lists the displays with their work area and scale, numbered as `screenshot` numbers them. |
 | `pick_file` | Fills a native Open or Save dialog, optionally clicking an Upload button first. |
 | `read_text` | Gets the full text of an element or window through UI Automation, falling back to OCR. On a browser window it returns the page text. |
 | `clipboard` | Gets or sets clipboard text. |
-| `notify` | Shows you a Windows notification, for example when a long task finishes. It reports when Focus Assist holds it back. |
+| `notify` | Shows you a Windows notification, for example when a long task finishes. It stays in Notification Center, and the reply says when Windows has notifications turned off for Deckhand. Without the installed identity (a dev build) it falls back to a tray balloon, which Windows may hold back. |
 | `status` | Shows health, the kill switch, user activity and recent timings. |
 
 **Targets** take one of these forms:
@@ -51,7 +54,9 @@ process:chrome text:"Sign in"
 
 **Act steps** look like `{"do":"click","target":"e12"}` or `{"do":"type","target":"e3","text":"hello","enter":true}`. The step types are:
 
-`click` · `hover` · `type` · `set_value` · `key` · `scroll` · `drag` · `select` · `toggle` · `expand` · `collapse` · `focus` · `wait_for` · `wait`
+`click` · `hover` · `move` · `mouse_down` · `mouse_up` · `type` · `set_value` · `key` · `scroll` · `drag` · `select` · `toggle` · `expand` · `collapse` · `focus` · `wait_for` · `wait`
+
+Mouse steps glide the real cursor to their target first (`[cursor] glide_ms`, 120 ms by default); each of `click`, `hover`, `move`, `mouse_down`, `mouse_up`, `scroll` and `drag` takes an optional `glide_ms` (0 jumps, at most 3000). `move` only moves the cursor. `mouse_down` presses a button on a target and `mouse_up` releases it on a target or where the cursor is; a button still held when the `act` call ends is released for you, with a note.
 
 ## Compared with Windows-MCP
 
@@ -78,7 +83,7 @@ Deckhand replaces Windows-MCP. Each Windows-MCP tool maps to a Deckhand tool lik
 | `low` | 960 | 60 |
 | `medium` (default) | 1280 | 80 |
 | `high` | 1600 | 88 |
-| `max` | native resolution | 95, or lossless with `format: png` |
+| `max` | native resolution, up to 8000 px per side | 95, or lossless with `format: png` |
 
 `max_width` (64–2576), `quality` (1–100) and `format` override the preset. The caption shows the quality used, e.g. `i3 1280x800 jpeg · q80 · …`.
 
@@ -95,21 +100,23 @@ Deckhand replaces Windows-MCP. Each Windows-MCP tool maps to a Deckhand tool lik
 ```
 
 - With no `target`, `region` or `monitor`, it records the same window `observe` reads by default. An element records its window, cropped to the element.
-- `start` replies `recording to C:\…\deckhand-20261011-101500.mp4 · 1920x1200 @ 30 fps · stop with record action stop`. `stop` replies `saved C:\…\x.mp4 · 12.4 s · 372 frames · 4.1 MB`, plus a note when frames were dropped or the recording ended on its own.
-- The video has a constant frame rate. When nothing changes on screen, the previous frame repeats. If the window is resized while recording, the picture is scaled to fit the size chosen at the start, with black bars where the shape differs.
-- It stops by itself at `max_seconds`, when the kill hotkey is pressed, or when the recorded window closes. The next `status` or `stop` reports the saved file.
+- `start` replies `recording to C:\…\deckhand-20261011-101500.mp4 · 1920x1200 @ 30 fps · stop with record action stop`. `stop` replies `saved C:\…\x.mp4 · 12.4 s · 372 frames · 4.1 MB`, plus a note when frames were dropped, encoding failed or the recording ended on its own. While a recording is still starting, `status` says so and `stop` cancels it.
+- If a finished recording's report was never read, the next `start` says so and names the saved file.
+- The video has a constant frame rate. When nothing changes on screen, or a frame could not be captured in time, the previous frame is held, so nothing ever shows early. If the window is resized while recording, the picture is scaled to fit the size chosen at the start, with black bars where the shape differs. MP4s are tagged BT.709.
+- It stops by itself at `max_seconds`, when the kill hotkey is pressed, when the recorded window closes, or when the recorded monitor is disconnected. A monitor that changes resolution or position is followed. The next `status` or `stop` reports the saved file.
 - Files are never overwritten. A default name that is taken gets `-2`, `-3` and so on; an explicit `path` that exists is refused.
 
 ## Safety
 
 - **Kill switch.** `Ctrl+Alt+Shift+Backspace` stops all input from every Deckhand session; press it again to resume. Claude cannot undo it. It also stops and saves any recording in progress, and no new recording starts until you resume.
-- **Recordings are visible.** While a recording runs, Windows draws a yellow border around the recorded window or monitor. Monitor and region recordings black out denied windows (checked about twice a second), and a denied window can't be recorded at all. Windows that hide themselves from capture come out black.
+- **Recordings are visible.** While a recording runs, Windows draws a yellow border around the recorded window or monitor. Monitor and region recordings black out denied windows, checked on every frame. A denied window can't be recorded at all, and a recorded window whose title or process becomes denied is blacked out completely while it stays denied; the final report says so. Windows that hide themselves from capture come out black.
 - **You keep priority.** While you're using the mouse or keyboard, input steps wait for you to stop. Read-only tools are never blocked.
 - **Claude's own terminal is off-limits.** Deckhand won't type into or act on the terminal that hosts Claude.
 - **Deny list.** Password managers, and any windows or folders you add in the config, are never read or acted on. Screenshots black out denied windows. `pick_file` refuses paths under the folders in `deny_paths`.
 - **Elevation and the secure desktop.** Elevated windows, UAC prompts and the lock screen are reported, never driven.
 - **Audit log.** `%LOCALAPPDATA%\deckhand\logs\YYYY-MM-DD.jsonl` keeps one line per call. Typed text and file names are redacted.
-- **Visible agent.** A thin border marks the window being driven, and a ripple marks each click. Both are hidden from screenshots.
+- **Visible agent.** While an agent drives a window, a flowing multi-colour glow rings it and a glass pill at the top names the agent (taken from the MCP client, e.g. "Claude" or "Codex") with the stop hotkey. Clicks ripple, the cursor carries a name badge and leaves a trail as it glides, keystrokes appear as keycaps (typed text only as a character count), the field being typed into gets a gradient outline, screenshots show a brief viewfinder, and windows the agent reads get a faint sweep. The kill hotkey turns everything red, then it fades. The overlay never takes focus, never receives clicks, honours Windows' "Show animations" setting, uses no CPU when idle, and is hidden from Deckhand's own screenshots and OCR.
+- **Demo mode.** With `[overlay] capturable = true` your own screen recorders (Snipping Tool, OBS, Game Bar) record the animations; Deckhand still hides them for the instant of its own captures.
 
 ## Configuration
 
@@ -139,6 +146,18 @@ format = "mp4"
 max_width = 1920
 folder = 'D:\Clips'
 
+[overlay]
+enabled = true
+animations = true
+capturable = false
+show_reads = true
+theme = "aurora"
+# colors = ["#7C3AED", "#0EA5E9", "#F472B6"]
+# label = "Assistant"
+
+[cursor]
+glide_ms = 120
+
 [log]
 log_text = false
 retention_days = 14
@@ -158,9 +177,11 @@ User `deny` and `deny_paths` entries are added to the built-in ones; they don't 
 | `cursor` | true | Show the mouse pointer. |
 | `format` | `"mp4"` | `mp4` or `gif`. |
 | `max_width` | 1920 (GIF 960) | Larger sources are scaled down, keeping their shape and even dimensions. |
-| `folder` | `%USERPROFILE%\Videos\Deckhand` | Where default-named recordings go; created if missing. |
+| `folder` | `Deckhand` in your Videos folder, wherever OneDrive or a policy moved it | Where default-named recordings go; created if missing. |
 
-**Unfinished recordings.** An MP4 becomes playable only when it is finalized, on `stop`, at `max_seconds`, on the kill hotkey or when the window closes. If the worker is restarted mid-recording (a hung call, or the Claude Code session ending), the MP4 is left unplayable. A GIF usually still shows the frames written before the restart.
+**Unfinished recordings.** MP4s are written as fragmented MP4, so a file always plays up to its last fragment, under a second before the end. When the Claude Code session ends, the server closes the worker's input and gives it 3 s to stop and finalize the recording before ending it. If the worker has to be killed because a call hung, the MP4 still plays up to its last fragment. A GIF usually still shows the frames written before the restart.
+
+`[overlay]`: `animations = false` keeps the overlay static (as does turning off Windows' animation setting). `capturable = true` is demo mode. `show_reads = false` turns off the sweep over windows the agent reads. `theme` is `aurora`, `sunset`, `ocean` or `mono`; `colors` replaces the theme with your own looping `#RRGGBB` list. `label` overrides the agent name shown on the pill and the cursor badge. `[cursor] glide_ms = 0` moves the cursor instantly.
 
 ## Development
 

@@ -3,7 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Error, Result};
+use deckhand_core::{Error, Result, protocol::MouseButton};
+use parking_lot::Mutex;
 
 use crate::cancel::Cancel;
 
@@ -16,11 +17,33 @@ pub struct CallScope {
     deadline: Instant,
     acting: AtomicBool,
     overlay_shown: AtomicBool,
+    held: Mutex<Vec<MouseButton>>,
 }
 
 impl CallScope {
     pub fn new(cancel: Cancel, deadline: Instant) -> Self {
-        Self { cancel, deadline, acting: AtomicBool::new(false), overlay_shown: AtomicBool::new(false) }
+        Self {
+            cancel,
+            deadline,
+            acting: AtomicBool::new(false),
+            overlay_shown: AtomicBool::new(false),
+            held: Mutex::new(Vec::new()),
+        }
+    }
+
+    pub fn note_held(&self, button: MouseButton) {
+        let mut held = self.held.lock();
+        if !held.contains(&button) {
+            held.push(button);
+        }
+    }
+
+    pub fn note_released(&self, button: MouseButton) {
+        self.held.lock().retain(|held| *held != button);
+    }
+
+    pub fn take_held(&self) -> Vec<MouseButton> {
+        std::mem::take(&mut *self.held.lock())
     }
 
     pub fn check(&self) -> Result<()> {
@@ -106,6 +129,17 @@ mod tests {
         assert_eq!(scope.check().unwrap_err().code, ErrorCode::Timeout);
         cancel.cancel();
         assert_eq!(scope.check().unwrap_err().code, ErrorCode::Cancelled);
+    }
+
+    #[test]
+    fn held_buttons_are_tracked_until_released_or_taken() {
+        let scope = CallScope::relaxed();
+        scope.note_held(MouseButton::Left);
+        scope.note_held(MouseButton::Left);
+        scope.note_held(MouseButton::Right);
+        scope.note_released(MouseButton::Right);
+        assert_eq!(scope.take_held(), vec![MouseButton::Left]);
+        assert!(scope.take_held().is_empty());
     }
 
     #[test]

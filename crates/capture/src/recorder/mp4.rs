@@ -2,14 +2,15 @@ use std::path::Path;
 
 use deckhand_core::{Context, Error, Result, protocol::Quality};
 use windows::Win32::Media::MediaFoundation::{
-    IMFAttributes, IMFByteStream, IMFMediaBuffer, IMFSample, IMFSinkWriter, MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS,
-    MF_TRANSCODE_CONTAINERTYPE, MFCreateAttributes, MFCreateMemoryBuffer, MFCreateSample, MFCreateSinkWriterFromURL,
-    MFTranscodeContainerType_MPEG4,
+    IMFAttributes, IMFByteStream, IMFMediaBuffer, IMFSinkWriter, MF_ACCESSMODE_READWRITE, MF_FILEFLAGS_NONE,
+    MF_OPENMODE_FAIL_IF_NOT_EXIST, MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_TRANSCODE_CONTAINERTYPE,
+    MFCreateAttributes, MFCreateFile, MFCreateMemoryBuffer, MFCreateSample, MFCreateSinkWriterFromURL,
+    MFTranscodeContainerType_FMPEG4,
 };
 use windows_core::HSTRING;
 
 use super::bitrate::average_bitrate;
-use super::clock::{sample_duration, sample_time};
+use super::clock::sample_time;
 use super::layout::Size;
 use super::media_foundation::MediaFoundation;
 use super::media_type::{h264_output, nv12_input, rgb32_input};
@@ -21,42 +22,93 @@ pub(crate) enum InputPixels {
     Nv12,
 }
 
-pub(crate) const PREFERRED_INPUTS: [InputPixels; 2] = [InputPixels::Rgb32, InputPixels::Nv12];
+const HD_HEIGHT: u32 = 720;
+
+pub(crate) fn preferred_inputs(size: Size) -> Vec<InputPixels> {
+    if size.height < HD_HEIGHT {
+        return vec![InputPixels::Nv12, InputPixels::Rgb32];
+    }
+    vec![InputPixels::Rgb32, InputPixels::Nv12]
+}
 
 pub(crate) struct Mp4Writer {
     writer: IMFSinkWriter,
+    _file: ByteStream,
     stream: u32,
     size: Size,
     fps: u32,
     input: InputPixels,
+    shown: Option<IMFMediaBuffer>,
+    next_tick: u64,
     _media_foundation: MediaFoundation,
 }
+
+struct ByteStream(IMFByteStream);
 
 impl Mp4Writer {
     pub(crate) fn create(path: &Path, size: Size, fps: u32, quality: Quality, inputs: &[InputPixels]) -> Result<Self> {
         let media_foundation = MediaFoundation::start()?;
-        let writer = sink_writer(path)?;
+        let file = ByteStream::open_existing(path)?;
+        let writer = sink_writer(path, &file)?;
         let output = h264_output(size, fps, average_bitrate(size.width, size.height, fps, quality))?;
         let stream = unsafe { writer.AddStream(&output) }
             .map_err(|error| Error::unsupported(format!("no H.264 encoder is available: {error}")))?;
         let input = accepted_input(&writer, stream, size, fps, inputs)?;
         unsafe { writer.BeginWriting() }
             .map_err(|error| Error::unsupported(format!("the H.264 encoder would not start: {error}")))?;
-        Ok(Self { writer, stream, size, fps, input, _media_foundation: media_foundation })
+        Ok(Self {
+            writer,
+            _file: file,
+            stream,
+            size,
+            fps,
+            input,
+            shown: None,
+            next_tick: 0,
+            _media_foundation: media_foundation,
+        })
     }
 
     pub(crate) fn write(&mut self, bgra: &[u8], tick: u64) -> Result<()> {
-        let sample = self.sample_of(bgra)?;
-        unsafe { sample.SetSampleTime(sample_time(tick, self.fps)) }.context("timing a video frame")?;
-        unsafe { sample.SetSampleDuration(sample_duration(tick, self.fps)) }.context("timing a video frame")?;
-        unsafe { self.writer.WriteSample(self.stream, &sample) }.context("encoding a video frame")
+        let buffer = self.buffer_of(bgra)?;
+        self.hold_until(tick)?;
+        let next = tick.saturating_add(1);
+        self.write_span(&buffer, tick, next)?;
+        self.shown = Some(buffer);
+        self.next_tick = next;
+        Ok(())
     }
 
-    pub(crate) fn finish(self) -> Result<()> {
+    pub(crate) fn repeat(&mut self, tick: u64) -> Result<()> {
+        self.hold_until(tick.saturating_add(1))
+    }
+
+    pub(crate) fn finish(mut self, end_tick: u64) -> Result<()> {
+        self.hold_until(end_tick)?;
         unsafe { self.writer.Finalize() }.context("finalizing the MP4 file")
     }
 
-    fn sample_of(&self, bgra: &[u8]) -> Result<IMFSample> {
+    fn hold_until(&mut self, tick: u64) -> Result<()> {
+        let Some(shown) = self.shown.clone() else { return Ok(()) };
+        if tick <= self.next_tick {
+            return Ok(());
+        }
+        self.write_span(&shown, self.next_tick, tick)?;
+        self.next_tick = tick;
+        Ok(())
+    }
+
+    fn write_span(&self, buffer: &IMFMediaBuffer, from_tick: u64, until_tick: u64) -> Result<()> {
+        let start = sample_time(from_tick, self.fps);
+        let sample = unsafe { MFCreateSample() }.context("creating a video sample")?;
+        unsafe { sample.AddBuffer(buffer) }.context("filling a video sample")?;
+        unsafe { sample.SetSampleTime(start) }.context("timing a video frame")?;
+        unsafe { sample.SetSampleDuration(sample_time(until_tick, self.fps) - start) }
+            .context("timing a video frame")?;
+        unsafe { self.writer.WriteSample(self.stream, &sample) }.context("encoding a video frame")
+    }
+
+    fn buffer_of(&self, bgra: &[u8]) -> Result<IMFMediaBuffer> {
         let length = match self.input {
             InputPixels::Rgb32 => bgra.len(),
             InputPixels::Nv12 => nv12_len(self.size),
@@ -65,9 +117,7 @@ impl Mp4Writer {
         let buffer = unsafe { MFCreateMemoryBuffer(byte_count) }.context("allocating a video frame")?;
         self.fill(&buffer, bgra, length)?;
         unsafe { buffer.SetCurrentLength(byte_count) }.context("sizing a video frame")?;
-        let sample = unsafe { MFCreateSample() }.context("creating a video sample")?;
-        unsafe { sample.AddBuffer(&buffer) }.context("filling a video sample")?;
-        Ok(sample)
+        Ok(buffer)
     }
 
     fn fill(&self, buffer: &IMFMediaBuffer, bgra: &[u8], length: usize) -> Result<()> {
@@ -82,16 +132,32 @@ impl Mp4Writer {
     }
 }
 
-fn sink_writer(path: &Path) -> Result<IMFSinkWriter> {
+impl ByteStream {
+    fn open_existing(path: &Path) -> Result<Self> {
+        let url = HSTRING::from(path.as_os_str());
+        let stream =
+            unsafe { MFCreateFile(MF_ACCESSMODE_READWRITE, MF_OPENMODE_FAIL_IF_NOT_EXIST, MF_FILEFLAGS_NONE, &url) }
+                .context("opening the reserved MP4 file")?;
+        Ok(Self(stream))
+    }
+}
+
+impl Drop for ByteStream {
+    fn drop(&mut self) {
+        let _ = unsafe { self.0.Close() };
+    }
+}
+
+fn sink_writer(path: &Path, file: &ByteStream) -> Result<IMFSinkWriter> {
     let mut attributes: Option<IMFAttributes> = None;
     unsafe { MFCreateAttributes(&raw mut attributes, 2) }.context("creating the MP4 writer settings")?;
     let attributes = attributes.ok_or_else(|| Error::internal("Media Foundation returned no attribute store"))?;
     unsafe { attributes.SetUINT32(&MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, 1) }
         .context("enabling hardware encoding")?;
-    unsafe { attributes.SetGUID(&MF_TRANSCODE_CONTAINERTYPE, &MFTranscodeContainerType_MPEG4) }
-        .context("choosing the MP4 container")?;
+    unsafe { attributes.SetGUID(&MF_TRANSCODE_CONTAINERTYPE, &MFTranscodeContainerType_FMPEG4) }
+        .context("choosing the fragmented MP4 container")?;
     let url = HSTRING::from(path.as_os_str());
-    unsafe { MFCreateSinkWriterFromURL(&url, None::<&IMFByteStream>, &attributes) }.context("creating the MP4 file")
+    unsafe { MFCreateSinkWriterFromURL(&url, &file.0, &attributes) }.context("creating the MP4 writer")
 }
 
 fn accepted_input(
@@ -142,5 +208,18 @@ impl<'a> LockedBuffer<'a> {
 impl Drop for LockedBuffer<'_> {
     fn drop(&mut self) {
         let _ = unsafe { self.buffer.Unlock() };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn small_videos_use_the_bt709_nv12_converter_and_hd_videos_send_rgb32() {
+        assert_eq!(preferred_inputs(Size::new(640, 480)), [InputPixels::Nv12, InputPixels::Rgb32]);
+        assert_eq!(preferred_inputs(Size::new(1920, 718)), [InputPixels::Nv12, InputPixels::Rgb32]);
+        assert_eq!(preferred_inputs(Size::new(1280, 720)), [InputPixels::Rgb32, InputPixels::Nv12]);
+        assert_eq!(preferred_inputs(Size::new(1920, 1200)), [InputPixels::Rgb32, InputPixels::Nv12]);
     }
 }

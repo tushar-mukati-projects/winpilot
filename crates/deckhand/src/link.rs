@@ -6,6 +6,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
+    time::Duration,
 };
 
 use deckhand_core::{
@@ -23,7 +24,10 @@ type ReplySender = oneshot::Sender<Result<Reply>>;
 type Pending = HashMap<u64, ReplySender>;
 pub type DeathHook = Box<dyn Fn(&Link, &Death, bool) + Send + Sync>;
 
+const GRACEFUL_EXIT: Duration = Duration::from_secs(3);
+
 pub trait WorkerProcess: Send {
+    fn exits_within(&mut self, patience: Duration) -> bool;
     fn terminate(&mut self);
 }
 
@@ -94,20 +98,25 @@ impl Link {
     }
 
     pub fn stop(&self, death: &Death) {
-        let Some(calls) = self.mark_dead_and_kill() else { return };
+        let Some(calls) = self.mark_dead() else { return };
+        self.end_process(death);
         let in_use = !calls.is_empty() || self.answered.load(Ordering::SeqCst);
         (self.on_death)(self, death, in_use);
         fail_pending(calls, &death.error());
     }
 
-    fn mark_dead_and_kill(&self) -> Option<Pending> {
+    fn mark_dead(&self) -> Option<Pending> {
         let calls = self.pending.lock().take()?;
         drop(self.frames.lock().take());
-        let process = self.process.lock().take();
-        if let Some(mut process) = process {
-            process.terminate();
-        }
         Some(calls)
+    }
+
+    fn end_process(&self, death: &Death) {
+        let Some(mut process) = self.process.lock().take() else { return };
+        if death.lets_the_worker_finish() && process.exits_within(GRACEFUL_EXIT) {
+            return;
+        }
+        process.terminate();
     }
 
     fn deliver(&self, id: u64, result: Result<Reply>) {
@@ -171,5 +180,74 @@ fn announce(ready: &mut Option<oneshot::Sender<String>>, version: String) {
 fn stop_link(link: &Weak<Link>, death: &Death) {
     if let Some(link) = link.upgrade() {
         link.stop(death);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{PipeWriter, Read};
+
+    use super::*;
+
+    type Events = Arc<Mutex<Vec<&'static str>>>;
+
+    struct Watched {
+        events: Events,
+        exits: bool,
+    }
+
+    impl WorkerProcess for Watched {
+        fn exits_within(&mut self, _patience: Duration) -> bool {
+            self.events.lock().push("wait");
+            self.exits
+        }
+
+        fn terminate(&mut self) {
+            self.events.lock().push("terminate");
+        }
+    }
+
+    struct Wired {
+        link: Arc<Link>,
+        worker_input: std::io::PipeReader,
+        _worker_output: PipeWriter,
+        events: Events,
+    }
+
+    fn wired(exits: bool) -> Wired {
+        let (worker_input, stdin) = std::io::pipe().unwrap();
+        let (stdout, worker_output) = std::io::pipe().unwrap();
+        let events = Events::default();
+        let process = Box::new(Watched { events: Arc::clone(&events), exits });
+        let pipes = WorkerPipes { stdin: Box::new(stdin), stdout: Box::new(stdout), process };
+        let (link, _announced) = Link::start(pipes, Box::new(|_, _, _| {})).unwrap();
+        Wired { link, worker_input, _worker_output: worker_output, events }
+    }
+
+    #[test]
+    fn shutdown_closes_the_worker_input_and_waits_before_any_kill() {
+        let mut wired = wired(true);
+        wired.link.stop(&Death::Shutdown);
+        let mut rest = Vec::new();
+        wired.worker_input.read_to_end(&mut rest).unwrap();
+        assert!(rest.is_empty());
+        assert_eq!(*wired.events.lock(), ["wait"]);
+        assert!(!wired.link.is_alive());
+    }
+
+    #[test]
+    fn a_worker_that_does_not_exit_in_time_is_terminated() {
+        let wired = wired(false);
+        wired.link.stop(&Death::Shutdown);
+        assert_eq!(*wired.events.lock(), ["wait", "terminate"]);
+    }
+
+    #[test]
+    fn a_deadline_kill_terminates_at_once() {
+        let wired = wired(true);
+        wired.link.stop(&Death::Timeout { tool: "act", deadline: Duration::from_secs(1) });
+        assert_eq!(*wired.events.lock(), ["terminate"]);
+        wired.link.stop(&Death::Shutdown);
+        assert_eq!(*wired.events.lock(), ["terminate"]);
     }
 }

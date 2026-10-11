@@ -77,6 +77,13 @@ mod tests {
     }
 
     #[test]
+    fn every_button_a_mouse_down_can_hold_is_released() {
+        let events = releases_for(&[VK_LBUTTON, VK_RBUTTON, VK_MBUTTON]);
+        assert_eq!(events.len(), 3);
+        assert!(events.iter().all(|event| matches!(event, InputEvent::Mouse(_))));
+    }
+
+    #[test]
     fn every_modifier_side_is_released_as_a_key_up() {
         let events = releases_for(&MODIFIER_KEYS);
         let released: Vec<VIRTUAL_KEY> = events.iter().filter_map(key_up).map(|stroke| stroke.vk).collect();

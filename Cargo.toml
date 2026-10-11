@@ -32,11 +32,13 @@ png = "0.18"
 gif = "0.14.2"
 windows-core = "0.62.2"
 windows-future = "0.3.2"
+embed-resource = "3.0.11"
 
 [workspace.dependencies.windows]
 version = "0.62.2"
 features = [
     "Foundation",
+    "Data_Xml_Dom",
     "Foundation_Collections",
     "Globalization",
     "Graphics",
@@ -47,6 +49,7 @@ features = [
     "Media_Ocr",
     "Security_Cryptography",
     "Storage_Streams",
+    "UI_Notifications",
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_Graphics_Direct3D",

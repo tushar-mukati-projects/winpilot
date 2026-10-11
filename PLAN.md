@@ -115,7 +115,7 @@ The core four tools set `_meta["anthropic/alwaysLoad"]`, so Claude Code doesn't 
 | `pick_file` | Fill any native Open/Save dialog: `paths:[…]`, optional `open_with` (a target to click first, e.g. an Upload button), `overwrite:false` | One call does the whole upload: click Upload, wait for the dialog, set the path, press Open, verify it closed |
 | `read_text` | Full text of an element, window or region: TextPattern / Value first (never a document's Value, which browsers fill with the URL), OCR as fallback. A browser window reads its page document. | Plain text, optional line boxes |
 | `clipboard` | Get or set text | — |
-| `notify` | Show the user a tray-balloon notification (title ≤ 63, message ≤ 255 UTF-16 units) | `notification shown`, or what suppressed it (Focus Assist, full screen, presentation, lock screen) |
+| `notify` | Show the user a WinRT toast as `Deckhand.Agent` that stays in Notification Center (title ≤ 63, message ≤ 255 UTF-16 units); a tray balloon when the identity isn't registered (dev builds) | `notification sent`, the setting that blocks it (`ToastNotifier.Setting`), or a hint that Windows may hold the banner back (full screen, presentation mode, lock screen, the first hour after sign-in). Do Not Disturb is invisible to `SHQueryUserNotificationState`, so the reply never claims it. |
 | `status` | Health: paused/stopped, user active, lock holder, worker restarts, recent timings and errors | — |
 
 ### Element lines (token-cheap)
@@ -139,7 +139,7 @@ e5 button "Close"
 
 ### `act` steps
 
-Each step is an object with a `do` field: `click` (`button`, `count` 1–3, `modifiers`, `how: auto|invoke|mouse`), `hover`, `type` (`text`, `enter`, `how: auto|keys|paste`), `set_value` (`value`), `key` (`keys`, `repeat`), `scroll` (`direction`, `amount`), `drag` (`from`, `to`), `select` (`option`), `toggle` (`on`), `expand`, `collapse`, `focus`, `wait_for` (`until` plus its fields) and `wait` (`ms`, capped at 5 s). Unknown fields are rejected. The result always reports which method actually ran.
+Each step is an object with a `do` field: `click` (`button`, `count` 1–3, `modifiers`, `how: auto|invoke|mouse`), `hover`, `move` (`to`), `mouse_down` (`target`, `button`), `mouse_up` (`target` optional, `button`), `type` (`text`, `enter`, `how: auto|keys|paste`), `set_value` (`value`), `key` (`keys`, `repeat`), `scroll` (`direction`, `amount`), `drag` (`from`, `to`), `select` (`option`), `toggle` (`on`), `expand`, `collapse`, `focus`, `wait_for` (`until` plus its fields) and `wait` (`ms`, capped at 5 s). Mouse steps take `glide_ms` (default `[cursor] glide_ms`, 120 ms; 0 jumps) and glide the real cursor along an ease-in-out path at about 120 Hz before acting; a button that `mouse_down` leaves held is released when the call ends. Unknown fields are rejected. The result always reports which method actually ran.
 
 ```json
 {"steps":[
@@ -187,12 +187,16 @@ Each step is an object with a `do` field: `click` (`button`, `count` 1–3, `mod
   - processes and window-title patterns never to read or touch (the built-in defaults are the common password managers; add your own, such as the name of a private folder);
   - `pick_file` refuses paths under any folder listed in `deny_paths`.
 - **Visible agent:** a thin border around the window being driven and a ripple at each click point. It's excluded from screenshots with `WDA_EXCLUDEFROMCAPTURE`, and it's static with no animation loop.
+
+  - processes and window-title patterns never to read or touch (defaults include password managers and any title containing `Downloads\recovery`);
+  - `pick_file` refuses paths under the folders in `[guard] deny_paths`.
+- **Visible agent:** an animated presence layer on the overlay thread, named for the connected agent (MCP `clientInfo.name`, or `overlay.label`). A conic-style gradient glow (theme palette, crisp inner line plus a 24 px bloom) flows around the driven window after igniting from the top centre; a glass pill names the agent and the stop hotkey; clicks ripple with particles; the cursor carries a badge and a trail along its glide; keystrokes show as keycaps (typing shows only a character count); the typed-into field gets a gradient outline; screenshots get a viewfinder; read windows get a faint sweep; the kill switch turns it crimson. Every window is layered, transparent to input, topmost, never activated and excluded from capture (`WDA_EXCLUDEFROMCAPTURE`) unless `overlay.capturable` is on, in which case Deckhand hides it during its own captures. A 15 ms timer runs only while something animates; when idle it is killed and the thread sleeps. Each frame repaints only what changed, from precomputed falloff tables, and large steady glows repaint at a lower rate. Reduced motion (Windows animation setting or `overlay.animations = false`) shows static versions.
 - **Audit log:** rolling JSONL in `%LOCALAPPDATA%\deckhand\logs` with tool, target (role and short name), process, method, result and duration. Typed text is logged by length only unless `log_text = true`. No screenshots are saved.
 - **Claude Code permissions:** auto-allow `observe`, `find`, `screenshot`, `read_text` and `status`; ask for `act`, `pick_file`, `windows` and `clipboard` until you trust it. Don't combine desktop control with bypass-permissions mode.
 
 ## 10. Claude Code integration
 
-- **Install** the built exe to `%LOCALAPPDATA%\Programs\deckhand\deckhand.exe` rather than registering `target\release` directly. A running MCP server locks its exe, which would break `cargo build`. An `install` script copies the exe and checks its SHA-256, so a corrupted copy is never registered.
+- **Install** the built exe to `%LOCALAPPDATA%\Programs\deckhand\deckhand.exe` rather than registering `target\release` directly. A running MCP server locks its exe, which would break `cargo build`. An `install` script copies the exe and checks its SHA-256, so a corrupted copy is never registered. A locked old exe is renamed to `deckhand.old-<time>.exe` and removed on a later run. The script also copies `assets\deckhand.png` beside the exe and registers the toast identity `HKCU\Software\Classes\AppUserModelId\Deckhand.Agent` (`DisplayName`, `IconUri`); `-Uninstall` undoes all of it and keeps config and logs unless `-Purge` is given.
 - **Register:** `claude mcp add -s user deckhand -- "%LOCALAPPDATA%\Programs\deckhand\deckhand.exe" mcp`.
 - **`desktop` subagent** (`~/.claude/agents/desktop.md`): tools limited to `mcp__deckhand__*`, with instructions to act by selector, batch steps, avoid screenshots unless needed, and use `pick_file` for uploads. The main session hands it a goal and gets back a short result, so screen data never bloats the main context (the measured sessions ran at ~875k tokens).
 - **Replace Windows-MCP** once Deckhand passes the Phase 4 gate: `claude mcp remove windows-mcp -s user`, then `uv tool uninstall windows-mcp`.
@@ -214,7 +218,8 @@ dev/deckhand/
     mcp.rs      rmcp tool router, formatting, deadlines, worker supervision
   bench/deskbench/            the measured seed (already here)
   tests/fixtures/form.html    local page: inputs, a file input, delayed elements, a modal
-  scripts/install.ps1         build, copy to %LOCALAPPDATA%\Programs\deckhand, verify hash
+  scripts/install.ps1         build, copy to %LOCALAPPDATA%\Programs\deckhand, verify hash, register the toast identity; -Uninstall [-Purge]
+  assets/                     deckhand.png and deckhand.ico, drawn by generate-icon.mjs; build.rs embeds the icon and version info
 ```
 
 | Crate | Version | Use |

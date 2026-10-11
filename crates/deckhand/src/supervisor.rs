@@ -28,6 +28,8 @@ pub struct Supervisor {
     next_id: AtomicU64,
 }
 
+pub struct ShutdownHandle(Arc<Lifecycle>);
+
 enum Settled<T> {
     Replied(T),
     Cancelled,
@@ -45,6 +47,14 @@ impl Supervisor {
 
     pub fn restarts(&self) -> u32 {
         self.lifecycle.restarts()
+    }
+
+    pub fn shutdown_handle(&self) -> ShutdownHandle {
+        ShutdownHandle(Arc::clone(&self.lifecycle))
+    }
+
+    pub fn set_agent(&self, name: &str) {
+        self.lifecycle.set_agent(name);
     }
 
     pub async fn call(&self, call: Call, cancelled: impl Future<Output = ()>) -> Result<Reply> {
@@ -105,6 +115,12 @@ impl Supervisor {
 impl Drop for Supervisor {
     fn drop(&mut self) {
         self.lifecycle.shut_down();
+    }
+}
+
+impl ShutdownHandle {
+    pub fn shut_down(&self) {
+        self.0.shut_down();
     }
 }
 
@@ -599,6 +615,22 @@ mod tests {
             let settled = first_of(&mut reply, pin!(std::future::ready(())), std::future::ready(())).await;
             assert!(matches!(settled, Settled::Cancelled));
         }
+    }
+
+    #[tokio::test]
+    async fn shutdown_closes_the_worker_input_so_it_can_finish() {
+        let (finished, saw_end) = mpsc::channel();
+        let (supervisor, _) = supervisor(move |_, mut worker| {
+            if worker.handshake() {
+                echo_after_handshake(worker);
+                let _ = finished.send(());
+            }
+        });
+        call(&supervisor, set_clipboard("warm"), LONG).await.unwrap();
+        supervisor.shutdown_handle().shut_down();
+        saw_end.recv_timeout(Duration::from_secs(5)).unwrap();
+        let refused = call(&supervisor, Call::Status, LONG).await.unwrap_err();
+        assert_eq!(refused.code, ErrorCode::Cancelled);
     }
 
     #[tokio::test]

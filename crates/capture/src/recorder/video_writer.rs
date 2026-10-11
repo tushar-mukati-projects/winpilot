@@ -7,7 +7,7 @@ use deckhand_core::{
 
 use super::gif_writer::GifWriter;
 use super::layout::Size;
-use super::mp4::{InputPixels, Mp4Writer, PREFERRED_INPUTS};
+use super::mp4::{InputPixels, Mp4Writer, preferred_inputs};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WriterSettings {
@@ -26,7 +26,7 @@ pub(crate) enum VideoWriter {
 
 impl WriterSettings {
     pub(crate) fn new(path: PathBuf, format: VideoFormat, size: Size, fps: u32, quality: Quality) -> Self {
-        Self { path, format, size, fps, quality, mp4_inputs: PREFERRED_INPUTS.to_vec() }
+        Self { path, format, size, fps, quality, mp4_inputs: preferred_inputs(size) }
     }
 }
 
@@ -46,16 +46,16 @@ impl VideoWriter {
         }
     }
 
-    pub(crate) fn repeat(&mut self, bgra: &[u8], tick: u64) -> Result<()> {
+    pub(crate) fn repeat(&mut self, tick: u64) -> Result<()> {
         match self {
-            Self::Mp4(writer) => writer.write(bgra, tick),
+            Self::Mp4(writer) => writer.repeat(tick),
             Self::Gif(_) => Ok(()),
         }
     }
 
     pub(crate) fn finish(self, end_tick: u64) -> Result<()> {
         match self {
-            Self::Mp4(writer) => writer.finish(),
+            Self::Mp4(writer) => writer.finish(end_tick),
             Self::Gif(writer) => writer.finish(end_tick),
         }
     }

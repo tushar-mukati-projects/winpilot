@@ -69,6 +69,7 @@ pub struct RecordArgs {
 #[serde(rename_all = "snake_case")]
 pub enum RecordState {
     Idle,
+    Starting,
     Recording,
     Finished,
 }
@@ -164,17 +165,15 @@ impl RecordArgs {
 
 impl RecordReport {
     pub const fn idle() -> Self {
-        Self {
-            state: RecordState::Idle,
-            path: None,
-            seconds: 0.0,
-            frames: 0,
-            bytes: 0,
-            width: 0,
-            height: 0,
-            fps: 0,
-            note: None,
-        }
+        Self::empty(RecordState::Idle)
+    }
+
+    pub const fn starting() -> Self {
+        Self::empty(RecordState::Starting)
+    }
+
+    const fn empty(state: RecordState) -> Self {
+        Self { state, path: None, seconds: 0.0, frames: 0, bytes: 0, width: 0, height: 0, fps: 0, note: None }
     }
 }
 
@@ -211,8 +210,11 @@ mod tests {
     }
 
     #[test]
-    fn idle_report_is_empty() {
+    fn idle_and_starting_reports_are_empty() {
         let idle = RecordReport::idle();
         assert_eq!((idle.state, idle.path, idle.frames, idle.bytes), (RecordState::Idle, None, 0, 0));
+        let starting = RecordReport::starting();
+        assert_eq!((starting.state, starting.path, starting.note), (RecordState::Starting, None, None));
+        assert_eq!(serde_json::to_value(RecordState::Starting).unwrap(), serde_json::json!("starting"));
     }
 }

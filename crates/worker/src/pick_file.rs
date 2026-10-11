@@ -18,7 +18,7 @@ use self::{
 };
 use crate::{
     act, app_windows::app_windows, call_scope::CallScope, default_window::default_window, engine::Engine, observe,
-    until::until, watch::Watch, window_classes::is_dialog,
+    overlay, until::until, watch::Watch, window_classes::is_dialog,
 };
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -43,10 +43,12 @@ pub fn run(engine: &Engine, args: &PickFileArgs, call: &CallScope) -> Result<Pic
     let _actor = engine.guard.acquire_actor(call)?;
     engine.guard.before_input(None, call)?;
     let opened = open_dialog(engine, args, call)?;
+    let presence = overlay::present(engine, &opened.dialog.window);
     let picked = pick(engine, &opened.dialog, &selection, &requested, args.overwrite, call);
     if picked.is_err() && opened.ours {
         abandon(engine, &opened.dialog);
     }
+    drop(presence);
     picked?;
     Ok(PickReport { dialog: opened.dialog.kind, files: selection.files, after: after(engine) })
 }

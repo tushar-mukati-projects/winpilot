@@ -83,7 +83,7 @@ fn describe_monitor(monitor: HMONITOR) -> Option<Monitor> {
     })
 }
 
-fn effective_dpi(monitor: HMONITOR) -> u32 {
+pub(crate) fn effective_dpi(monitor: HMONITOR) -> u32 {
     let (mut dpi_x, mut dpi_y) = (0u32, 0u32);
     let read = unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &raw mut dpi_x, &raw mut dpi_y) };
     if read.is_ok() && dpi_x > 0 { dpi_x } else { BASE_DPI }

@@ -22,13 +22,15 @@ pub fn run() -> Result<()> {
     let _com = ComGuard::multithreaded();
     let mut inbox = BufReader::new(io::stdin().lock());
     let outbox: Outbox = Arc::new(Mutex::new(BufWriter::new(io::stdout())));
-    let (config, epoch) = match read_frame(&mut inbox).context("reading the init message")? {
-        Some(ToWorker::Init { config, epoch }) => (*config, epoch),
+    let (config, epoch, agent) = match read_frame(&mut inbox).context("reading the init message")? {
+        Some(ToWorker::Init { config, epoch, agent }) => (*config, epoch, agent),
         _ => return Err(Error::invalid("the first message to the worker must be init")),
     };
-    let engine = Arc::new(Engine::start(config, epoch)?);
+    let engine = Arc::new(Engine::start(config, epoch, &agent)?);
     send(&outbox, &FromWorker::Ready { version: deckhand_core::VERSION.to_string() })?;
-    serve(&mut inbox, &engine, &outbox)
+    let served = serve(&mut inbox, &engine, &outbox);
+    engine.shut_down();
+    served
 }
 
 fn serve(inbox: &mut impl io::Read, engine: &Arc<Engine>, outbox: &Outbox) -> Result<()> {

@@ -41,7 +41,7 @@ pub fn engine() -> &'static Engine {
         config.overlay.enabled = false;
         config.guard.kill_hotkey = String::new();
         config.guard.yield_ms = 0;
-        Engine::start(config, 0).unwrap()
+        Engine::start(config, 0, "deckhand-test").unwrap()
     })
 }
 

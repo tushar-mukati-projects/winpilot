@@ -88,6 +88,10 @@ impl Spawn for FakeSpawner {
 struct FakeProcess;
 
 impl WorkerProcess for FakeProcess {
+    fn exits_within(&mut self, _patience: std::time::Duration) -> bool {
+        true
+    }
+
     fn terminate(&mut self) {}
 }
 

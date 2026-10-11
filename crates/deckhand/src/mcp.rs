@@ -9,9 +9,12 @@ use deckhand_core::{
     },
 };
 use rmcp::{
-    RoleServer, ServerHandler, ServiceExt,
+    ErrorData, RoleServer, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, Implementation, MetaObject, ServerCapabilities, ServerConfig},
+    model::{
+        CallToolResult, Implementation, InitializeRequestParams, InitializeResult, MetaObject, ServerCapabilities,
+        ServerConfig,
+    },
     service::RequestContext,
     tool, tool_handler, tool_router,
 };
@@ -36,7 +39,7 @@ const FIND: &str = "Find elements by selector or text (role:button name~:save, o
 window. Returns matching refs with role, name and path. all_windows searches every app window.";
 const SCREENSHOT: &str = "Capture the foreground window, a window or element, a region or a monitor as an image with an \
 img id (i7). Use only when observe's text is not enough. Point targets need that id: {\"x\":640,\"y\":360,\"img\":\"i7\"}. \
-preset low/medium/high/max trades size for detail (max = native pixels); marks labels element refs.";
+preset low/medium/high/max trades size for detail (max = native pixels, at most 8000 per side); marks labels element refs.";
 const WAIT_FOR: &str = "Wait until an element appears or disappears, a window opens or closes, text shows up, or the UI \
 goes idle. Event-driven on the desktop side: default 5 s, max 60 s. Use instead of sleeping or polling with observe.";
 const WINDOWS: &str = "List, focus, launch, close, minimize, maximize, restore or move windows. launch takes a \
@@ -47,8 +50,8 @@ button), set the paths, confirm and check the dialog closed. Use for every uploa
 const READ_TEXT: &str = "Read the full text of an element, window or region: UI Automation text first, OCR as fallback. \
 Use for long documents, logs and values that observe shortens. On a browser window it returns the page text.";
 const CLIPBOARD: &str = "Get or set the clipboard text.";
-const NOTIFY: &str = "Show the user a Windows notification (title + message), e.g. when a long task finishes. Reports \
-when Focus Assist or a full-screen app holds it back.";
+const NOTIFY: &str = "Show the user a Windows notification (title + message), e.g. when a long task finishes. It stays \
+in Notification Center; the reply says when Windows has notifications turned off for Deckhand.";
 
 const RECORD: &str = "Record the screen, a window or a region to MP4 (H.264) or GIF. action start/stop/status; fps, \
 quality, cursor, max_seconds and path override the defaults. Default: the foreground app window, 30 fps, saved to \
@@ -289,6 +292,16 @@ impl ServerHandler for DeckhandServer {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(SERVER_NAME, crate::VERSION))
             .with_instructions(self.instructions.clone())
+    }
+
+    async fn initialize(
+        &self,
+        request: InitializeRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<InitializeResult, ErrorData> {
+        self.supervisor.set_agent(&request.client_info.name);
+        context.peer.set_peer_info(request.clone());
+        self.negotiate_initialize(&request)
     }
 }
 

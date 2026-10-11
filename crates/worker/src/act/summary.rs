@@ -13,12 +13,18 @@ pub fn summarize(step: &Step) -> String {
         Step::Click { target, button, count, modifiers, .. } => {
             click_summary(target, *button, *count, modifiers.as_deref())
         }
-        Step::Hover { target } => format!("hover {}", label(target)),
+        Step::Hover { target, .. } => format!("hover {}", label(target)),
+        Step::Move { to, .. } => format!("move to {}", label(to)),
+        Step::MouseDown { target, button, .. } => format!("{} {}", press_verb(*button, "down"), label(target)),
+        Step::MouseUp { target: Some(target), button, .. } => {
+            format!("{} at {}", press_verb(*button, "up"), label(target))
+        }
+        Step::MouseUp { target: None, button, .. } => press_verb(*button, "up"),
         Step::Type { target, text, enter, .. } => type_summary(target.as_ref(), text, *enter),
         Step::SetValue { target, value } => format!("set {} to {}", label(target), quoted(value, TEXT_LIMIT)),
         Step::Key { keys, target, repeat } => key_summary(keys, target.as_ref(), *repeat),
-        Step::Scroll { target, direction, amount } => scroll_summary(target.as_ref(), *direction, *amount),
-        Step::Drag { from, to } => format!("drag {} to {}", label(from), label(to)),
+        Step::Scroll { target, direction, amount, .. } => scroll_summary(target.as_ref(), *direction, *amount),
+        Step::Drag { from, to, .. } => format!("drag {} to {}", label(from), label(to)),
         Step::Select { target, option: Some(option) } => {
             format!("select {} in {}", quoted(option, TEXT_LIMIT), label(target))
         }
@@ -34,6 +40,14 @@ pub fn summarize(step: &Step) -> String {
 
 fn label(target: &TargetSpec) -> String {
     clipped(&target.to_string(), TARGET_LIMIT)
+}
+
+fn press_verb(button: MouseButton, direction: &str) -> String {
+    match button {
+        MouseButton::Left => format!("mouse {direction}"),
+        MouseButton::Right => format!("right mouse {direction}"),
+        MouseButton::Middle => format!("middle mouse {direction}"),
+    }
 }
 
 fn click_summary(target: &TargetSpec, button: MouseButton, count: u8, modifiers: Option<&str>) -> String {
@@ -128,6 +142,7 @@ mod tests {
             count,
             modifiers: modifiers.map(str::to_string),
             how: ClickHow::Auto,
+            glide_ms: None,
         }
     }
 
@@ -149,7 +164,7 @@ mod tests {
     #[test]
     fn point_targets_are_shown_as_coordinates() {
         let point = TargetSpec::Point(PointSpec { x: 640, y: 360, img: Some("i3".to_string()) });
-        assert_eq!(summarize(&Step::Hover { target: point }), "hover 640,360@i3");
+        assert_eq!(summarize(&Step::Hover { target: point, glide_ms: None }), "hover 640,360@i3");
     }
 
     #[test]
@@ -182,10 +197,13 @@ mod tests {
         assert_eq!(summarize(&Step::Key { keys: "ctrl+s".to_string(), target: None, repeat: 1 }), "key ctrl+s");
         let repeated = Step::Key { keys: "down".to_string(), target: Some(text("e9")), repeat: 5 };
         assert_eq!(summarize(&repeated), "key down in e9 ×5");
-        let scroll = Step::Scroll { target: Some(text("e5")), direction: Direction::Down, amount: 3 };
+        let scroll = Step::Scroll { target: Some(text("e5")), direction: Direction::Down, amount: 3, glide_ms: None };
         assert_eq!(summarize(&scroll), "scroll down 3 at e5");
-        assert_eq!(summarize(&Step::Scroll { target: None, direction: Direction::Up, amount: 1 }), "scroll up 1");
-        assert_eq!(summarize(&Step::Drag { from: text("e1"), to: text("e2") }), "drag e1 to e2");
+        assert_eq!(
+            summarize(&Step::Scroll { target: None, direction: Direction::Up, amount: 1, glide_ms: None }),
+            "scroll up 1"
+        );
+        assert_eq!(summarize(&Step::Drag { from: text("e1"), to: text("e2"), glide_ms: None }), "drag e1 to e2");
     }
 
     #[test]

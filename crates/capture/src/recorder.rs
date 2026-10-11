@@ -9,13 +9,16 @@ mod media_foundation;
 mod media_type;
 mod monitor_area;
 mod mp4;
+mod mta_usage;
 mod nv12;
 mod outcome;
+mod output_file;
 mod sampler;
 mod scaler;
 mod source;
 mod spec;
 mod staging;
+mod thread_join;
 mod video_writer;
 mod wgc;
 
@@ -24,17 +27,22 @@ mod live_tests;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use deckhand_core::{Context, Error, Result};
 
 pub use outcome::{EndReason, Finished, Progress, Started};
-pub use spec::{RecordingSource, RecordingSpec, Redactor, StopCheck, VideoSettings};
+pub use output_file::OutputFile;
+pub use spec::{RecordingSource, RecordingSpec, Redact, Redactor, StopCheck, VideoSettings};
 
+use mta_usage::keep_mta_for_process;
 use outcome::Counters;
 use sampler::SamplerInput;
+use thread_join::join_within;
+
+const ABANDON_GRACE: Duration = Duration::from_secs(1);
 
 pub struct Recorder {
     started: Started,
@@ -42,41 +50,36 @@ pub struct Recorder {
     stop: Arc<AtomicBool>,
     counters: Arc<Counters>,
     sampler: Option<JoinHandle<Finished>>,
+    output: Arc<OutputFile>,
 }
 
 impl Recorder {
     pub fn start(spec: RecordingSpec, patience: Duration) -> Result<Self> {
-        let fps = spec.video.fps;
-        let stop = Arc::new(AtomicBool::new(false));
-        let counters = Arc::new(Counters::default());
+        keep_mta_for_process()?;
+        let RecordingSpec { source, output, video, redactor, kill_switch, stop } = spec;
         let (ready, started) = mpsc::channel();
-        let input = SamplerInput { spec, stop: Arc::clone(&stop), counters: Arc::clone(&counters), ready };
-        let sampler = thread::Builder::new()
-            .name("deckhand-record".to_string())
-            .spawn(move || sampler::run(input))
-            .context("starting the recording thread")?;
-        let outcome = started.recv_timeout(patience);
         let mut recorder = Self {
-            started: Started { width: 0, height: 0, fps, clipped: false },
-            fps,
+            started: Started { width: 0, height: 0, fps: video.fps, clipped: false },
+            fps: video.fps,
             stop,
-            counters,
-            sampler: Some(sampler),
+            counters: Arc::new(Counters::default()),
+            sampler: None,
+            output: Arc::new(output),
         };
-        match outcome {
-            Ok(Ok(started)) => {
-                recorder.started = started;
-                Ok(recorder)
-            }
-            Ok(Err(error)) => {
-                recorder.finish();
-                Err(error)
-            }
-            Err(_) => {
-                recorder.finish();
-                Err(Error::timeout(format!("the recording did not start within {:.0} s", patience.as_secs_f64())))
-            }
-        }
+        let input = SamplerInput {
+            source,
+            output: Arc::clone(&recorder.output),
+            video,
+            redactor,
+            kill_switch,
+            stop: Arc::clone(&recorder.stop),
+            deadline: Instant::now().checked_add(patience).unwrap_or_else(Instant::now),
+            counters: Arc::clone(&recorder.counters),
+            ready,
+        };
+        recorder.sampler = Some(spawn_sampler(input)?);
+        recorder.await_start(&started, patience)?;
+        Ok(recorder)
     }
 
     pub const fn started(&self) -> Started {
@@ -95,11 +98,42 @@ impl Recorder {
         self.finish()
     }
 
+    fn await_start(&mut self, started: &Receiver<Result<Started>>, patience: Duration) -> Result<()> {
+        let error = match started.recv_timeout(patience) {
+            Ok(Ok(started)) => {
+                self.output.keep();
+                self.started = started;
+                return Ok(());
+            }
+            Ok(Err(error)) => error,
+            Err(RecvTimeoutError::Timeout) => {
+                Error::timeout(format!("the recording did not start within {:.0} s", patience.as_secs_f64()))
+            }
+            Err(RecvTimeoutError::Disconnected) => Error::internal("the recording thread stopped while starting"),
+        };
+        Err(self.abandon(error))
+    }
+
+    fn abandon(&mut self, error: Error) -> Error {
+        self.stop.store(true, Ordering::Release);
+        if let Some(sampler) = self.sampler.take() {
+            join_within(sampler, ABANDON_GRACE);
+        }
+        error
+    }
+
     fn finish(&mut self) -> Finished {
         self.stop.store(true, Ordering::Release);
         let Some(sampler) = self.sampler.take() else { return Finished::failed_to_join() };
         sampler.join().unwrap_or_else(|_| Finished::failed_to_join())
     }
+}
+
+fn spawn_sampler(input: SamplerInput) -> Result<JoinHandle<Finished>> {
+    thread::Builder::new()
+        .name("deckhand-record".to_string())
+        .spawn(move || sampler::run(input))
+        .context("starting the recording thread")
 }
 
 impl Drop for Recorder {

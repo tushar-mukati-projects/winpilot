@@ -9,13 +9,15 @@ use super::{
     settle,
     target::{Prepared, prepare},
 };
-use crate::{call_scope::CallScope, engine::Engine};
+use crate::{call_scope::CallScope, engine::Engine, overlay};
 
 const UNREADABLE: &str = "the field does not expose its value, so it was not read back";
 
 pub fn step(engine: &Engine, target: &TargetSpec, value: &str, call: &CallScope) -> Result<Done> {
     let prepared = prepare(engine, target, call)?;
     let element = prepared.require_element("set_value")?;
+    overlay::focus_field(engine, element.rect);
+    overlay::typing(engine, &prepared.window, value.chars().count());
     if is_writable(element)
         && let Some(done) = set_by_pattern(engine, &prepared.window, element.id, value, call)?
     {
@@ -55,6 +57,9 @@ fn set_by_pattern(
 
 fn set_by_keys(engine: &Engine, prepared: &Prepared, id: ElementRef, value: &str, call: &CallScope) -> Result<Done> {
     let focused = focus_prepared(engine, prepared, call)?;
+    if let Some(element) = &focused.element {
+        overlay::focus_field(engine, element.rect);
+    }
     ensure_keys_land(engine, &focused)?;
     deckhand_input::press_chord(&with_ctrl('a'))?;
     if value.is_empty() {

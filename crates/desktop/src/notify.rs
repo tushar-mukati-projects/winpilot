@@ -1,19 +1,25 @@
+use std::time::Duration;
+
 use deckhand_core::Result;
 use parking_lot::Mutex;
 
 use crate::{
+    app_identity,
     balloon::Balloon,
     balloon_text::BalloonText,
     message_thread::MessageThread,
     quiet_state::{QuietReason, current_quiet_reason},
+    toast::{ToastBlock, ToastResult, show_toast},
 };
 
 const MAX_SHOWING: usize = 4;
+const BALLOON_STARTUP: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NotifyOutcome {
-    Shown,
-    ShownQuiet(QuietReason),
+    Sent { quiet: Option<QuietReason> },
+    Blocked(ToastBlock),
+    SentAsBalloon { quiet: Option<QuietReason> },
 }
 
 #[derive(Debug, Default)]
@@ -28,26 +34,43 @@ impl Notifier {
 
     pub fn notify(&self, title: &str, message: &str) -> Result<NotifyOutcome> {
         let text = BalloonText::new(title, message)?;
-        let mut showing = self.showing.lock();
-        showing.retain(|balloon| !balloon.is_finished());
-        while showing.len() >= MAX_SHOWING {
-            showing.remove(0);
+        let quiet = current_quiet_reason();
+        if app_identity::is_registered()
+            && let Ok(result) = show_toast(title, message)
+        {
+            return Ok(toast_outcome(result, quiet));
         }
-        let (balloon, ()) =
-            MessageThread::spawn("deckhand-notify", move || Balloon::show(&text).map(|shown| (shown, ())))?;
-        showing.push(balloon);
-        Ok(outcome(current_quiet_reason()))
+        self.show_balloon(text)?;
+        Ok(NotifyOutcome::SentAsBalloon { quiet })
     }
 
     pub fn showing(&self) -> usize {
         self.showing.lock().iter().filter(|balloon| !balloon.is_finished()).count()
     }
+
+    pub fn dismiss_all(&self) {
+        let dismissed = std::mem::take(&mut *self.showing.lock());
+        drop(dismissed);
+    }
+
+    fn show_balloon(&self, text: BalloonText) -> Result<()> {
+        let mut showing = self.showing.lock();
+        showing.retain(|balloon| !balloon.is_finished());
+        while showing.len() >= MAX_SHOWING {
+            showing.remove(0);
+        }
+        let (balloon, ()) = MessageThread::spawn_within("deckhand-notify", BALLOON_STARTUP, move || {
+            Balloon::show(&text).map(|shown| (shown, ()))
+        })?;
+        showing.push(balloon);
+        Ok(())
+    }
 }
 
-const fn outcome(quiet: Option<QuietReason>) -> NotifyOutcome {
-    match quiet {
-        Some(reason) => NotifyOutcome::ShownQuiet(reason),
-        None => NotifyOutcome::Shown,
+const fn toast_outcome(result: ToastResult, quiet: Option<QuietReason>) -> NotifyOutcome {
+    match result {
+        ToastResult::Sent => NotifyOutcome::Sent { quiet },
+        ToastResult::Blocked(block) => NotifyOutcome::Blocked(block),
     }
 }
 
@@ -65,13 +88,17 @@ mod tests {
     }
 
     #[test]
-    fn quiet_states_become_shown_quiet() {
-        assert_eq!(outcome(None), NotifyOutcome::Shown);
-        assert_eq!(outcome(Some(QuietReason::QuietHours)), NotifyOutcome::ShownQuiet(QuietReason::QuietHours));
+    fn toast_results_keep_the_quiet_state_unless_blocked() {
+        let quiet = Some(QuietReason::FullScreen);
+        assert_eq!(toast_outcome(ToastResult::Sent, quiet), NotifyOutcome::Sent { quiet });
+        assert_eq!(
+            toast_outcome(ToastResult::Blocked(ToastBlock::ForUser), quiet),
+            NotifyOutcome::Blocked(ToastBlock::ForUser)
+        );
     }
 
     #[test]
-    fn bad_text_is_refused_before_any_icon_is_added() {
+    fn bad_text_is_refused_before_anything_is_shown() {
         let notifier = Notifier::new();
         let error = notifier.notify(&"t".repeat(64), "Export finished").unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidArgument);
@@ -80,12 +107,19 @@ mod tests {
     }
 
     #[test]
+    fn dismissing_with_nothing_shown_is_harmless() {
+        let notifier = Notifier::new();
+        notifier.dismiss_all();
+        assert_eq!(notifier.showing(), 0);
+    }
+
+    #[test]
     #[ignore = "shows a notification"]
-    fn shows_a_real_notification_and_removes_the_icon_on_drop() {
+    fn shows_a_real_notification_and_removes_any_tray_icon_on_drop() {
         let notifier = Notifier::new();
         let outcome = notifier.notify("Deckhand test", "This is a test notification from cargo test.").unwrap();
-        assert!(matches!(outcome, NotifyOutcome::Shown | NotifyOutcome::ShownQuiet(_)));
-        assert_eq!(notifier.showing(), 1);
-        drop(notifier);
+        assert!(!matches!(outcome, NotifyOutcome::Blocked(_)), "{outcome:?}");
+        notifier.dismiss_all();
+        assert_eq!(notifier.showing(), 0);
     }
 }

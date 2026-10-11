@@ -1,4 +1,8 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use deckhand_core::{Context, Error, Result};
+use windows::Foundation::TypedEventHandler;
 use windows::Graphics::Capture::{
     Direct3D11CaptureFrame, Direct3D11CaptureFramePool, GraphicsCaptureItem, GraphicsCaptureSession,
 };
@@ -21,7 +25,9 @@ pub(crate) struct CaptureSession {
     session: GraphicsCaptureSession,
     pool: Direct3D11CaptureFramePool,
     pool_size: SizeInt32,
-    _item: GraphicsCaptureItem,
+    closed: Arc<AtomicBool>,
+    closed_token: Option<i64>,
+    item: GraphicsCaptureItem,
 }
 
 pub(crate) struct CapturedFrame {
@@ -63,10 +69,25 @@ impl CaptureSession {
                 return Err(error).context("creating the capture session");
             }
         };
-        let opened = Self { session, pool, pool_size, _item: item };
+        let closed = Arc::new(AtomicBool::new(false));
+        let mut opened = Self { session, pool, pool_size, closed, closed_token: None, item };
+        opened.closed_token = Some(opened.watch_for_close()?);
         opened.session.SetIsCursorCaptureEnabled(cursor).context("choosing whether to capture the cursor")?;
         opened.session.StartCapture().context("starting the capture session")?;
         Ok(opened)
+    }
+
+    pub(crate) fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
+    }
+
+    fn watch_for_close(&self) -> Result<i64> {
+        let closed = Arc::clone(&self.closed);
+        let handler = TypedEventHandler::new(move |_, _| {
+            closed.store(true, Ordering::Release);
+            Ok(())
+        });
+        self.item.Closed(&handler).context("watching for the capture source to close")
     }
 
     pub(crate) fn latest(&self) -> Option<CapturedFrame> {
@@ -92,6 +113,9 @@ impl CaptureSession {
 
 impl Drop for CaptureSession {
     fn drop(&mut self) {
+        if let Some(token) = self.closed_token.take() {
+            let _ = self.item.RemoveClosed(token);
+        }
         let _ = self.session.Close();
         let _ = self.pool.Close();
     }

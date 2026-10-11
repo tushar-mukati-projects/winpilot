@@ -1,4 +1,5 @@
 mod after;
+mod buttons;
 mod chords;
 mod click;
 mod click_choice;
@@ -8,13 +9,14 @@ mod expand;
 mod focus;
 mod focus_step;
 mod hit;
+mod key_labels;
 mod keys;
 mod landing;
 mod locate;
+mod motion;
 mod mouse_click;
 mod mouse_select;
 mod option_search;
-mod overlay;
 mod paste;
 mod pattern_click;
 mod pause;
@@ -49,6 +51,7 @@ use self::{after::Baseline, click_choice::ClickOptions};
 use crate::{
     call_scope::CallScope,
     engine::{Engine, duration_ms},
+    overlay,
     wait::WindowsBefore,
     watch::Watch,
 };
@@ -60,7 +63,7 @@ pub fn run(engine: &Engine, args: &ActArgs, call: &CallScope) -> Result<ActRepor
     let started = Instant::now();
     let report = run_holding_actor(engine, args, call, started);
     if call.showed_overlay() {
-        overlay::hide(engine);
+        overlay::end(engine);
     }
     report
 }
@@ -72,7 +75,7 @@ pub fn click_target(engine: &Engine, target: &TargetSpec, call: &CallScope) -> R
         Ok(prepared.window)
     });
     if call.showed_overlay() {
-        overlay::hide(engine);
+        overlay::end(engine);
     }
     clicked
 }
@@ -91,6 +94,7 @@ fn run_holding_actor(engine: &Engine, args: &ActArgs, call: &CallScope, started:
     let before = WindowsBefore::now(engine);
     let baseline = Baseline::capture(engine, args.after);
     let mut outcomes = steps::run_all(engine, args, call, &before);
+    buttons::release_held(call, &mut outcomes);
     let after = after_or_note(engine, args.after, baseline.as_ref(), &mut outcomes, call)?;
     Ok(ActReport { steps: outcomes, total_steps: args.steps.len(), after, elapsed_ms: duration_ms(started.elapsed()) })
 }

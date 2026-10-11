@@ -6,7 +6,7 @@ use deckhand_core::{
     selector::Selector,
 };
 
-use crate::{app_windows::app_windows_matching, call_scope::CallScope, engine::Engine, resolve};
+use crate::{app_windows::app_windows_matching, call_scope::CallScope, engine::Engine, overlay, resolve};
 
 const DEFAULT_MAX: usize = 20;
 const PATH_DEPTH: usize = 4;
@@ -22,6 +22,7 @@ pub fn run(engine: &Engine, args: &FindArgs, call: &CallScope) -> Result<FindRep
     } else {
         let window = resolve::window(engine, args.window.as_deref())?;
         collect(&engine.snapshot(&window)?, &selector, &window, &mut matches);
+        overlay::scan(engine, &window);
     }
     let truncated = matches.len() > max || !complete;
     matches.truncate(max);
