@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+    <link rel="icon" href="data:,">
+    <title>Deckhand Form Fixture</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1f2328;
+        --muted: #57606a;
+        --line: #d0d7de;
+        --accent: #0b57d0;
+        --panel: #f6f8fa;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px 16px 48px;
+        background: #ffffff;
+        color: var(--ink);
+        font: 16px/1.5 "Segoe UI", system-ui, sans-serif;
+      }
+      main { max-width: 640px; margin: 0 auto; }
+      h1 { margin: 0 0 16px; font-size: 1.75rem; }
+      h2 { margin: 0 0 8px; font-size: 1.1rem; }
+      section { margin: 0 0 24px; }
+      .field { display: grid; gap: 4px; margin: 0 0 14px; }
+      .inline { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; }
+      label, legend { font-weight: 600; }
+      input[type="text"], input[type="email"], textarea, select {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        font: inherit;
+        color: inherit;
+        background: #ffffff;
+      }
+      textarea { min-height: 96px; resize: vertical; }
+      fieldset { margin: 0 0 14px; padding: 8px 12px 10px; border: 1px solid var(--line); border-radius: 6px; }
+      fieldset label { font-weight: 400; margin-right: 16px; }
+      button {
+        padding: 8px 16px;
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        background: var(--accent);
+        color: #ffffff;
+        font: inherit;
+        cursor: pointer;
+      }
+      button.secondary { background: #ffffff; color: var(--accent); }
+      :focus-visible { outline: 3px solid #f2a900; outline-offset: 2px; }
+      .status { min-height: 1.5em; margin: 8px 0 0; color: var(--muted); }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+      #rows {
+        height: 200px;
+        overflow-y: auto;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--panel);
+      }
+      #rows ul { margin: 0; padding: 4px 0; list-style: none; }
+      #rows li { padding: 4px 12px; }
+      dialog { border: 1px solid var(--line); border-radius: 8px; padding: 20px 24px; }
+      dialog::backdrop { background: rgb(0 0 0 / 0.35); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Deckhand Form</h1>
+
+      <form id="form" novalidate autocomplete="off">
+        <div class="field">
+          <label for="name">Full name</label>
+          <input type="text" id="name" name="name" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="message">Message</label>
+          <textarea id="message" name="message"></textarea>
+        </div>
+        <div class="inline">
+          <input type="checkbox" id="subscribe" name="subscribe">
+          <label for="subscribe">Subscribe</label>
+        </div>
+        <div class="field">
+          <label for="plan">Plan</label>
+          <select id="plan" name="plan">
+            <option value="Free">Free</option>
+            <option value="Pro">Pro</option>
+            <option value="Team">Team</option>
+          </select>
+        </div>
+        <fieldset>
+          <legend>Size</legend>
+          <input type="radio" id="size-small" name="size" value="Small">
+          <label for="size-small">Small</label>
+          <input type="radio" id="size-medium" name="size" value="Medium">
+          <label for="size-medium">Medium</label>
+          <input type="radio" id="size-large" name="size" value="Large">
+          <label for="size-large">Large</label>
+        </fieldset>
+        <div class="field">
+          <label for="files">Attachments</label>
+          <input type="file" id="files" name="files" multiple>
+          <p id="filelist" class="status" aria-live="polite">Files: none</p>
+        </div>
+        <button type="submit" id="submit">Submit</button>
+        <p id="result" class="status" role="status"></p>
+      </form>
+
+      <section aria-labelledby="dynamic-heading">
+        <h2 id="dynamic-heading">Dynamic content</h2>
+        <div class="actions">
+          <button type="button" class="secondary" id="load-more">Load more</button>
+          <button type="button" class="secondary" id="open-modal">Open modal</button>
+        </div>
+        <div id="more" aria-live="polite"></div>
+      </section>
+
+      <section aria-labelledby="rows-heading">
+        <h2 id="rows-heading">Rows</h2>
+        <div id="rows" role="region" aria-labelledby="rows-heading" tabindex="0">
+          <ul>
+          <li>Row 1</li>
+          <li>Row 2</li>
+          <li>Row 3</li>
+          <li>Row 4</li>
+          <li>Row 5</li>
+          <li>Row 6</li>
+          <li>Row 7</li>
+          <li>Row 8</li>
+          <li>Row 9</li>
+          <li>Row 10</li>
+          <li>Row 11</li>
+          <li>Row 12</li>
+          <li>Row 13</li>
+          <li>Row 14</li>
+          <li>Row 15</li>
+          <li>Row 16</li>
+          <li>Row 17</li>
+          <li>Row 18</li>
+          <li>Row 19</li>
+          <li>Row 20</li>
+          <li>Row 21</li>
+          <li>Row 22</li>
+          <li>Row 23</li>
+          <li>Row 24</li>
+          <li>Row 25</li>
+          <li>Row 26</li>
+          <li>Row 27</li>
+          <li>Row 28</li>
+          <li>Row 29</li>
+          <li>Row 30</li>
+          <li>Row 31</li>
+          <li>Row 32</li>
+          <li>Row 33</li>
+          <li>Row 34</li>
+          <li>Row 35</li>
+          <li>Row 36</li>
+          <li>Row 37</li>
+          <li>Row 38</li>
+          <li>Row 39</li>
+          <li>Row 40</li>
+          <li>Row 41</li>
+          <li>Row 42</li>
+          <li>Row 43</li>
+          <li>Row 44</li>
+          <li>Row 45</li>
+          <li>Row 46</li>
+          <li>Row 47</li>
+          <li>Row 48</li>
+          <li>Row 49</li>
+          <li>Row 50</li>
+          <li>Row 51</li>
+          <li>Row 52</li>
+          <li>Row 53</li>
+          <li>Row 54</li>
+          <li>Row 55</li>
+          <li>Row 56</li>
+          <li>Row 57</li>
+          <li>Row 58</li>
+          <li>Row 59</li>
+          <li>Row 60</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="modal" aria-labelledby="modal-text">
+      <p id="modal-text">Modal open</p>
+      <button type="button" id="close-modal">Close</button>
+    </dialog>
+
+    <script>
+      "use strict";
+
+      const byId = (id) => document.getElementById(id);
+
+      function selectedSize() {
+        const checked = document.querySelector('input[name="size"]:checked');
+        return checked ? checked.value : "none";
+      }
+
+      function submissionText() {
+        const parts = [
+          byId("name").value,
+          byId("email").value,
+          byId("plan").value,
+          `subscribe=${byId("subscribe").checked}`,
+          `size=${selectedSize()}`,
+        ];
+        return `Submitted: ${parts.join(" / ")}`;
+      }
+
+      function chosenFilesText() {
+        const names = Array.from(byId("files").files, (file) => file.name);
+        return names.length > 0 ? `Files: ${names.join(", ")}` : "Files: none";
+      }
+
+      function element(tag, id, text) {
+        const node = document.createElement(tag);
+        node.id = id;
+        node.textContent = text;
+        return node;
+      }
+
+      function appendLoadedContent() {
+        const done = element("button", "done", "Done");
+        done.type = "button";
+        const doneResult = element("p", "done-result", "");
+        doneResult.className = "status";
+        done.addEventListener("click", () => {
+          doneResult.textContent = "Done clicked";
+        });
+        byId("more").append(done, element("p", "loaded", "Loaded"), doneResult);
+      }
+
+      let loadRequested = false;
+
+      byId("form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        byId("result").textContent = submissionText();
+      });
+
+      byId("files").addEventListener("change", () => {
+        byId("filelist").textContent = chosenFilesText();
+      });
+
+      byId("load-more").addEventListener("click", () => {
+        if (loadRequested) {
+          return;
+        }
+        loadRequested = true;
+        setTimeout(appendLoadedContent, 800);
+      });
+
+      byId("open-modal").addEventListener("click", () => byId("modal").showModal());
+      byId("close-modal").addEventListener("click", () => byId("modal").close());
+    </script>
+  </body>
+</html>
