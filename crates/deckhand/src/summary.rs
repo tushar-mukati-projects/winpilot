@@ -4,7 +4,7 @@ use deckhand_core::{
     Rect, TargetSpec,
     protocol::{
         ActArgs, Call, ClipboardArgs, Condition, FindArgs, MouseButton, NotifyArgs, ObserveArgs, PickFileArgs,
-        ReadTextArgs, ScreenshotArgs, Step, WindowsArgs,
+        ReadTextArgs, RecordAction, RecordArgs, ScreenshotArgs, Step, WindowsArgs,
     },
 };
 use serde::Serialize;
@@ -23,6 +23,7 @@ pub fn describe(call: &Call, log_text: bool) -> String {
         Call::ReadText(args) => read_text(args),
         Call::Clipboard(args) => clipboard(args, log_text),
         Call::Notify(args) => notify(args),
+        Call::Record(args) => record(args),
         Call::Status => String::new(),
     };
     clip(summary)
@@ -50,8 +51,31 @@ fn screenshot(args: &ScreenshotArgs) -> String {
         ("target", args.target.clone()),
         ("region", args.region.map(rect)),
         ("monitor", args.monitor.map(|monitor| monitor.to_string())),
+        ("preset", args.preset.map(|preset| preset.name().to_string())),
         ("marks", flag(args.marks)),
     ])
+}
+
+fn record(args: &RecordArgs) -> String {
+    let details = fields(&[
+        ("source", record_source(args)),
+        ("format", args.format.map(|format| format.extension().to_string())),
+        ("name", args.path.as_deref().map(base_name)),
+    ]);
+    joined(&wire_name(&args.action), &details)
+}
+
+fn record_source(args: &RecordArgs) -> Option<String> {
+    if args.action != RecordAction::Start {
+        return None;
+    }
+    if let Some(region) = args.region {
+        return Some(format!("region:{}", rect(region)));
+    }
+    if let Some(monitor) = args.monitor {
+        return Some(format!("monitor:{monitor}"));
+    }
+    Some(args.target.as_ref().map_or_else(|| "default".to_string(), |target| format!("target:{target}")))
 }
 
 fn act(args: &ActArgs, log_text: bool) -> String {
@@ -379,6 +403,26 @@ mod tests {
             rect: None,
         });
         assert_eq!(describe(&apps, false), "apps app=code");
+    }
+
+    #[test]
+    fn record_keeps_action_source_and_format_but_only_the_file_name() {
+        let start = RecordArgs {
+            monitor: Some(1),
+            format: Some(deckhand_core::protocol::VideoFormat::Gif),
+            path: Some("C:\\Users\\me\\Private\\demo.gif".to_string()),
+            ..RecordArgs::new(RecordAction::Start)
+        };
+        let summary = describe(&Call::Record(start), true);
+        assert_eq!(summary, "start source=monitor:1 format=gif name=demo.gif");
+        assert!(!summary.contains("Private"));
+        let region = RecordArgs { region: Some(Rect::new(0, 0, 800, 600)), ..RecordArgs::new(RecordAction::Start) };
+        assert_eq!(describe(&Call::Record(region), false), "start source=region:0,0,800,600");
+        let window = RecordArgs { target: Some("w42".to_string()), ..RecordArgs::new(RecordAction::Start) };
+        assert_eq!(describe(&Call::Record(window), false), "start source=target:w42");
+        assert_eq!(describe(&Call::Record(RecordArgs::new(RecordAction::Start)), false), "start source=default");
+        assert_eq!(describe(&Call::Record(RecordArgs::new(RecordAction::Stop)), false), "stop");
+        assert_eq!(describe(&Call::Record(RecordArgs::new(RecordAction::Status)), false), "status");
     }
 
     #[test]

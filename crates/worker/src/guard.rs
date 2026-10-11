@@ -5,6 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use deckhand_capture::StopCheck;
 use deckhand_core::{Context, Error, ErrorCode, Result, WindowInfo, config::GuardConfig, keys::parse_chord};
 use deckhand_desktop::sync::{NamedEvent, NamedMutex, NamedMutexGuard};
 use deckhand_input::{ActivityMonitor, HotkeyListener};
@@ -38,6 +39,11 @@ impl Guard {
 
     pub fn is_stopped(&self) -> bool {
         self.stop.is_set()
+    }
+
+    pub fn kill_switch_check(&self) -> StopCheck {
+        let stop = Arc::clone(&self.stop);
+        Box::new(move || stop.is_set())
     }
 
     pub fn kill_hotkey(&self) -> &str {

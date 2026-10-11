@@ -176,7 +176,7 @@ fn status(mcp: &mut Mcp, fixture: &Fixture, id: u32) -> String {
 fn lists_eleven_tools_and_reports_status() {
     let mut mcp = Mcp::start();
     let tools = mcp.request("tools/list", &json!({}));
-    assert_eq!(tools["tools"].as_array().map(Vec::len), Some(11), "{tools}");
+    assert_eq!(tools["tools"].as_array().map(Vec::len), Some(12), "{tools}");
     let status = mcp.ok("status", &json!({}));
     assert!(status.starts_with("version: "), "{status}");
 }

@@ -116,7 +116,23 @@ mod tests {
         let loaded = parse(text, path());
         assert_eq!(loaded.problem, None);
         assert_eq!(loaded.config.log, LogConfig { log_text: true, retention_days: 3 });
-        assert_eq!(loaded.config.screenshot, ScreenshotConfig { max_width: 1024, quality: 70 });
+        let expected = ScreenshotConfig { max_width: Some(1024), quality: Some(70), ..ScreenshotConfig::default() };
+        assert_eq!(loaded.config.screenshot, expected);
+    }
+
+    #[test]
+    fn presets_and_the_record_section_parse_from_toml() {
+        let text = "[screenshot]\npreset = \"high\"\n\n[record]\nformat = \"gif\"\nfps = 12\nquality = \"medium\"\nmax_seconds = 60\ncursor = false\nmax_width = 800\nfolder = 'D:\\Clips'\n";
+        let loaded = parse(text, path());
+        assert_eq!(loaded.problem, None);
+        assert_eq!(loaded.config.screenshot.preset, deckhand_core::protocol::Quality::High);
+        let record = &loaded.config.record;
+        assert_eq!(record.format, deckhand_core::protocol::VideoFormat::Gif);
+        assert_eq!((record.fps, record.max_seconds, record.cursor, record.max_width), (12, 60, false, Some(800)));
+        assert_eq!(record.quality, deckhand_core::protocol::Quality::Medium);
+        assert_eq!(record.folder.as_deref(), Some(Path::new("D:\\Clips")));
+        let typo = parse("[record]\nfrmat = \"gif\"\n", path());
+        assert!(typo.problem.is_some());
     }
 
     #[test]

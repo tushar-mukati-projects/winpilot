@@ -20,7 +20,9 @@ use crate::{
     guard::Guard,
     host::HostProcesses,
     images::ImageStore,
-    notify_tool, observe, pick_file, read_text, screenshot, status, wait, window_tool,
+    notify_tool, observe, pick_file, read_text,
+    record::{self, RecordingSlot},
+    screenshot, status, wait, window_tool,
 };
 
 const RECENT_TIMINGS: usize = 8;
@@ -36,6 +38,7 @@ pub struct Engine {
     pub images: Mutex<ImageStore>,
     pub host: HostProcesses,
     pub apps: window_tool::AppCatalog,
+    pub recording: Mutex<RecordingSlot>,
     timings: Mutex<VecDeque<Timing>>,
     started: Instant,
 }
@@ -59,6 +62,7 @@ impl Engine {
             images: Mutex::new(ImageStore::starting_at(first_ref)),
             host: HostProcesses::detect(),
             apps: window_tool::AppCatalog::default(),
+            recording: Mutex::new(RecordingSlot::default()),
             timings: Mutex::new(VecDeque::with_capacity(RECENT_TIMINGS)),
             started: Instant::now(),
         })
@@ -85,6 +89,7 @@ impl Engine {
             Call::ReadText(args) => read_text::run(self, &args, scope).map(Reply::ReadText),
             Call::Clipboard(args) => clipboard_tool::run(self, &args, scope).map(Reply::Clipboard),
             Call::Notify(args) => notify_tool::run(self, &args, scope).map(Reply::Notify),
+            Call::Record(args) => record::run(self, &args, scope).map(Reply::Record),
             Call::Status => Ok(Reply::Status(status::report(self))),
         }
     }

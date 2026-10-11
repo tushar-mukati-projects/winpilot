@@ -18,6 +18,7 @@ mod monitor_list;
 mod ocr;
 mod output;
 mod pixels;
+mod recorder;
 mod resize;
 mod screen_grabber;
 mod window;
@@ -29,3 +30,7 @@ pub use encode::{EncodeOptions, Encoded, encode};
 pub use frame::{Frame, FrameSource};
 pub use marks::Mark;
 pub use ocr::{OcrLine, ocr};
+pub use recorder::{
+    EndReason, Finished, Progress, Recorder, RecordingSource, RecordingSpec, Redactor, Started, StopCheck,
+    VideoSettings,
+};

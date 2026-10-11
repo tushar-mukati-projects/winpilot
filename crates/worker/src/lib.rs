@@ -19,6 +19,7 @@ mod on_screen;
 mod pick_file;
 mod read_target;
 mod read_text;
+mod record;
 mod resolve;
 mod screenshot;
 mod server;

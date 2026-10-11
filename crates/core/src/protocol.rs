@@ -13,6 +13,11 @@ use crate::{
     target::{Target, TargetSpec, parse_text_target},
 };
 
+pub use crate::{
+    quality::Quality,
+    recording::{RecordAction, RecordArgs, RecordReport, RecordState, VideoFormat},
+};
+
 const fn default_true() -> bool {
     true
 }
@@ -79,8 +84,14 @@ pub struct ScreenshotArgs {
     pub region: Option<Rect>,
     #[schemars(description = "Capture a whole monitor by index (0 = primary).")]
     pub monitor: Option<u32>,
-    #[schemars(description = "Maximum image width in pixels (default 1280).")]
+    #[schemars(
+        description = "Size and detail: low (960 px, q60), medium (default, 1280 px, q80), high (1600 px, q88) or max (native size, q95)."
+    )]
+    pub preset: Option<Quality>,
+    #[schemars(description = "Maximum image width in pixels, 64-2576; overrides the preset.")]
     pub max_width: Option<u32>,
+    #[schemars(description = "JPEG quality 1-100; overrides the preset.")]
+    pub quality: Option<u8>,
     #[schemars(description = "Image format: jpeg (default) or png for lossless crops of small text.")]
     pub format: ImageFormat,
     #[schemars(description = "Draw element ref labels (e12) on interactive elements.")]
@@ -481,6 +492,7 @@ pub struct ScreenshotReport {
     pub height: u32,
     pub mapping: ImageMapping,
     pub source: String,
+    pub quality: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -635,6 +647,7 @@ pub enum Call {
     ReadText(ReadTextArgs),
     Clipboard(ClipboardArgs),
     Notify(NotifyArgs),
+    Record(RecordArgs),
     Status,
 }
 
@@ -651,6 +664,7 @@ pub enum Reply {
     ReadText(TextReport),
     Clipboard(ClipboardReport),
     Notify(NotifyReport),
+    Record(RecordReport),
     Status(StatusReport),
 }
 
@@ -674,6 +688,7 @@ impl Call {
             Self::ReadText(_) => "read_text",
             Self::Clipboard(_) => "clipboard",
             Self::Notify(_) => "notify",
+            Self::Record(_) => "record",
             Self::Status => "status",
         }
     }
@@ -690,7 +705,7 @@ impl Call {
                 matches!(args.action, WindowAction::List | WindowAction::Monitors | WindowAction::Apps)
             }
             Self::Clipboard(args) => args.action == ClipboardAction::Get,
-            Self::Act(_) | Self::PickFile(_) | Self::Notify(_) => false,
+            Self::Act(_) | Self::PickFile(_) | Self::Notify(_) | Self::Record(_) => false,
         }
     }
 
@@ -707,8 +722,17 @@ impl Call {
                 args.timeout_ms.map_or(DEFAULT_PICK, Duration::from_millis).min(MAX_WAIT) + ACT_OVERHEAD
             }
             Self::Act(args) => args.steps.iter().map(step_budget).fold(ACT_OVERHEAD, Duration::saturating_add),
+            Self::Record(args) => record_budget(args.action),
         };
         deadline.min(MAX_DEADLINE)
+    }
+}
+
+const fn record_budget(action: RecordAction) -> Duration {
+    match action {
+        RecordAction::Start => Duration::from_secs(15),
+        RecordAction::Stop => Duration::from_secs(60),
+        RecordAction::Status => Duration::from_secs(3),
     }
 }
 
@@ -811,6 +835,25 @@ mod tests {
         assert!(Call::Status.is_read_only());
         let set = ClipboardArgs { action: ClipboardAction::Set, text: Some("x".to_string()) };
         assert!(!Call::Clipboard(set).is_read_only());
+        for action in [RecordAction::Start, RecordAction::Stop, RecordAction::Status] {
+            assert!(!Call::Record(RecordArgs::new(action)).is_read_only());
+        }
+    }
+
+    #[test]
+    fn record_deadlines_allow_start_and_finalizing() {
+        let deadline = |action| Call::Record(RecordArgs::new(action)).deadline();
+        assert_eq!(deadline(RecordAction::Start), Duration::from_secs(15));
+        assert_eq!(deadline(RecordAction::Stop), Duration::from_secs(60));
+        assert_eq!(deadline(RecordAction::Status), Duration::from_secs(3));
+        assert_eq!(Call::Record(RecordArgs::new(RecordAction::Status)).name(), "record");
+    }
+
+    #[test]
+    fn screenshot_presets_parse_by_name() {
+        let args: ScreenshotArgs = serde_json::from_str(r#"{"preset":"max","quality":90}"#).unwrap();
+        assert_eq!((args.preset, args.quality), (Some(Quality::Max), Some(90)));
+        assert!(serde_json::from_str::<ScreenshotArgs>(r#"{"preset":"best"}"#).is_err());
     }
 
     fn windows_call(action: WindowAction) -> Call {

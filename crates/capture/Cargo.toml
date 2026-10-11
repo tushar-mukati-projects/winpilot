@@ -15,6 +15,7 @@ windows-future.workspace = true
 fast_image_resize.workspace = true
 jpeg-encoder.workspace = true
 png.workspace = true
+gif.workspace = true
 
 [lints]
 workspace = true

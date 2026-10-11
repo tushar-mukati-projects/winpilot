@@ -6,6 +6,8 @@ use crate::{
     error::Result,
     matching::{contains_folded, same_process},
     path_guard,
+    quality::Quality,
+    recording::VideoFormat,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -14,6 +16,7 @@ pub struct Config {
     pub guard: GuardConfig,
     pub act: ActConfig,
     pub screenshot: ScreenshotConfig,
+    pub record: RecordConfig,
     pub overlay: OverlayConfig,
     pub log: LogConfig,
 }
@@ -60,8 +63,21 @@ pub struct ActConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ScreenshotConfig {
-    pub max_width: u32,
-    pub quality: u8,
+    pub preset: Quality,
+    pub max_width: Option<u32>,
+    pub quality: Option<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RecordConfig {
+    pub fps: u32,
+    pub quality: Quality,
+    pub max_seconds: u32,
+    pub cursor: bool,
+    pub format: VideoFormat,
+    pub max_width: Option<u32>,
+    pub folder: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -139,7 +155,21 @@ impl Default for ActConfig {
 
 impl Default for ScreenshotConfig {
     fn default() -> Self {
-        Self { max_width: 1280, quality: 80 }
+        Self { preset: Quality::Medium, max_width: None, quality: None }
+    }
+}
+
+impl Default for RecordConfig {
+    fn default() -> Self {
+        Self {
+            fps: 30,
+            quality: Quality::High,
+            max_seconds: 300,
+            cursor: true,
+            format: VideoFormat::Mp4,
+            max_width: None,
+            folder: None,
+        }
     }
 }
 
@@ -303,5 +333,32 @@ mod tests {
         assert_eq!(config.act.settle_max_ms, 500);
         assert_eq!(config.act.settle_quiet_ms, ActConfig::default().settle_quiet_ms);
         assert_eq!(config.screenshot, ScreenshotConfig::default());
+        assert_eq!(config.record, RecordConfig::default());
+    }
+
+    #[test]
+    fn screenshot_keys_stay_optional_beside_the_preset() {
+        let old: Config = serde_json::from_str(r#"{"screenshot":{"max_width":1024,"quality":70}}"#).unwrap();
+        assert_eq!(
+            old.screenshot,
+            ScreenshotConfig { preset: Quality::Medium, max_width: Some(1024), quality: Some(70) }
+        );
+        let preset: Config = serde_json::from_str(r#"{"screenshot":{"preset":"high"}}"#).unwrap();
+        assert_eq!(preset.screenshot, ScreenshotConfig { preset: Quality::High, ..ScreenshotConfig::default() });
+        assert!(serde_json::from_str::<Config>(r#"{"screenshot":{"preset":"ultra"}}"#).is_err());
+    }
+
+    #[test]
+    fn record_section_keeps_defaults_and_rejects_typos() {
+        let config: Config =
+            serde_json::from_str(r#"{"record":{"format":"gif","fps":12,"folder":"D:\\Clips"}}"#).unwrap();
+        assert_eq!(config.record.format, VideoFormat::Gif);
+        assert_eq!(config.record.fps, 12);
+        assert_eq!(config.record.folder, Some(PathBuf::from("D:\\Clips")));
+        assert_eq!(config.record.max_seconds, 300);
+        assert!(config.record.cursor);
+        assert!(serde_json::from_str::<Config>(r#"{"record":{"fsp":12}}"#).is_err());
+        let back: Config = serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert_eq!(back, config);
     }
 }

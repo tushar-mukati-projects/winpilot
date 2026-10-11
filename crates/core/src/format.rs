@@ -6,8 +6,8 @@ use crate::{
     matching::is_gap,
     protocol::{
         ActReport, After, AppInfo, AppKind, ClipboardReport, DialogKind, DiffReport, FindReport, Found, MonitorInfo,
-        NotifyReport, Observation, PickReport, ScreenshotReport, StatusReport, StepOutcome, TextReport, TextSource,
-        Timing, WaitReport, WindowsReport,
+        NotifyReport, Observation, PickReport, RecordReport, RecordState, ScreenshotReport, StatusReport, StepOutcome,
+        TextReport, TextSource, Timing, WaitReport, WindowsReport,
     },
     role::Role,
 };
@@ -35,6 +35,8 @@ const PASSWORD_MASK: &str = "•••";
 const ELLIPSIS: char = '…';
 const INDENT: &str = "  ";
 const TREE_TRUNCATED: &str = "(tree truncated: window has more elements than the snapshot limit)";
+const BYTES_PER_KB: f64 = 1024.0;
+const BYTES_PER_MB: f64 = 1024.0 * 1024.0;
 
 pub fn observation(observation: &Observation, format: &ObserveFormat) -> String {
     let snapshot = &observation.snapshot;
@@ -171,10 +173,55 @@ pub fn screenshot_caption(report: &ScreenshotReport) -> String {
     let image = report.image;
     let format = report.mime.strip_prefix("image/").unwrap_or(&report.mime);
     let Point { x, y } = report.mapping.origin;
+    let quality = report.quality.map(|quality| format!(" · q{quality}")).unwrap_or_default();
     format!(
-        "{image} {}x{} {format} · scale {:.2} · origin {x},{y} · {} · click points as {{\"x\":..,\"y\":..,\"img\":\"{image}\"}}",
+        "{image} {}x{} {format}{quality} · scale {:.2} · origin {x},{y} · {} · click points as {{\"x\":..,\"y\":..,\"img\":\"{image}\"}}",
         report.width, report.height, report.mapping.scale, report.source
     )
+}
+
+pub fn record(report: &RecordReport) -> String {
+    let mut lines = vec![record_headline(report)];
+    lines.extend(report.note.clone());
+    lines.join("\n")
+}
+
+fn record_headline(report: &RecordReport) -> String {
+    let path = report.path.as_deref().unwrap_or("(no file)");
+    match report.state {
+        RecordState::Idle => "not recording".to_string(),
+        RecordState::Recording => recording_line(report, path),
+        RecordState::Finished => {
+            let frames = frame_count(report.frames);
+            format!("saved {path} · {:.1} s · {frames} · {}", report.seconds, byte_size(report.bytes))
+        }
+    }
+}
+
+fn recording_line(report: &RecordReport, path: &str) -> String {
+    let mut parts =
+        vec![format!("recording to {path}"), format!("{}x{} @ {} fps", report.width, report.height, report.fps)];
+    if report.frames > 0 {
+        parts.push(format!("{:.1} s", report.seconds));
+        parts.push(frame_count(report.frames));
+    }
+    parts.push("stop with record action stop".to_string());
+    parts.join(" · ")
+}
+
+fn frame_count(frames: u64) -> String {
+    count_noun(usize::try_from(frames).unwrap_or(usize::MAX), "frame")
+}
+
+fn byte_size(bytes: u64) -> String {
+    let size = bytes as f64;
+    if size >= BYTES_PER_MB {
+        return format!("{:.1} MB", size / BYTES_PER_MB);
+    }
+    if size >= BYTES_PER_KB {
+        return format!("{:.0} KB", size / BYTES_PER_KB);
+    }
+    format!("{bytes} B")
 }
 
 pub fn error(error: &Error) -> String {
@@ -699,6 +746,7 @@ mod tests {
             height: 800,
             mapping: ImageMapping { origin, scale },
             source: "dxgi".to_string(),
+            quality: (mime == "image/jpeg").then_some(80),
         }
     }
 
@@ -1140,7 +1188,7 @@ mod tests {
         let text = act(&act_report(Vec::new(), 0, after));
         assert_eq!(
             text,
-            "after: i3 1280x800 jpeg · scale 2.00 · origin 0,0 · dxgi · click points as {\"x\":..,\"y\":..,\"img\":\"i3\"}\ntook 120 ms"
+            "after: i3 1280x800 jpeg · q80 · scale 2.00 · origin 0,0 · dxgi · click points as {\"x\":..,\"y\":..,\"img\":\"i3\"}\ntook 120 ms"
         );
     }
 
@@ -1470,7 +1518,7 @@ mod tests {
     fn screenshot_caption_forms() {
         assert_eq!(
             screenshot_caption(&shot(3, "image/jpeg", Point::new(0, 0), 2.0)),
-            "i3 1280x800 jpeg · scale 2.00 · origin 0,0 · dxgi · click points as {\"x\":..,\"y\":..,\"img\":\"i3\"}"
+            "i3 1280x800 jpeg · q80 · scale 2.00 · origin 0,0 · dxgi · click points as {\"x\":..,\"y\":..,\"img\":\"i3\"}"
         );
         let png = ScreenshotReport {
             width: 640,
@@ -1484,6 +1532,60 @@ mod tests {
         );
         let odd = shot(1, "application/octet-stream", Point::new(5, 6), 1.0);
         assert!(screenshot_caption(&odd).starts_with("i1 1280x800 application/octet-stream · scale 1.00 · origin 5,6"));
+        let sharp = ScreenshotReport { quality: Some(95), ..shot(2, "image/jpeg", Point::new(0, 0), 1.0) };
+        assert!(screenshot_caption(&sharp).starts_with("i2 1280x800 jpeg · q95 · scale 1.00"));
+    }
+
+    fn recording(state: RecordState) -> RecordReport {
+        RecordReport {
+            state,
+            path: Some("C:\\Videos\\Deckhand\\deckhand-20261011-101500.mp4".to_string()),
+            seconds: 0.0,
+            frames: 0,
+            bytes: 0,
+            width: 1920,
+            height: 1200,
+            fps: 30,
+            note: None,
+        }
+    }
+
+    #[test]
+    fn record_report_forms() {
+        assert_eq!(record(&RecordReport::idle()), "not recording");
+        assert_eq!(
+            record(&recording(RecordState::Recording)),
+            "recording to C:\\Videos\\Deckhand\\deckhand-20261011-101500.mp4 · 1920x1200 @ 30 fps · stop with record action stop"
+        );
+        let running = RecordReport { seconds: 4.25, frames: 128, ..recording(RecordState::Recording) };
+        let text = record(&running);
+        assert!(
+            text.ends_with(".mp4 · 1920x1200 @ 30 fps · 4.2 s · 128 frames · stop with record action stop"),
+            "{text}"
+        );
+        let saved = RecordReport {
+            path: Some("C:\\clips\\x.mp4".to_string()),
+            seconds: 12.4,
+            frames: 372,
+            bytes: 4_299_161,
+            note: Some("dropped 3 of 375 frames because encoding fell behind".to_string()),
+            ..recording(RecordState::Finished)
+        };
+        assert_eq!(
+            record(&saved),
+            "saved C:\\clips\\x.mp4 · 12.4 s · 372 frames · 4.1 MB\ndropped 3 of 375 frames because encoding fell behind"
+        );
+    }
+
+    #[test]
+    fn byte_sizes_pick_a_readable_unit() {
+        assert_eq!(byte_size(0), "0 B");
+        assert_eq!(byte_size(1023), "1023 B");
+        assert_eq!(byte_size(1024), "1 KB");
+        assert_eq!(byte_size(700 * 1024), "700 KB");
+        assert_eq!(byte_size(1024 * 1024), "1.0 MB");
+        let one_frame = RecordReport { frames: 1, bytes: 2048, ..recording(RecordState::Finished) };
+        assert!(record(&one_frame).ends_with("0.0 s · 1 frame · 2 KB"));
     }
 
     #[test]

@@ -4,8 +4,8 @@ use deckhand_core::{
     Context, ErrorCode, Result,
     format::ObserveFormat,
     protocol::{
-        ActArgs, Call, ClipboardArgs, Condition, FindArgs, NotifyArgs, ObserveArgs, PickFileArgs, ReadTextArgs, Reply,
-        ScreenshotArgs, StatusArgs, WindowsArgs,
+        ActArgs, Call, ClipboardArgs, Condition, FindArgs, NotifyArgs, ObserveArgs, PickFileArgs, ReadTextArgs,
+        RecordArgs, Reply, ScreenshotArgs, StatusArgs, WindowsArgs,
     },
 };
 use rmcp::{
@@ -36,7 +36,7 @@ const FIND: &str = "Find elements by selector or text (role:button name~:save, o
 window. Returns matching refs with role, name and path. all_windows searches every app window.";
 const SCREENSHOT: &str = "Capture the foreground window, a window or element, a region or a monitor as an image with an \
 img id (i7). Use only when observe's text is not enough. Point targets need that id: {\"x\":640,\"y\":360,\"img\":\"i7\"}. \
-marks labels element refs.";
+preset low/medium/high/max trades size for detail (max = native pixels); marks labels element refs.";
 const WAIT_FOR: &str = "Wait until an element appears or disappears, a window opens or closes, text shows up, or the UI \
 goes idle. Event-driven on the desktop side: default 5 s, max 60 s. Use instead of sleeping or polling with observe.";
 const WINDOWS: &str = "List, focus, launch, close, minimize, maximize, restore or move windows. launch takes a \
@@ -49,6 +49,10 @@ Use for long documents, logs and values that observe shortens. On a browser wind
 const CLIPBOARD: &str = "Get or set the clipboard text.";
 const NOTIFY: &str = "Show the user a Windows notification (title + message), e.g. when a long task finishes. Reports \
 when Focus Assist or a full-screen app holds it back.";
+
+const RECORD: &str = "Record the screen, a window or a region to MP4 (H.264) or GIF. action start/stop/status; fps, \
+quality, cursor, max_seconds and path override the defaults. Default: the foreground app window, 30 fps, saved to \
+Videos\\Deckhand. One recording at a time; it stops itself at max_seconds or on the kill hotkey.";
 const STATUS: &str = "Health check: stopped by the kill hotkey or not, user activity, worker restarts, recent timings \
 and errors.";
 
@@ -259,6 +263,15 @@ impl DeckhandServer {
         self.run(Call::Notify(args), ObserveFormat::default(), &context).await
     }
 
+    #[tool(description = RECORD, annotations(open_world_hint = false))]
+    async fn record(
+        &self,
+        Parameters(args): Parameters<RecordArgs>,
+        context: RequestContext<RoleServer>,
+    ) -> CallToolResult {
+        self.run(Call::Record(args), ObserveFormat::default(), &context).await
+    }
+
     #[tool(description = STATUS, annotations(read_only_hint = true, open_world_hint = false))]
     async fn status(
         &self,
@@ -297,7 +310,7 @@ mod tests {
     use super::*;
     use crate::testing::{FakeSpawner, FakeWorker, echo_worker};
 
-    const TOOLS: [&str; 11] = [
+    const TOOLS: [&str; 12] = [
         "act",
         "clipboard",
         "find",
@@ -305,6 +318,7 @@ mod tests {
         "observe",
         "pick_file",
         "read_text",
+        "record",
         "screenshot",
         "status",
         "wait_for",
@@ -359,6 +373,27 @@ mod tests {
         assert!(act.input_schema["properties"].get("steps").is_some());
         let wait = tool("wait_for");
         assert!(wait.input_schema["properties"].get("until").is_some());
+        let record = tool("record");
+        let record_fields = [
+            "action",
+            "target",
+            "region",
+            "monitor",
+            "format",
+            "fps",
+            "quality",
+            "max_seconds",
+            "cursor",
+            "max_width",
+            "path",
+        ];
+        for field in record_fields {
+            assert!(record.input_schema["properties"].get(field).is_some(), "record lacks {field}");
+        }
+        let screenshot = tool("screenshot");
+        for field in ["preset", "quality", "max_width", "format"] {
+            assert!(screenshot.input_schema["properties"].get(field).is_some(), "screenshot lacks {field}");
+        }
     }
 
     #[test]

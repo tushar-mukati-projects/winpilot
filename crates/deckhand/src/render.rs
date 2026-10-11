@@ -38,6 +38,7 @@ fn contents(reply: Reply, extras: &Extras) -> Vec<ContentBlock> {
         Reply::ReadText(report) => text(format::text(&report)),
         Reply::Clipboard(report) => text(format::clipboard(&report)),
         Reply::Notify(report) => text(format::notify(&report)),
+        Reply::Record(report) => text(format::record(&report)),
         Reply::Status(report) => text(status(report, extras)),
     }
 }
@@ -99,6 +100,7 @@ mod tests {
             height: 1,
             mapping: ImageMapping { origin: Point::new(0, 0), scale: 1.0 },
             source: "dxgi".to_string(),
+            quality: Some(80),
         };
         let blocks = captioned("img=i7".to_string(), shot);
         assert_eq!(blocks.len(), 2);

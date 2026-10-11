@@ -67,6 +67,6 @@ Public APIs live in each crate's `lib.rs`, which only declares modules and re-ex
 
 ## Safety rails for anyone working here
 
-- Never read, open, capture or pass paths under the folders in `[guard] deny_paths`. It holds secrets.
+- Never read, open, capture or pass paths that the user's Deckhand config denies (`[guard] deny_paths`).
 - Don't use the `mcp__windows-mcp__*` or `mcp__claude-in-chrome__*` tools while developing. The user's own windows are live.
 - Don't run git commands that change history or the working tree (commit, stash, checkout, reset) unless asked.

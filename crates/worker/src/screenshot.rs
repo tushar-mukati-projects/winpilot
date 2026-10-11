@@ -1,9 +1,10 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use deckhand_capture::{EncodeOptions, Frame, FrameSource, Mark, encode};
 use deckhand_core::{
-    Config, Error, ImageMapping, Rect, Result, Snapshot, Target, WindowInfo,
+    Error, ImageMapping, Rect, Result, Snapshot, Target, WindowInfo,
     format::window_line,
     protocol::{ImageFormat, ScreenshotArgs, ScreenshotReport},
+    quality::{ImageQuality, screenshot_quality},
 };
 
 use crate::{
@@ -19,6 +20,7 @@ use crate::{
 const MIN_WIDTH: u32 = 64;
 const MAX_WIDTH: u32 = 2576;
 const MIN_HEIGHT_LIMIT: u32 = 1568;
+const NATIVE_LIMIT: u32 = u16::MAX as u32;
 const MAX_MARKS: usize = 150;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,13 +43,15 @@ pub fn run(engine: &Engine, args: &ScreenshotArgs, call: &CallScope) -> Result<S
         Some(window) if args.marks => marks(&engine.snapshot(window)?, shot.frame.rect()),
         _ => Vec::new(),
     };
-    report(engine, &shot, &encode_options(&engine.config, args.max_width, args.format), &marks)
+    let options = encode_options(screenshot_quality(args, &engine.config.screenshot), args.format);
+    report(engine, &shot, &options, &marks)
 }
 
 pub fn of_window(engine: &Engine, window: &WindowInfo) -> Result<ScreenshotReport> {
     let window = deckhand_desktop::window(window.hwnd)?;
     let shot = window_shot(engine, window)?;
-    report(engine, &shot, &encode_options(&engine.config, None, ImageFormat::default()), &[])
+    let quality = screenshot_quality(&ScreenshotArgs::default(), &engine.config.screenshot);
+    report(engine, &shot, &encode_options(quality, ImageFormat::default()), &[])
 }
 
 fn source(args: &ScreenshotArgs) -> Result<Source> {
@@ -108,9 +112,13 @@ fn marks(snapshot: &Snapshot, frame: Rect) -> Vec<Mark> {
         .collect()
 }
 
-fn encode_options(config: &Config, max_width: Option<u32>, format: ImageFormat) -> EncodeOptions {
-    let max_width = max_width.unwrap_or(config.screenshot.max_width).clamp(MIN_WIDTH, MAX_WIDTH);
-    EncodeOptions { max_width, max_height: max_width.max(MIN_HEIGHT_LIMIT), format, quality: config.screenshot.quality }
+fn encode_options(wanted: ImageQuality, format: ImageFormat) -> EncodeOptions {
+    let quality = wanted.quality.clamp(1, 100);
+    let Some(max_width) = wanted.max_width else {
+        return EncodeOptions { max_width: NATIVE_LIMIT, max_height: NATIVE_LIMIT, format, quality };
+    };
+    let max_width = max_width.clamp(MIN_WIDTH, MAX_WIDTH);
+    EncodeOptions { max_width, max_height: max_width.max(MIN_HEIGHT_LIMIT), format, quality }
 }
 
 fn report(engine: &Engine, shot: &Shot, options: &EncodeOptions, marks: &[Mark]) -> Result<ScreenshotReport> {
@@ -131,6 +139,7 @@ fn report(engine: &Engine, shot: &Shot, options: &EncodeOptions, marks: &[Mark])
         height: encoded.height,
         mapping,
         source: shot.label.clone(),
+        quality: (options.format == ImageFormat::Jpeg).then_some(options.quality),
     })
 }
 
@@ -215,12 +224,21 @@ mod tests {
 
     #[test]
     fn encode_options_clamp_the_width_and_keep_a_tall_limit() {
-        let config = Config::default();
-        let default = encode_options(&config, None, ImageFormat::Jpeg);
+        let config = deckhand_core::Config::default();
+        let default = encode_options(screenshot_quality(&args(), &config.screenshot), ImageFormat::Jpeg);
         assert_eq!((default.max_width, default.max_height, default.quality), (1280, 1568, 80));
-        assert_eq!(encode_options(&config, Some(10), ImageFormat::Png).max_width, 64);
-        let wide = encode_options(&config, Some(9000), ImageFormat::Png);
-        assert_eq!((wide.max_width, wide.max_height, wide.format), (2576, 2576, ImageFormat::Png));
+        let narrow = ImageQuality { max_width: Some(10), quality: 80 };
+        assert_eq!(encode_options(narrow, ImageFormat::Png).max_width, 64);
+        let wide = encode_options(ImageQuality { max_width: Some(9000), quality: 0 }, ImageFormat::Png);
+        assert_eq!((wide.max_width, wide.max_height, wide.format, wide.quality), (2576, 2576, ImageFormat::Png, 1));
+    }
+
+    #[test]
+    fn the_max_preset_keeps_native_resolution() {
+        let config = deckhand_core::Config::default();
+        let max = ScreenshotArgs { preset: Some(deckhand_core::protocol::Quality::Max), ..args() };
+        let options = encode_options(screenshot_quality(&max, &config.screenshot), ImageFormat::Jpeg);
+        assert_eq!((options.max_width, options.max_height, options.quality), (NATIVE_LIMIT, NATIVE_LIMIT, 95));
     }
 
     #[test]
@@ -265,7 +283,7 @@ mod tests {
         assert_covers(&report, primary);
         assert!(report.width <= 1280 && report.height <= 1568);
         assert_eq!(report.source, format!("monitor 0 {}x{}", primary.width, primary.height));
-        assert_eq!(report.mime, "image/jpeg");
+        assert_eq!((report.mime.as_str(), report.quality), ("image/jpeg", Some(80)));
         assert!(bytes(&report).starts_with(&JPEG_MAGIC));
         assert_round_trips(&report);
         assert_eq!(engine().images.lock().record(report.image).unwrap().window, None);
@@ -277,10 +295,31 @@ mod tests {
         let region = Rect::new(primary.x + 10, primary.y + 10, 200, 100);
         let wanted = ScreenshotArgs { region: Some(region), format: ImageFormat::Png, ..args() };
         let report = shoot(&wanted).unwrap();
-        assert_eq!((report.width, report.height, report.mapping.scale), (200, 100, 1.0));
+        assert_eq!((report.width, report.height, report.mapping.scale, report.quality), (200, 100, 1.0, None));
         assert_eq!(report.source, format!("region {},{} 200x100", region.x, region.y));
         assert!(bytes(&report).starts_with(&PNG_MAGIC));
         assert_round_trips(&report);
+    }
+
+    #[test]
+    fn presets_change_the_size_and_quality_of_a_monitor_shot() {
+        let primary = engine().capturer.monitor_rects().unwrap()[0];
+        let preset = |quality| ScreenshotArgs { monitor: Some(0), preset: Some(quality), ..args() };
+        let low = shoot(&preset(deckhand_core::protocol::Quality::Low)).unwrap();
+        assert!(low.width <= 960 && low.quality == Some(60), "{}x{} {:?}", low.width, low.height, low.quality);
+        let max = shoot(&preset(deckhand_core::protocol::Quality::Max)).unwrap();
+        assert_eq!((max.width, max.height, max.quality), (primary.width as u32, primary.height as u32, Some(95)));
+        assert_round_trips(&max);
+        let overridden =
+            ScreenshotArgs { max_width: Some(640), quality: Some(30), ..preset(deckhand_core::protocol::Quality::Max) };
+        let small = shoot(&overridden).unwrap();
+        assert!(small.width <= 640 && small.quality == Some(30));
+    }
+
+    #[test]
+    fn out_of_range_quality_is_invalid() {
+        let error = shoot(&ScreenshotArgs { quality: Some(0), ..args() }).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidArgument);
     }
 
     #[test]
