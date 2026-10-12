@@ -90,8 +90,10 @@ fn describe(rect: Rect) -> String {
 mod tests {
     use deckhand_core::ErrorCode;
 
+    use deckhand_fixture::{FixtureProcess, Placement, fixture_exe};
+
     use super::*;
-    use crate::window_list::foreground_window;
+    use crate::{dpi::enable_dpi_awareness, window_identity::ref_of};
 
     #[test]
     fn rects_within_two_pixels_count_as_placed() {
@@ -121,10 +123,15 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "moves a real window"]
-    fn move_foreground_window_keeps_size() {
-        let foreground = foreground_window().unwrap();
-        let info = crate::window_list::window(foreground).unwrap();
-        move_window(foreground, info.rect).unwrap();
+    #[ignore = "opens the fixture app and moves it"]
+    fn moves_a_window_to_the_requested_rect() {
+        enable_dpi_awareness().unwrap();
+        let Some(exe) = fixture_exe() else { return };
+        let title = format!("Deckhand Fixture placement {}", std::process::id());
+        let Some(fixture) = FixtureProcess::launch(&exe, &title, Placement::OnScreen) else { return };
+        let target = Rect::new(160, 140, 720, 520);
+        move_window(ref_of(fixture.hwnd()), target).unwrap();
+        let placed = visible_rect(fixture.hwnd()).unwrap();
+        assert!(within_tolerance(placed, target), "{placed:?}");
     }
 }

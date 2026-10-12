@@ -19,7 +19,7 @@ const STOP_EVENT: &str = "Local\\deckhand-stopped";
 const ACTOR_MUTEX: &str = "Local\\deckhand-actor";
 const ACTOR_WAIT: Duration = Duration::from_secs(10);
 const YIELD_POLL: Duration = Duration::from_millis(50);
-const BUSY: &str = "another Deckhand call or Claude session is controlling the desktop";
+const BUSY: &str = "another Deckhand call or agent session is controlling the desktop";
 const RELEASING_STUCK_INPUTS: &str = "releasing keys and buttons that a crashed Deckhand call left held down";
 
 pub struct Guard {
@@ -205,7 +205,7 @@ mod tests {
     fn busy_names_both_kinds_of_holder() {
         let busy_now = busy(false);
         assert_eq!(busy_now.code, ErrorCode::Busy);
-        assert!(busy_now.message.starts_with("another Deckhand call or Claude session"), "{}", busy_now.message);
+        assert!(busy_now.message.starts_with("another Deckhand call or agent session"), "{}", busy_now.message);
         assert_eq!(busy(true).code, ErrorCode::Timeout);
     }
 }

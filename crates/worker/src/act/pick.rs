@@ -219,13 +219,13 @@ fn confirm(
     overwrite: bool,
     call: &CallScope,
 ) -> Result<()> {
-    let prompt = match await_outcome(engine, dialog, call)? {
+    let prompt = match await_outcome(engine, dialog, None, call)? {
         Some(Outcome::Closed) => return Ok(()),
         Some(Outcome::Prompt(prompt)) => prompt,
         None => return Err(still_open(dialog)),
     };
     match message_box::classify(&engine.snapshot(&prompt)?, dialog.kind, requested) {
-        Prompt::Replace { yes, .. } if overwrite => replace(engine, dialog, yes, call),
+        Prompt::Replace { yes, .. } if overwrite => replace(engine, dialog, &prompt, yes, call),
         Prompt::Replace { no, .. } => {
             press(engine, no)?;
             Err(Error::new(ErrorCode::NeedsUser, "the file exists; pass overwrite:true to replace it"))
@@ -248,26 +248,32 @@ fn answer(engine: &Engine, button: Option<ElementRef>) -> Result<()> {
     button.map_or(Ok(()), |button| press(engine, button))
 }
 
-fn replace(engine: &Engine, dialog: &FileDialog, yes: ElementRef, call: &CallScope) -> Result<()> {
+fn replace(engine: &Engine, dialog: &FileDialog, prompt: &WindowInfo, yes: ElementRef, call: &CallScope) -> Result<()> {
     press(engine, yes)?;
-    match await_outcome(engine, dialog, call)? {
+    match await_outcome(engine, dialog, Some(prompt.hwnd), call)? {
         Some(Outcome::Closed) => Ok(()),
         _ => Err(still_open(dialog)),
     }
 }
 
-fn await_outcome(engine: &Engine, dialog: &FileDialog, call: &CallScope) -> Result<Option<Outcome>> {
+fn await_outcome(
+    engine: &Engine,
+    dialog: &FileDialog,
+    answered: Option<WindowRef>,
+    call: &CallScope,
+) -> Result<Option<Outcome>> {
     let hwnd = dialog.window.hwnd;
     until(engine, call, CLOSE_WAIT, &Watch::window(&dialog.window), || {
         if !deckhand_desktop::is_window(hwnd) {
             return Ok(Some(Outcome::Closed));
         }
-        Ok(owned_prompt(engine, hwnd)?.map(Outcome::Prompt))
+        Ok(new_prompt(engine, hwnd, answered)?.map(Outcome::Prompt))
     })
 }
 
-fn owned_prompt(engine: &Engine, owner: WindowRef) -> Result<Option<WindowInfo>> {
-    Ok(dialog_windows(engine)?.into_iter().find(|window| deckhand_desktop::owner_of(window.hwnd) == Some(owner)))
+fn new_prompt(engine: &Engine, owner: WindowRef, answered: Option<WindowRef>) -> Result<Option<WindowInfo>> {
+    let mut prompts = dialog_windows(engine)?.into_iter().filter(|window| Some(window.hwnd) != answered);
+    Ok(prompts.find(|window| deckhand_desktop::owner_of(window.hwnd) == Some(owner)))
 }
 
 fn abandon(engine: &Engine, dialog: &FileDialog) {
@@ -365,7 +371,8 @@ mod tests {
         let Some(app) = FixtureApp::launch() else { return };
         let done = pick(&app, 2011, vec![text(&file)], false).unwrap();
         assert!(done.note.unwrap().starts_with("picked 1 file in the Open dialog"));
-        assert!(app.text(2012).contains(&text(&file)));
+        let opened = app.settled_text(2012, |shown| shown.contains(&text(&file)));
+        assert!(opened.contains(&text(&file)), "{opened}");
     }
 
     #[test]
@@ -377,8 +384,9 @@ mod tests {
         let Some(app) = FixtureApp::launch() else { return };
         let done = pick(&app, 2011, vec![text(&first), text(&second)], false).unwrap();
         assert!(done.note.unwrap().starts_with("picked 2 files"));
-        let opened = app.text(2012);
-        assert!(opened.contains("first.txt") && opened.contains("second.txt"), "{opened}");
+        let both = |shown: &str| shown.contains("first.txt") && shown.contains("second.txt");
+        let opened = app.settled_text(2012, both);
+        assert!(both(&opened), "{opened}");
     }
 
     #[test]
@@ -389,7 +397,8 @@ mod tests {
         let Some(app) = FixtureApp::launch() else { return };
         let done = pick(&app, 2013, vec![text(&target)], false).unwrap();
         assert!(done.note.unwrap().contains("in the Save dialog"));
-        assert!(app.text(2014).contains(&text(&target)));
+        let saved = app.settled_text(2014, |shown| shown.contains(&text(&target)));
+        assert!(saved.contains(&text(&target)), "{saved}");
         assert!(!target.exists());
     }
 
@@ -410,6 +419,7 @@ mod tests {
         let _cleanup = TempFiles(vec![existing.clone()]);
         let Some(app) = FixtureApp::launch() else { return };
         pick(&app, 2013, vec![text(&existing)], true).unwrap();
-        assert!(app.text(2014).contains(&text(&existing)));
+        let saved = app.settled_text(2014, |shown| shown.contains(&text(&existing)));
+        assert!(saved.contains(&text(&existing)), "{saved}");
     }
 }

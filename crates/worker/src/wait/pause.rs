@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Result, protocol::plain_wait};
+use deckhand_core::Result;
 
 use super::WaitReport;
 use crate::{
@@ -12,21 +12,18 @@ use crate::{
 };
 
 const SLICE: Duration = Duration::from_millis(50);
-const CAPPED: &str = "capped at 5 s";
 
 pub fn pause(engine: &Engine, wanted: Duration, call: &CallScope) -> Result<WaitReport> {
-    let (total, capped) = plain_wait(wanted);
     let started = Instant::now();
     loop {
         engine.guard.check_running(call)?;
-        let left = total.saturating_sub(started.elapsed());
+        let left = wanted.saturating_sub(started.elapsed());
         if left.is_zero() {
             break;
         }
         thread::sleep(call.bounded(left.min(SLICE)));
     }
-    let detail = if capped { CAPPED.to_string() } else { String::new() };
-    Ok(WaitReport { satisfied: true, elapsed_ms: duration_ms(started.elapsed()), detail, element: None })
+    Ok(WaitReport { satisfied: true, elapsed_ms: duration_ms(started.elapsed()), detail: String::new(), element: None })
 }
 
 #[cfg(test)]

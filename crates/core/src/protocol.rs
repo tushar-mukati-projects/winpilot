@@ -18,7 +18,7 @@ pub use crate::{
         ActArgs, AfterMode, ClickHow, Direction, KeyAction, MouseAction, MouseButton, SetChange, Step, TypeHow,
         WindowAction,
     },
-    wait::{Until, WaitArgs, WaitCondition, plain_wait},
+    wait::{Until, WaitArgs, WaitCondition},
 };
 
 pub const NOTIFY_TITLE_MAX: usize = 63;

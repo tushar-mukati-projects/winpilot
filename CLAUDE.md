@@ -97,7 +97,7 @@ Public APIs live in each crate's `lib.rs`, which only declares modules and re-ex
   - record the screen or encode video;
   - leave files behind.
 - Tests that do any of that carry `#[ignore = "<reason>"]` with a reason that names the effect, such as `"moves the mouse and keyboard"`, `"opens dialogs / changes focus"`, `"opens the fixture app off-screen"`, `"records the screen"`, `"encodes video files"`, `"shows the overlay"`, `"writes the clipboard"` or `"shows a notification"`. Run them explicitly with `cargo test -- --ignored` (filtered by name, `--test-threads=1`), only when the user has agreed.
-- Recording tests write under `%TEMP%\deckhand-record-tests` or `DECKHAND_RECORD_TEST_DIR`, and delete what they wrote.
+- Recording tests each write into their own `deckhand-record-test-<name>-<pid>-<n>` folder under `%TEMP%` (or `DECKHAND_RECORD_TEST_DIR`) and delete it afterwards.
 - Never print or save screen contents or window titles in test output.
 
 ## Safety rails for anyone working here

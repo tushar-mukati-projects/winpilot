@@ -140,7 +140,9 @@ pub enum Step {
     },
     Type {
         #[serde(default)]
-        #[schemars(description = "Field to type into. Omit to type into the focused app (never Claude's terminal).")]
+        #[schemars(
+            description = "Field to type into. Omit to type into the focused app (never the agent's own terminal)."
+        )]
         target: Option<TargetSpec>,
         #[schemars(description = "Text to type; newlines become Enter.")]
         text: String,
@@ -156,7 +158,7 @@ pub enum Step {
         keys: String,
         #[serde(default)]
         #[schemars(
-            description = "Element or window to send the keys to. Omit to use the focused app (never Claude's terminal)."
+            description = "Element or window to send the keys to. Omit to use the focused app (never the agent's own terminal)."
         )]
         target: Option<TargetSpec>,
         #[serde(default = "default_one", deserialize_with = "or_one_u32")]

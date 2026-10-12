@@ -1,6 +1,7 @@
 mod actions;
 mod ancestry;
 mod automation;
+mod cached_tree;
 mod com;
 mod failure;
 mod fingerprint;
@@ -25,6 +26,7 @@ mod upkeep;
 mod variant;
 mod warmed;
 mod win;
+mod win32_combo;
 mod window_identity;
 
 #[cfg(test)]

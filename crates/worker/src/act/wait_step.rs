@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use deckhand_core::{
     Error, Result,
-    protocol::{WaitArgs, WaitCondition, plain_wait},
+    protocol::{WaitArgs, WaitCondition},
 };
 
 use super::{done::Done, key_labels::chord_text};
@@ -32,7 +32,7 @@ pub fn outcome(report: WaitReport) -> Result<Done> {
 
 pub fn longest_wait(condition: &WaitCondition, timeout: Duration) -> Duration {
     match condition {
-        WaitCondition::Time { wanted } => plain_wait(*wanted).0,
+        WaitCondition::Time { wanted } => *wanted,
         _ => timeout,
     }
 }

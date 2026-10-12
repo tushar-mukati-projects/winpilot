@@ -49,7 +49,7 @@ The script:
 3. Registers the notification identity `Deckhand.Agent` (name and icon) under `HKCU\Software\Classes\AppUserModelId`, so notifications show as "Deckhand".
 4. With `-Register`, registers the server with Claude Code at user scope: `claude mcp add -s user deckhand -- <exe> mcp`.
 
-Restart open Claude Code sessions to load it. A session still running the previous build says so: its next call fails with "a newer Deckhand was installed …; restart Claude Code to load it".
+Restart open Claude Code sessions to load it. A session still running the previous build says so: its next call fails with "a newer Deckhand was installed …; restart your MCP client to load it".
 
 **Updating.** Pull and run the script again. It works even while sessions are using the old build: the running copy is renamed to `deckhand.old-<time>.exe` and deleted on a later run.
 

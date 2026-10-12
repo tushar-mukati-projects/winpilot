@@ -4,15 +4,14 @@ use std::{
 };
 
 use deckhand_core::{Element, ElementRef, Error, Result, Snapshot, WindowInfo, WindowRef};
-use windows::Win32::UI::Accessibility::IUIAutomationElement;
 
 use crate::{
     automation::Uia,
+    cached_tree::{CachedNode, TreeRequests, read_tree},
     failure::UiaResult,
     options::SnapshotOptions,
     properties::NodeProps,
     registry::Sighting,
-    tree::cached_children,
     tree_path::{TreePath, View},
     win,
     window_identity::WindowIdentity,
@@ -30,7 +29,7 @@ pub(crate) struct Walk {
 }
 
 struct Pending {
-    element: IUIAutomationElement,
+    node: CachedNode,
     path: TreePath,
 }
 
@@ -86,32 +85,33 @@ impl Uia {
         self.warmed.first_visit(window.hwnd) && is_sparse_chromium(&window.class, count)
     }
 
-    fn cached_tree(&self, window: WindowRef, view: View) -> Result<IUIAutomationElement> {
+    fn cached_tree(&self, window: WindowRef, view: View) -> Result<CachedNode> {
         if !win::window_exists(window) {
             return Err(window_gone(window));
         }
         let root = unsafe { self.automation.ElementFromHandle(win::hwnd(window)) }
             .uia(&format!("opening window {window} in UI Automation"))?;
-        unsafe { root.BuildUpdatedCache(self.requests.subtree_props_in(view)) }
-            .uia(&format!("reading the elements of window {window}"))
+        read_tree(&root, self.requests.props_in(view)).uia(&format!("reading the elements of window {window}"))
     }
 
-    fn walk_tree(&mut self, window: &WindowIdentity, root: IUIAutomationElement, view: View, limits: &Limits) -> Walk {
+    fn walk_tree(&mut self, window: &WindowIdentity, root: CachedNode, view: View, limits: &Limits) -> Walk {
         let generation = self.registry.generation(window.hwnd);
         let now = Instant::now();
+        let requests = self.requests.props_in(view);
         let mut walk = Walk::default();
-        let mut pending = vec![Pending { element: root, path: TreePath::root(view) }];
-        while let Some(node) = pending.pop() {
+        let mut pending = vec![Pending { node: root, path: TreePath::root(view) }];
+        while let Some(visit) = pending.pop() {
             if limits.reached(&walk) {
                 walk.truncated = true;
                 break;
             }
-            push_children(&mut pending, &node);
-            let mut props = NodeProps::read(&node.element);
-            let depth = node.path.depth();
+            self.push_children(&mut pending, &visit, requests);
+            let mut props = NodeProps::read(&visit.node.element);
+            let depth = visit.path.depth();
             let runtime_id = mem::take(&mut props.runtime_id);
-            let fingerprint = props.fingerprint(window.clone(), Some(node.path));
-            let id = self.registry.record(Sighting { live: node.element, runtime_id, fingerprint }, generation, now);
+            let fingerprint = props.fingerprint(window.clone(), Some(visit.path));
+            let sighting = Sighting { live: visit.node.element, runtime_id, fingerprint };
+            let id = self.registry.record(sighting, generation, now);
             if props.state.focused {
                 walk.focused = Some(id);
             }
@@ -119,12 +119,12 @@ impl Uia {
         }
         walk
     }
-}
 
-fn push_children(pending: &mut Vec<Pending>, parent: &Pending) {
-    let children = cached_children(&parent.element);
-    for (index, child) in children.into_iter().enumerate().rev() {
-        pending.push(Pending { element: child, path: parent.path.child(index) });
+    fn push_children(&self, pending: &mut Vec<Pending>, parent: &Pending, requests: TreeRequests<'_>) {
+        let children = self.tree_children(&parent.node, requests);
+        for (index, child) in children.into_iter().enumerate().rev() {
+            pending.push(Pending { node: child, path: parent.path.child(index) });
+        }
     }
 }
 

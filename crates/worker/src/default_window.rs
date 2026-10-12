@@ -19,7 +19,7 @@ pub fn default_window(engine: &Engine) -> Result<WindowInfo> {
         })
         .collect();
     choose(candidates, deckhand_desktop::foreground_window())
-        .ok_or_else(|| Error::not_found("no app window is open besides the one hosting Claude"))
+        .ok_or_else(|| Error::not_found("no app window is open besides the agent's own terminal"))
 }
 
 pub fn choose(candidates: Vec<Candidate>, foreground: Option<WindowRef>) -> Option<WindowInfo> {

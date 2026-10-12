@@ -183,6 +183,7 @@ name = "deckhand-desktop"
 version = "0.1.0"
 dependencies = [
  "deckhand-core",
+ "deckhand-fixture",
  "parking_lot",
  "png",
  "windows",

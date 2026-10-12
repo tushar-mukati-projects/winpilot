@@ -68,11 +68,13 @@ fn one_recording_at_a_time_from_start_to_saved_file() {
     let _ = action(RecordAction::Stop);
     let path = scratch.file("lifecycle.gif");
     let started = record(&region_gif(path.clone())).unwrap();
-    assert_eq!((started.state, started.path.as_deref()), (RecordState::Recording, Some(path.as_str())));
+    assert_eq!(started.state, RecordState::Recording);
+    let reported = started.path.clone().unwrap_or_default();
+    assert_eq!(Path::new(&reported), Path::new(&path), "{reported}");
     assert_eq!((started.width, started.height, started.fps), (320, 200, 10));
     let busy = record(&region_gif(scratch.file("second.gif"))).unwrap_err();
     assert_eq!(busy.code, ErrorCode::Busy);
-    assert!(busy.message.contains(&path), "{}", busy.message);
+    assert!(busy.message.contains(&reported), "{}", busy.message);
     assert!(!Path::new(&scratch.file("second.gif")).exists());
     thread::sleep(Duration::from_millis(1200));
     let status = action(RecordAction::Status);

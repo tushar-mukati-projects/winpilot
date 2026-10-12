@@ -1,18 +1,35 @@
 use deckhand_core::{Context, Result};
 use windows::Win32::UI::Accessibility::{
     AutomationElementMode, AutomationElementMode_Full, AutomationElementMode_None, IUIAutomation,
-    IUIAutomationCacheRequest, IUIAutomationCondition, TreeScope, TreeScope_Element, TreeScope_Subtree,
-    UIA_IsOffscreenPropertyId, UIA_NamePropertyId, UIA_NativeWindowHandlePropertyId, UIA_PROPERTY_ID,
+    IUIAutomationCacheRequest, IUIAutomationCondition, TreeScope, TreeScope_Children, TreeScope_Element,
+    TreeScope_Subtree, UIA_ControlTypePropertyId, UIA_IsOffscreenPropertyId,
+    UIA_IsSelectionItemPatternAvailablePropertyId, UIA_NamePropertyId, UIA_NativeWindowHandlePropertyId,
+    UIA_PROPERTY_ID,
 };
 
-use crate::{properties::ELEMENT_PROPERTIES, tree_path::View, variant::OwnedVariant};
+use crate::{cached_tree::TreeRequests, properties::ELEMENT_PROPERTIES, tree_path::View, variant::OwnedVariant};
+
+const ELEMENT_AND_CHILDREN: TreeScope = TreeScope(TreeScope_Element.0 | TreeScope_Children.0);
+
+const NAME_PROPERTIES: [UIA_PROPERTY_ID; 2] = [UIA_NamePropertyId, UIA_NativeWindowHandlePropertyId];
+
+const OPTION_PROPERTIES: [UIA_PROPERTY_ID; 4] = [
+    UIA_NamePropertyId,
+    UIA_ControlTypePropertyId,
+    UIA_IsSelectionItemPatternAvailablePropertyId,
+    UIA_NativeWindowHandlePropertyId,
+];
 
 pub(crate) struct CacheRequests {
-    pub(crate) subtree_props: IUIAutomationCacheRequest,
-    pub(crate) onscreen_subtree_props: IUIAutomationCacheRequest,
+    subtree_props: IUIAutomationCacheRequest,
+    children_props: IUIAutomationCacheRequest,
+    onscreen_subtree_props: IUIAutomationCacheRequest,
+    onscreen_children_props: IUIAutomationCacheRequest,
+    subtree_names: IUIAutomationCacheRequest,
+    children_names: IUIAutomationCacheRequest,
+    subtree_options: IUIAutomationCacheRequest,
+    children_options: IUIAutomationCacheRequest,
     pub(crate) element_props: IUIAutomationCacheRequest,
-    pub(crate) subtree_names: IUIAutomationCacheRequest,
-    pub(crate) element_name: IUIAutomationCacheRequest,
     pub(crate) element_hwnd: IUIAutomationCacheRequest,
 }
 
@@ -24,19 +41,33 @@ impl CacheRequests {
         let handle = [UIA_NativeWindowHandlePropertyId];
         Ok(Self {
             subtree_props: live(automation, &ELEMENT_PROPERTIES, TreeScope_Subtree, control_view)?,
+            children_props: live(automation, &ELEMENT_PROPERTIES, ELEMENT_AND_CHILDREN, control_view)?,
             onscreen_subtree_props: live(automation, &ELEMENT_PROPERTIES, TreeScope_Subtree, &onscreen_view)?,
-            element_props: live(automation, &ELEMENT_PROPERTIES, TreeScope_Element, &raw_view)?,
+            onscreen_children_props: live(automation, &ELEMENT_PROPERTIES, ELEMENT_AND_CHILDREN, &onscreen_view)?,
             subtree_names: detached(automation, &name, TreeScope_Subtree, control_view)?,
-            element_name: detached(automation, &name, TreeScope_Element, &raw_view)?,
+            children_names: live(automation, &NAME_PROPERTIES, ELEMENT_AND_CHILDREN, control_view)?,
+            subtree_options: live(automation, &OPTION_PROPERTIES, TreeScope_Subtree, control_view)?,
+            children_options: live(automation, &OPTION_PROPERTIES, ELEMENT_AND_CHILDREN, control_view)?,
+            element_props: live(automation, &ELEMENT_PROPERTIES, TreeScope_Element, &raw_view)?,
             element_hwnd: live(automation, &handle, TreeScope_Element, &raw_view)?,
         })
     }
 
-    pub(crate) fn subtree_props_in(&self, view: View) -> &IUIAutomationCacheRequest {
+    pub(crate) fn props_in(&self, view: View) -> TreeRequests<'_> {
         match view {
-            View::Onscreen => &self.onscreen_subtree_props,
-            View::Full => &self.subtree_props,
+            View::Onscreen => {
+                TreeRequests { whole: &self.onscreen_subtree_props, level: &self.onscreen_children_props }
+            }
+            View::Full => TreeRequests { whole: &self.subtree_props, level: &self.children_props },
         }
+    }
+
+    pub(crate) fn names(&self) -> TreeRequests<'_> {
+        TreeRequests { whole: &self.subtree_names, level: &self.children_names }
+    }
+
+    pub(crate) fn options(&self) -> TreeRequests<'_> {
+        TreeRequests { whole: &self.subtree_options, level: &self.children_options }
     }
 }
 

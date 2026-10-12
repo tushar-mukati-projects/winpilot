@@ -163,6 +163,17 @@ impl FixtureApp {
         String::from_utf16_lossy(&buffer[..length])
     }
 
+    pub fn settled_text(&self, control: i32, done: impl Fn(&str) -> bool) -> String {
+        let deadline = Instant::now() + PATIENCE;
+        loop {
+            let text = self.text(control);
+            if done(&text) || Instant::now() >= deadline {
+                return text;
+            }
+            thread::sleep(POLL);
+        }
+    }
+
     pub fn wait_for_text(&self, control: i32, expected: &str) -> bool {
         let deadline = Instant::now() + PATIENCE;
         while Instant::now() < deadline {

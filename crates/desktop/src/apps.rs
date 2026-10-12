@@ -50,7 +50,45 @@ pub fn launch_path(path: &Path, args: Option<&str>) -> Result<Option<u32>> {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        thread,
+        time::{Duration, Instant},
+    };
+
+    use deckhand_core::WindowRef;
+
     use super::*;
+    use crate::{close_window, windows};
+
+    const CALCULATOR: &str = "Calculator";
+    const WINDOW_WAIT: Duration = Duration::from_secs(10);
+
+    fn titled(title: &str) -> Vec<WindowRef> {
+        windows().unwrap().into_iter().filter(|window| window.title == title).map(|window| window.hwnd).collect()
+    }
+
+    fn shown_titled(title: &str) -> Vec<WindowRef> {
+        let deadline = Instant::now() + WINDOW_WAIT;
+        loop {
+            let shown = titled(title);
+            if !shown.is_empty() || Instant::now() >= deadline {
+                return shown;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    fn launch_and_close(title: &str, launch_it: impl FnOnce()) {
+        if !titled(title).is_empty() {
+            return;
+        }
+        launch_it();
+        let shown = shown_titled(title);
+        for hwnd in &shown {
+            close_window(*hwnd).unwrap();
+        }
+        assert!(!shown.is_empty(), "{title} never showed a window");
+    }
 
     #[test]
     fn kind_follows_aumid_shape() {
@@ -72,16 +110,23 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "launches Notepad"]
-    fn launch_notepad() {
+    #[ignore = "opens and closes Calculator"]
+    fn launches_a_packaged_app() {
         let apps = installed_apps().unwrap();
-        let notepad = apps.iter().find(|app| app.name == "Notepad").unwrap();
-        launch(notepad, None).unwrap();
+        let Some(calculator) = apps.iter().find(|app| app.name == CALCULATOR) else { return };
+        launch_and_close(CALCULATOR, || {
+            launch(calculator, None).unwrap();
+        });
     }
 
     #[test]
-    #[ignore = "launches Notepad by path"]
-    fn launch_notepad_by_path() {
-        launch_path(Path::new("C:\\Windows\\System32\\notepad.exe"), None).unwrap();
+    #[ignore = "opens and closes the fixture app"]
+    fn launches_an_exe_by_path_with_arguments() {
+        let Some(exe) = deckhand_fixture::fixture_exe() else { return };
+        let title = format!("Deckhand Fixture launch {}", std::process::id());
+        let args = format!("--title \"{title}\" --pos 120,120");
+        launch_and_close(&title, || {
+            launch_path(&exe, Some(&args)).unwrap();
+        });
     }
 }

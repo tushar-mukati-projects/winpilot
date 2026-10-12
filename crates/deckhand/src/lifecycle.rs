@@ -217,7 +217,7 @@ fn check_build(worker: &Announced) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "a newer Deckhand was installed (worker {} build {}, this server {} build {}); restart Claude Code to load it",
+        "a newer Deckhand was installed (worker {} build {}, this server {} build {}); restart your MCP client to load it",
         worker.version,
         shown(&worker.build),
         crate::VERSION,

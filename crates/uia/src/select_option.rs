@@ -1,114 +1,113 @@
 use std::{thread, time::Duration};
 
-use deckhand_core::{ElementRef, Error, Result};
+use deckhand_core::{ElementRef, Error, Result, Role};
 use windows::Win32::UI::Accessibility::{
-    ExpandCollapseState_Collapsed, ExpandCollapseState_Expanded, ExpandCollapseState_PartiallyExpanded,
-    IUIAutomationCondition, IUIAutomationElement, IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern,
-    IUIAutomationSelectionItemPattern, PropertyConditionFlags_IgnoreCase, TreeScope_Descendants,
-    UIA_ControlTypePropertyId, UIA_DataItemControlTypeId, UIA_ExpandCollapsePatternId, UIA_InvokePatternId,
-    UIA_IsSelectionItemPatternAvailablePropertyId, UIA_ListItemControlTypeId, UIA_MenuItemControlTypeId,
-    UIA_NamePropertyId, UIA_PROPERTY_ID, UIA_SelectionItemPatternId, UIA_TreeItemControlTypeId,
+    ExpandCollapseState, ExpandCollapseState_Collapsed, ExpandCollapseState_Expanded,
+    ExpandCollapseState_PartiallyExpanded, IUIAutomationElement, IUIAutomationExpandCollapsePattern,
+    IUIAutomationInvokePattern, IUIAutomationSelectionItemPattern, UIA_CONTROLTYPE_ID, UIA_DataItemControlTypeId,
+    UIA_ExpandCollapsePatternId, UIA_InvokePatternId, UIA_IsSelectionItemPatternAvailablePropertyId,
+    UIA_ListItemControlTypeId, UIA_MenuItemControlTypeId, UIA_SelectionItemPatternId, UIA_TreeItemControlTypeId,
 };
 
 use crate::{
     automation::Uia,
-    failure::{UiaResult, optional},
+    cached_tree::{CachedNode, read_tree},
+    failure::UiaResult,
     pattern::current_pattern,
-    properties::cached_text,
+    properties::{cached_bool, cached_text},
     resolved::Resolved,
-    tree::array_elements,
-    variant::OwnedVariant,
+    win32_combo::Win32Combo,
 };
 
 const EXPAND_SETTLE: Duration = Duration::from_millis(100);
 const LISTED_OPTIONS: usize = 10;
+const MAX_SEARCHED_ELEMENTS: usize = 5000;
+const ITEM_CONTROL_TYPES: [UIA_CONTROLTYPE_ID; 4] =
+    [UIA_ListItemControlTypeId, UIA_MenuItemControlTypeId, UIA_TreeItemControlTypeId, UIA_DataItemControlTypeId];
+
+struct ListedOption {
+    element: IUIAutomationElement,
+    name: String,
+}
 
 impl Uia {
     pub fn select_option(&mut self, id: ElementRef, option: &str) -> Result<()> {
         let target = self.resolve(id)?;
+        let win32 = win32_combo_of(&target);
         let opened_here = expand_if_collapsed(&target)?;
         let picked = self.pick_option(&target, option, opened_here.is_some());
+        let chosen = win32.as_ref().filter(|_| picked.is_ok()).and_then(Win32Combo::selected_index);
         if let Some(pattern) = &opened_here {
             let _closing_is_best_effort = collapse_if_expanded(pattern, &target);
         }
-        picked
+        picked?;
+        let (Some(combo), Some(index)) = (win32, chosen) else { return Ok(()) };
+        combo.keep_selection(index).map_err(|error| picking_error(&error, option, &target))
     }
 
     fn pick_option(&self, target: &Resolved, option: &str, just_opened: bool) -> Result<()> {
-        let Some(item) = self.find_option_patiently(target, option, just_opened)? else {
-            return Err(self.missing_option(target, option));
+        let options = self.options_patiently(target, option, just_opened)?;
+        let Some(item) = options.iter().find(|listed| same_option(&listed.name, option)) else {
+            return Err(missing_option(target, option, &options));
         };
-        choose(&item, option, target)
+        choose(&item.element, option, target)
     }
 
-    fn find_option_patiently(
-        &self,
-        target: &Resolved,
-        option: &str,
-        just_opened: bool,
-    ) -> Result<Option<IUIAutomationElement>> {
-        let condition = self.option_condition(option)?;
-        let found = find_first(target, &condition)?;
-        if found.is_some() || !just_opened {
-            return Ok(found);
+    fn options_patiently(&self, target: &Resolved, option: &str, just_opened: bool) -> Result<Vec<ListedOption>> {
+        let options = self.listed_options(target)?;
+        if !just_opened || options.iter().any(|listed| same_option(&listed.name, option)) {
+            return Ok(options);
         }
         thread::sleep(EXPAND_SETTLE);
-        find_first(target, &condition)
+        self.listed_options(target)
     }
 
-    fn option_condition(&self, option: &str) -> Result<IUIAutomationCondition> {
-        let name = OwnedVariant::text(option);
-        let by_name = unsafe {
-            self.automation.CreatePropertyConditionEx(UIA_NamePropertyId, name.raw(), PropertyConditionFlags_IgnoreCase)
+    fn listed_options(&self, target: &Resolved) -> Result<Vec<ListedOption>> {
+        let requests = self.requests.options();
+        let root = read_tree(&target.element, requests).uia(&target.doing("listing the options of"))?;
+        let mut options = Vec::new();
+        let mut pending: Vec<CachedNode> = self.tree_children(&root, requests).into_iter().rev().collect();
+        for _ in 0..MAX_SEARCHED_ELEMENTS {
+            let Some(node) = pending.pop() else { break };
+            pending.extend(self.tree_children(&node, requests).into_iter().rev());
+            if is_option(&node.element) {
+                let name = cached_text(unsafe { node.element.CachedName() });
+                options.push(ListedOption { element: node.element, name });
+            }
         }
-        .uia("building the option search")?;
-        unsafe { self.automation.CreateAndCondition(&self.item_condition()?, &by_name) }
-            .uia("building the option search")
-    }
-
-    fn missing_option(&self, target: &Resolved, option: &str) -> Error {
-        let names = self.option_names(target).unwrap_or_default();
-        Error::not_found(format!("no option \"{option}\" in {}; {}", target.label(), describe_options(&names)))
-    }
-
-    fn option_names(&self, target: &Resolved) -> Result<Vec<String>> {
-        let condition = self.item_condition()?;
-        let found = optional(unsafe {
-            target.element.FindAllBuildCache(TreeScope_Descendants, &condition, &self.requests.element_name)
-        })
-        .uia(&target.doing("listing the options of"))?;
-        let Some(found) = found else { return Ok(Vec::new()) };
-        Ok(array_elements(&found)
-            .iter()
-            .map(|item| cached_text(unsafe { item.CachedName() }))
-            .filter(|name| !name.trim().is_empty())
-            .take(LISTED_OPTIONS + 1)
-            .collect())
-    }
-
-    fn item_condition(&self) -> Result<IUIAutomationCondition> {
-        let selectable = OwnedVariant::flag(true);
-        let mut alternatives =
-            vec![Some(self.property_condition(UIA_IsSelectionItemPatternAvailablePropertyId, &selectable)?)];
-        for kind in
-            [UIA_ListItemControlTypeId, UIA_MenuItemControlTypeId, UIA_TreeItemControlTypeId, UIA_DataItemControlTypeId]
-        {
-            alternatives.push(Some(self.property_condition(UIA_ControlTypePropertyId, &OwnedVariant::int(kind.0))?));
-        }
-        let any_item = unsafe { self.automation.CreateOrConditionFromNativeArray(&alternatives) }
-            .uia("building the option list query")?;
-        unsafe { self.automation.CreateAndCondition(&self.control_view, &any_item) }
-            .uia("building the option list query")
-    }
-
-    fn property_condition(&self, property: UIA_PROPERTY_ID, value: &OwnedVariant) -> Result<IUIAutomationCondition> {
-        unsafe { self.automation.CreatePropertyCondition(property, value.raw()) }.uia("building the option list query")
+        Ok(options)
     }
 }
 
-fn find_first(target: &Resolved, condition: &IUIAutomationCondition) -> Result<Option<IUIAutomationElement>> {
-    optional(unsafe { target.element.FindFirst(TreeScope_Descendants, condition) })
-        .uia(&target.doing("searching the options of"))
+fn is_option(element: &IUIAutomationElement) -> bool {
+    cached_bool(element, UIA_IsSelectionItemPatternAvailablePropertyId)
+        || unsafe { element.CachedControlType() }.is_ok_and(|kind| ITEM_CONTROL_TYPES.contains(&kind))
+}
+
+fn same_option(name: &str, option: &str) -> bool {
+    name.to_lowercase() == option.to_lowercase()
+}
+
+fn missing_option(target: &Resolved, option: &str, options: &[ListedOption]) -> Error {
+    let names: Vec<String> = options
+        .iter()
+        .map(|listed| listed.name.trim())
+        .filter(|name| !name.is_empty())
+        .take(LISTED_OPTIONS + 1)
+        .map(str::to_string)
+        .collect();
+    Error::not_found(format!("no option \"{option}\" in {}; {}", target.label(), describe_options(&names)))
+}
+
+fn win32_combo_of(target: &Resolved) -> Option<Win32Combo> {
+    if target.info.role != Role::Combobox {
+        return None;
+    }
+    Win32Combo::of(&target.element)
+}
+
+fn picking_error(error: &Error, option: &str, target: &Resolved) -> Error {
+    Error::new(error.code, format!("picking \"{option}\" in {}: {}", target.label(), error.message))
 }
 
 fn choose(item: &IUIAutomationElement, option: &str, target: &Resolved) -> Result<()> {
@@ -121,6 +120,10 @@ fn choose(item: &IUIAutomationElement, option: &str, target: &Resolved) -> Resul
         return unsafe { pattern.Invoke() }.uia(&action);
     }
     Err(Error::unsupported(format!("option \"{option}\" in {} can be neither selected nor invoked", target.label())))
+}
+
+fn is_open(state: ExpandCollapseState) -> bool {
+    state == ExpandCollapseState_Expanded || state == ExpandCollapseState_PartiallyExpanded
 }
 
 fn expand_if_collapsed(target: &Resolved) -> Result<Option<IUIAutomationExpandCollapsePattern>> {
@@ -138,7 +141,7 @@ fn expand_if_collapsed(target: &Resolved) -> Result<Option<IUIAutomationExpandCo
 
 fn collapse_if_expanded(pattern: &IUIAutomationExpandCollapsePattern, target: &Resolved) -> Result<()> {
     let state = unsafe { pattern.CurrentExpandCollapseState() }.uia(&target.doing("reading the expand state of"))?;
-    if state != ExpandCollapseState_Expanded && state != ExpandCollapseState_PartiallyExpanded {
+    if !is_open(state) {
         return Ok(());
     }
     unsafe { pattern.Collapse() }.uia(&target.doing("collapsing"))
@@ -155,7 +158,7 @@ fn describe_options(names: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ErrorCode, Role};
+    use deckhand_core::ErrorCode;
 
     use super::*;
     use crate::{SnapshotOptions, test_support::launch_fixture};
@@ -172,12 +175,27 @@ mod tests {
     }
 
     #[test]
+    fn options_match_by_whole_name_ignoring_case() {
+        assert!(same_option("Green", "green"));
+        assert!(same_option("ÉCLAIR", "éclair"));
+        assert!(!same_option("Greenish", "green"));
+        assert!(!same_option("Green", "gree"));
+    }
+
+    #[test]
+    fn only_open_states_count_as_expanded() {
+        assert!(is_open(ExpandCollapseState_Expanded));
+        assert!(is_open(ExpandCollapseState_PartiallyExpanded));
+        assert!(!is_open(ExpandCollapseState_Collapsed));
+    }
+
+    #[test]
     #[ignore = "acts on the deckhand fixture app"]
     fn picks_combobox_options_by_name() {
         let Some(fixture) = launch_fixture() else { return };
         let window = fixture.window.clone();
         let handle = crate::test_support::handle();
-        handle
+        let (value, missing, expanded) = handle
             .run(move |uia| {
                 let snapshot = uia.snapshot(&window, &SnapshotOptions::default())?;
                 let combo = snapshot
@@ -187,13 +205,15 @@ mod tests {
                     .map(|element| element.id)
                     .ok_or_else(|| Error::not_found("combobox 2007"))?;
                 uia.select_option(combo, "green")?;
-                assert_eq!(uia.value(combo)?.as_deref(), Some("Green"));
-                let missing = uia.select_option(combo, "Purple").unwrap_err();
-                assert_eq!(missing.code, ErrorCode::NotFound);
-                assert!(missing.message.contains("\"Red\""), "{}", missing.message);
-                assert_eq!(uia.element(combo)?.state.expanded, Some(false));
-                Ok(())
+                let value = uia.value(combo)?;
+                let missing = uia.select_option(combo, "Purple");
+                Ok((value, missing, uia.element(combo)?.state.expanded))
             })
             .unwrap();
+        assert_eq!(value.as_deref(), Some("Green"));
+        let missing = missing.unwrap_err();
+        assert_eq!(missing.code, ErrorCode::NotFound);
+        assert!(missing.message.contains("options: \"Red\", \"Green\", \"Blue\""), "{}", missing.message);
+        assert_eq!(expanded, Some(false));
     }
 }

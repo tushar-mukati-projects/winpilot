@@ -129,7 +129,7 @@ fn cached_variant(element: &IUIAutomationElement, property: UIA_PROPERTY_ID) -> 
     unsafe { element.GetCachedPropertyValue(property) }.ok().map(OwnedVariant::from_raw)
 }
 
-fn cached_bool(element: &IUIAutomationElement, property: UIA_PROPERTY_ID) -> bool {
+pub(crate) fn cached_bool(element: &IUIAutomationElement, property: UIA_PROPERTY_ID) -> bool {
     cached_variant(element, property).and_then(|variant| variant.as_bool()).unwrap_or(false)
 }
 

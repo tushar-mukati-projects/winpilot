@@ -11,7 +11,7 @@ use crate::{
     resolve::{self, Reach, Resolved},
 };
 
-const HOST_TERMINAL: &str = "the foreground window is Claude's own terminal; give a target or focus the app first";
+const HOST_TERMINAL: &str = "the foreground window is the agent's own terminal; give a target or focus the app first";
 const FOREGROUND_MOVED: &str = "the foreground window changed while waiting for the user; give a target or try again";
 
 pub type Prepared = Resolved;

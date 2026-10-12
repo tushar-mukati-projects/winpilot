@@ -4,8 +4,8 @@ use windows::Win32::UI::Accessibility::{
 };
 
 use crate::{
-    automation::Uia, failure::UiaResult, pattern::current_pattern, properties::cached_text, resolved::Resolved,
-    tree::cached_children,
+    automation::Uia, cached_tree::read_tree, failure::UiaResult, pattern::current_pattern, properties::cached_text,
+    resolved::Resolved,
 };
 
 const MAX_TEXT_ELEMENTS: usize = 5000;
@@ -23,13 +23,13 @@ impl Uia {
     }
 
     fn names_inside(&self, target: &Resolved, max_chars: usize) -> Result<String> {
-        let cached = unsafe { target.element.BuildUpdatedCache(&self.requests.subtree_names) }
-            .uia(&target.doing("reading the names inside"))?;
+        let requests = self.requests.names();
+        let root = read_tree(&target.element, requests).uia(&target.doing("reading the names inside"))?;
         Ok(names_in_pre_order(
-            cached,
+            root,
             max_chars,
-            |element| cached_text(unsafe { element.CachedName() }),
-            cached_children,
+            |node| cached_text(unsafe { node.element.CachedName() }),
+            |node| self.tree_children(node, requests),
         ))
     }
 }

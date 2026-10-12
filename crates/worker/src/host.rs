@@ -64,7 +64,7 @@ impl HostProcesses {
         }
         Err(Error::new(
             ErrorCode::Denied,
-            format!("{} is Claude's own terminal; Deckhand won't act on it", window.hwnd),
+            format!("{} is the agent's own terminal; Deckhand won't act on it", window.hwnd),
         ))
     }
 }
@@ -229,7 +229,7 @@ mod tests {
         };
         let error = host.refuse(&window).unwrap_err();
         assert_eq!(error.code, ErrorCode::Denied);
-        assert_eq!(error.message, "w42 is Claude's own terminal; Deckhand won't act on it");
+        assert_eq!(error.message, "w42 is the agent's own terminal; Deckhand won't act on it");
         window.pid = 8;
         assert!(host.refuse(&window).is_ok());
     }

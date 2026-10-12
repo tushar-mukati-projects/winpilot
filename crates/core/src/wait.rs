@@ -13,8 +13,8 @@ use crate::{
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(5);
 pub const MAX_WAIT: Duration = Duration::from_secs(60);
 pub const DEFAULT_IDLE: Duration = Duration::from_millis(300);
-pub const MAX_PLAIN_WAIT: Duration = Duration::from_secs(5);
-const MAX_PAUSE_MS: u64 = 5_000;
+const MAX_PLAIN_WAIT_MS: u64 = 5_000;
+pub const MAX_PLAIN_WAIT: Duration = Duration::from_millis(MAX_PLAIN_WAIT_MS);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -150,9 +150,9 @@ impl WaitArgs {
 
     fn time(&self) -> Result<WaitCondition> {
         let ms = self.ms.ok_or_else(|| Error::invalid("until=time needs \"ms\""))?;
-        if ms > MAX_PAUSE_MS {
+        if ms > MAX_PLAIN_WAIT_MS {
             return Err(Error::invalid(format!(
-                "a plain wait pauses at most {MAX_PAUSE_MS} ms, got {ms}; use until to wait for a change"
+                "a plain wait pauses at most {MAX_PLAIN_WAIT_MS} ms, got {ms}; use until to wait for a change"
             )));
         }
         Ok(WaitCondition::Time { wanted: Duration::from_millis(ms) })
@@ -182,10 +182,6 @@ impl WaitArgs {
     fn required(&self, value: Option<&String>, field: &str) -> Result<String> {
         non_blank(value).ok_or_else(|| Error::invalid(format!("until={} needs \"{field}\"", self.until().name())))
     }
-}
-
-pub fn plain_wait(wanted: Duration) -> (Duration, bool) {
-    (wanted.min(MAX_PLAIN_WAIT), wanted > MAX_PLAIN_WAIT)
 }
 
 #[cfg(test)]
@@ -220,14 +216,6 @@ mod tests {
             "a plain wait pauses at most 5000 ms, got 5001; use until to wait for a change"
         );
         assert_eq!(invalid(r#"{"ms":10,"timeout_ms":100}"#), "timeout_ms does not apply to wait until=time");
-    }
-
-    #[test]
-    fn plain_waits_are_capped_at_five_seconds() {
-        assert_eq!(plain_wait(Duration::ZERO), (Duration::ZERO, false));
-        assert_eq!(plain_wait(Duration::from_millis(500)), (Duration::from_millis(500), false));
-        assert_eq!(plain_wait(MAX_PLAIN_WAIT), (MAX_PLAIN_WAIT, false));
-        assert_eq!(plain_wait(Duration::from_millis(5001)), (MAX_PLAIN_WAIT, true));
     }
 
     #[test]

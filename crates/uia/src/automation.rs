@@ -8,7 +8,7 @@ use windows::Win32::{
     System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
     UI::Accessibility::{
         CUIAutomation8, CoalesceEventsOptions_Enabled, ConnectionRecoveryBehaviorOptions_Enabled, IUIAutomation,
-        IUIAutomation2, IUIAutomation6, IUIAutomationCondition, IUIAutomationElement, IUIAutomationTreeWalker,
+        IUIAutomation2, IUIAutomation6, IUIAutomationElement, IUIAutomationTreeWalker,
     },
 };
 use windows_core::Interface;
@@ -20,7 +20,6 @@ static CREATION: Mutex<()> = Mutex::new(());
 pub struct Uia {
     pub(crate) automation: IUIAutomation,
     pub(crate) requests: CacheRequests,
-    pub(crate) control_view: IUIAutomationCondition,
     pub(crate) walker: IUIAutomationTreeWalker,
     pub(crate) registry: Registry<IUIAutomationElement>,
     pub(crate) warmed: Warmed,
@@ -38,7 +37,7 @@ impl Uia {
         let requests = CacheRequests::build(&automation, &control_view)?;
         let walker = unsafe { automation.ControlViewWalker() }.context("creating the control view walker")?;
         let registry = Registry::new(options.first_ref);
-        Ok(Self { automation, requests, control_view, walker, registry, warmed: Warmed::default() })
+        Ok(Self { automation, requests, walker, registry, warmed: Warmed::default() })
     }
 }
 

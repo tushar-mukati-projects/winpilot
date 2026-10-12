@@ -438,7 +438,7 @@ mod tests {
         assert_eq!(error.code, ErrorCode::TargetNotResponding);
         let expected = format!(
             "a newer Deckhand was installed (worker {} build 0.1.0+1.feedfacefeedface, this server {} build {}); \
-             restart Claude Code to load it",
+             restart your MCP client to load it",
             crate::VERSION,
             crate::VERSION,
             crate::BUILD_ID
