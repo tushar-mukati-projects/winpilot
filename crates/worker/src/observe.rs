@@ -1,6 +1,7 @@
 mod apps;
 mod clipboard;
 mod elements;
+pub(crate) mod listen;
 mod monitors;
 pub(crate) mod record;
 mod screenshot;
@@ -24,6 +25,7 @@ pub(crate) fn run(engine: &Engine, args: &ObserveArgs, call: &CallScope) -> Resu
         ObserveRequest::Text(request) => text::run(engine, &request, call).map(Reply::Text),
         ObserveRequest::Screenshot(request) => screenshot::run(engine, &request, call).map(Reply::Screenshot),
         ObserveRequest::Record(request) => record::run(engine, &request, call).map(Reply::Record),
+        ObserveRequest::Listen(request) => listen::run(engine, &request, call).map(Reply::Listen),
         ObserveRequest::Windows => windows::list(engine).map(Reply::Windows),
         ObserveRequest::Monitors => monitors::list().map(Reply::Monitors),
         ObserveRequest::Apps(request) => apps::list(engine, &request).map(Reply::Apps),

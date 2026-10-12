@@ -12,6 +12,7 @@ deckhand-uia.workspace = true
 deckhand-capture.workspace = true
 deckhand-input.workspace = true
 deckhand-desktop.workspace = true
+deckhand-speech.workspace = true
 windows.workspace = true
 parking_lot.workspace = true
 base64.workspace = true

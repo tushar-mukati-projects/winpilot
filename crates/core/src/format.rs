@@ -3,6 +3,7 @@ use crate::{
     element::{Element, ElementState, Snapshot, WindowInfo, WindowState},
     error::Error,
     geometry::{Point, Rect},
+    listening::ListenReport,
     matching::is_gap,
     object_marks::without_object_marks,
     ocr::{self, NO_UIA_NOTE, OcrLine, coords},
@@ -173,6 +174,30 @@ pub fn screenshot_caption(report: &ScreenshotReport) -> String {
         Some(note) => format!("{caption}\n{note}"),
         None => caption,
     }
+}
+
+pub fn listen(report: &ListenReport) -> String {
+    let mut lines = vec![format!("heard {} · language {}", report.heard, report.language)];
+    if report.segments.is_empty() && !report.truncated {
+        lines.push("(no speech heard)".to_string());
+    }
+    lines.extend(report.segments.iter().map(|segment| format!("[{}] {}", timestamp(segment.start_ms), segment.text)));
+    if report.truncated {
+        lines.push("(truncated)".to_string());
+    }
+    lines.extend(report.notes.iter().cloned());
+    lines.join(
+        "
+",
+    )
+}
+
+fn timestamp(ms: u64) -> String {
+    let seconds = ms / 1000;
+    if seconds >= 3600 {
+        return format!("{}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60);
+    }
+    format!("{:02}:{:02}", seconds / 60, seconds % 60)
 }
 
 pub fn record(report: &RecordReport) -> String {
@@ -643,6 +668,34 @@ mod tests {
         protocol::{RecordAudio, Timing},
         refs::{ElementRef, ImageRef},
     };
+
+    #[test]
+    fn listening_shows_what_was_heard_with_timestamps() {
+        let report = ListenReport {
+            heard: "10 s of system audio".to_string(),
+            language: "en".to_string(),
+            segments: vec![
+                crate::listening::HeardSegment { start_ms: 0, end_ms: 2400, text: "Hello there.".to_string() },
+                crate::listening::HeardSegment { start_ms: 3_725_000, end_ms: 3_726_000, text: "Bye.".to_string() },
+            ],
+            truncated: true,
+            notes: vec!["transcribed the first 8:00".to_string()],
+        };
+        assert_eq!(
+            listen(&report),
+            "heard 10 s of system audio · language en
+[00:00] Hello there.
+[1:02:05] Bye.
+(truncated)
+transcribed the first 8:00"
+        );
+        let silent = ListenReport { segments: Vec::new(), truncated: false, notes: Vec::new(), ..report };
+        assert_eq!(
+            listen(&silent),
+            "heard 10 s of system audio · language en
+(no speech heard)"
+        );
+    }
 
     fn notepad_window() -> WindowInfo {
         window("Untitled - Notepad")

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 pub use crate::{
     budget::pick_wait,
+    listening::{HeardSegment, Hearing, ListenReport, ListenRequest, ListenSource},
     observe::{ObserveArgs, ObserveMode, OcrMode},
     observe_request::{
         AppsRequest, ClipboardRequest, ElementsRequest, ImageFormat, ObserveRequest, ScreenshotRequest, SearchRequest,
@@ -39,6 +40,7 @@ pub enum Reply {
     Text(TextReport),
     Screenshot(ScreenshotReport),
     Record(RecordReport),
+    Listen(ListenReport),
     Windows(WindowsReport),
     Monitors(MonitorsReport),
     Apps(AppsReport),

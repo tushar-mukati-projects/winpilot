@@ -29,6 +29,7 @@ use crate::{
     kill_switch::warn,
     observe::{
         self,
+        listen::SpeechSlot,
         record::{self, RecordingSlot},
     },
 };
@@ -48,6 +49,7 @@ pub(crate) struct Engine {
     pub(crate) host: HostProcesses,
     pub(crate) apps: AppCatalog,
     pub(crate) recording: Mutex<RecordingSlot>,
+    pub(crate) speech: SpeechSlot,
     timings: Mutex<VecDeque<Timing>>,
     started: Instant,
 }
@@ -73,6 +75,7 @@ impl Engine {
             host: HostProcesses::detect(),
             apps: AppCatalog::default(),
             recording: Mutex::new(RecordingSlot::default()),
+            speech: SpeechSlot::default(),
             timings: Mutex::new(VecDeque::with_capacity(RECENT_TIMINGS)),
             started: Instant::now(),
         })

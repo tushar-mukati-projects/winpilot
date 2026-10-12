@@ -4,9 +4,9 @@ use crate::{
     observe::{ObserveArgs, ObserveMode},
 };
 
-use ObserveMode::{Apps, Clipboard, Elements, Record, Screenshot, Text};
+use ObserveMode::{Apps, Clipboard, Elements, Listen, Record, Screenshot, Text};
 
-const FIELD_MODES: [(&str, &[ObserveMode]); 23] = [
+const FIELD_MODES: [(&str, &[ObserveMode]); 25] = [
     ("window", &[Elements, Text]),
     ("target", &[Text, Screenshot, Record]),
     ("query", &[Elements, Apps]),
@@ -17,7 +17,7 @@ const FIELD_MODES: [(&str, &[ObserveMode]); 23] = [
     ("region", &[Text, Screenshot, Record]),
     ("monitor", &[Screenshot, Record]),
     ("ocr", &[Text]),
-    ("max_chars", &[Text, Clipboard]),
+    ("max_chars", &[Text, Clipboard, Listen]),
     ("preset", &[Screenshot]),
     ("quality", &[Screenshot]),
     ("video_quality", &[Record]),
@@ -26,10 +26,12 @@ const FIELD_MODES: [(&str, &[ObserveMode]); 23] = [
     ("marks", &[Screenshot]),
     ("action", &[Record]),
     ("fps", &[Record]),
-    ("max_seconds", &[Record]),
+    ("max_seconds", &[Record, Listen]),
     ("cursor", &[Record]),
-    ("path", &[Record]),
-    ("audio", &[Record]),
+    ("path", &[Record, Listen]),
+    ("audio", &[Record, Listen]),
+    ("language", &[Listen]),
+    ("translate", &[Listen]),
 ];
 
 impl ObserveArgs {
@@ -58,6 +60,8 @@ impl ObserveArgs {
             ("cursor", self.cursor.is_some()),
             ("path", self.path.is_some()),
             ("audio", self.audio.is_some()),
+            ("language", self.language.is_some()),
+            ("translate", self.translate.is_some()),
         ]
         .into_iter()
         .filter_map(|(name, given)| given.then_some(name))
@@ -124,6 +128,8 @@ mod tests {
             cursor: Some(true),
             path: Some(String::new()),
             audio: Some(crate::recording::RecordAudio::None),
+            language: Some(String::new()),
+            translate: Some(true),
             mode: Elements,
         };
         let given = everything.given_fields();

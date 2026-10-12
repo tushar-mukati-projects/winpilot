@@ -394,7 +394,21 @@ Toasts need the app identity `Deckhand.Agent` that the install script registers.
 
 ## Speech
 
-Deckhand can turn speech into text on your PC, so an agent can "listen in" on a call, a video or the microphone, or transcribe a media file. It runs OpenAI's Whisper locally on the CPU, in pure Rust ([candle](https://github.com/huggingface/candle)). Audio never leaves the machine and nothing is sent to a cloud service. The engine lives in the `deckhand-speech` crate; the `observe` mode that exposes it (`mode=listen`) is not wired up yet.
+Deckhand can turn speech into text on your PC, so an agent can "listen in" on a call, a video or the microphone, or transcribe a media file. It runs OpenAI's Whisper locally on the CPU, in pure Rust ([candle](https://github.com/huggingface/candle)). Audio never leaves the machine and nothing is sent to a cloud service. The engine lives in the `deckhand-speech` crate and is exposed as `observe mode=listen`:
+
+```jsonc
+{"mode": "listen"}                                            // the next 10 s of what the PC plays
+{"mode": "listen", "audio": "mic", "max_seconds": 30}         // 30 s of the microphone ("both" mixes the two)
+{"mode": "listen", "path": "C:\\Users\\me\\Videos\\call.mp4", "language": "hi", "translate": true}
+```
+
+```
+heard 10 s of system audio · language en
+[00:00] So the plan for today is to finish the export.
+[00:04] Then we review it together.
+```
+
+Live listening takes 1 to 90 seconds (default 10) and blocks for that long plus the transcription; for anything longer, record with sound (`mode=record`) and then listen to the file. A file is transcribed up to its first 8 minutes per call, and the reply says when it stopped early. `max_chars` caps the reply. A silent capture says so, which usually means nothing was playing or the mic is muted. The model loads on the first `listen` call (a second or two) and stays loaded in the worker. `path` is checked against `deny_paths` like every other path.
 
 **Install a model once.** Deckhand never downloads anything while it runs. Fetch a multilingual model with the install script:
 

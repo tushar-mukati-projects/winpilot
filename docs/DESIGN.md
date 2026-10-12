@@ -258,7 +258,7 @@ Without the registered identity, such as a dev build run from `target`, Deckhand
 
 ## 11. Speech
 
-`deckhand-speech` turns audio into text on the PC, so an agent can listen in on a call, a video or the microphone, or transcribe a media file, without anything leaving the machine. It is a library today; `observe mode=listen` will wire it to the WASAPI capture in `deckhand-capture` or to a file.
+`deckhand-speech` turns audio into text on the PC, so an agent can listen in on a call, a video or the microphone, or transcribe a media file, without anything leaving the machine. `observe mode=listen` wires it to the WASAPI capture in `deckhand-capture` or to a media file (`crates/worker/src/observe/listen.rs`).
 
 - **Engine.** OpenAI's Whisper on the CPU in pure Rust with candle (`candle-core`, `candle-nn` and `candle-transformers` 0.11.0, pinned). whisper.cpp through `whisper-rs` 0.16 was the first choice and its C++ part built with the Build Tools CMake, but `whisper-rs-sys` 0.15 ships bindings generated on Linux whose glibc `FILE` layout checks fail to compile on MSVC, and regenerating them needs libclang, which the build machine lacks. candle needs nothing beyond the Rust toolchain. The cost is speed: whisper.cpp would likely be two to three times faster.
 - **Model.** The multilingual whisper.cpp ggml files (`ggml-tiny.bin`, `ggml-base.bin`, `ggml-small.bin`) from `huggingface.co/ggerganov/whisper.cpp`, installed by `scripts\install.ps1 -SpeechModel <name>` into `%LOCALAPPDATA%\deckhand\models` and checked against a SHA-256 pinned in the script. A mismatch deletes the download, because this laptop has a known bit-flip fault on large writes. Nothing is downloaded at run time; a missing model is a `needs_user` error naming the install command. The crate reads the ggml format itself (`ggml.rs`): header, mel filters, the vocabulary as raw bytes, and f16 or f32 tensors, renamed to candle's Hugging Face names (`tensor_names.rs`) and widened to f32. Quantized ggml files are refused with a clear message.
@@ -268,7 +268,7 @@ Without the registered identity, such as a dev build run from `target`, Deckhand
 - **Speed and memory.** The `base` model ran about 4.3 times faster than real time on the Ryzen 7 6800HS (8 threads, optimized build: 51 s of synthetic English speech in 11.6 to 12.3 s) and 3.5 times in a debug build, with every word right (it wrote numbers as digits and capitalised one "windows"). The weights sit in memory as f32: about 300 MB for `base` and 1 GB for `small`.
 - **Media files.** `decode_media` opens a Media Foundation Source Reader, selects only the first audio stream and asks for 16 kHz mono float, falling back to float at the native format. Formats are whatever Windows decodes (WAV, MP3, M4A/AAC, MP4, WMA, and WebM with the Web Media Extensions). No audio track is an `invalid_argument` error, an undecodable file `unsupported`, and decoding stops at two hours of 16 kHz audio.
 
-The crate API, for the `listen` wiring:
+The crate API:
 
 ```rust
 pub struct Transcriber;
@@ -288,7 +288,7 @@ pub fn model_path(name: &str) -> Result<PathBuf>;
 pub fn model_missing_error() -> Error;
 ```
 
-`Transcriber` is `Send` and `Sync`; the model sits behind a mutex because decoding mutates its caches, so the worker should load it once, on first use, and keep it on one long-lived speech thread. `to_text` prints one `[mm:ss] text` line per segment. `listen` will take `seconds` and `source` (system, mic or both) or a `path`, plus `language` and `translate`, capture through `deckhand-capture`'s `Pcm`, and pass `pcm.samples`, `pcm.sample_rate` and `pcm.channels` straight in.
+`Transcriber` is `Send` and `Sync`; the model sits behind a mutex because decoding mutates its caches. The worker loads it on the first `listen` call into the engine's `SpeechSlot` and keeps it for the worker's life. `listen` takes `max_seconds` (1-90, default 10) and `audio` (system, mic or both), or a `path`, plus `language` and `translate`. Live audio comes from `capture_audio`, which checks the kill switch while it waits; a file is checked against `deny_paths`, decoded and cut to its first 8 minutes, so a call stays inside the 180-second deadline at about 4x real time. The reply lists `[mm:ss] text` lines within `max_chars`, and notes digital silence when nothing was heard. The deadline is the listening time plus 60 seconds, or the 180-second maximum for a file.
 ## 12. Background mode and virtual desktops
 
 Normal mode behaves like a careful person: bring the window forward, glide the mouse, type real keys. Background mode (`act { background: true }`, falling back to `[act] background`, which is off by default) never touches the real mouse, keyboard or focus. The per-step rules are in the README's [background mode table](../README.md#background-mode-and-virtual-desktops). UI Automation patterns come first: a plain left click on an element goes through Invoke, Toggle, SelectionItem, ExpandCollapse and finally the legacy default action; typing into a writable field is appended to its value with `SetValue`, since patterns can't place a caret, and the step says so in a note; scrolling uses the element's or a container's scroll pattern.

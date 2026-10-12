@@ -36,6 +36,7 @@ fn contents(reply: Reply, extras: &Extras) -> Vec<ContentBlock> {
         Reply::Text(report) => text(format::text(&report)),
         Reply::Screenshot(shot) => captioned(format::screenshot_caption(&shot), shot),
         Reply::Record(report) => text(format::record(&report)),
+        Reply::Listen(report) => text(format::listen(&report)),
         Reply::Windows(report) => text(format::windows(&report)),
         Reply::Monitors(report) => text(format::monitors(&report)),
         Reply::Apps(report) => text(format::apps(&report)),

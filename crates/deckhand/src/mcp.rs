@@ -32,8 +32,9 @@ const ALWAYS_LOAD: &str = "anthropic/alwaysLoad";
 const OBSERVE: &str = "See the desktop. mode: elements (default: a window as element lines with refs like e12; \
 query filters; all_windows with query searches every window), text (full text, UI Automation first, OCR fallback), \
 screenshot (an image with an img id for point targets), record (start, stop or status an MP4 with sound, or a GIF), \
-windows, monitors, apps (installed; query filters), clipboard or status. window picks the window for elements and text; \
-target picks an element or window for text, screenshot and record. A field that belongs to another mode is an error.";
+listen (transcribe PC sound, the mic or a file at path), windows, monitors, apps (installed; query filters), \
+clipboard or status. window picks the window for elements and text; target picks an element or window for text, \
+screenshot and record. Fields of other modes are errors.";
 const ACT: &str = "Do things: up to 50 steps per call, each {\"do\":...}, then a diff (return: diff, observe, \
 screenshot or none). Steps: click, type, key (press/down/up), mouse (move/down/up/scroll/drag), set \
 (value/option/checked/expanded/selected), focus, window (launch/close/minimize/maximize/restore/move), pick (file \
@@ -49,6 +50,7 @@ const INSTRUCTIONS: &str = "Deckhand controls the Windows desktop through UI Aut
 - When observe says an app exposes no UI Automation, it lists OCR lines with positions; target that text with ocr:\"Export\" (add window:, process: or nth: as needed).\n\
 - Take a screenshot only when text is not enough. Give a point in it with its img id so it maps back to the screen: {\"x\":640,\"y\":360,\"img\":\"i7\"}; without img, x and y are physical screen pixels.\n\
 - observe mode=record saves an MP4 with the PC's sound by default (audio: system, mic, both or none); GIFs are silent.\n\
+- observe mode=listen transcribes speech on this PC: max_seconds (default 10, at most 90) of system audio, the mic or both, or a recording or other media file given as path; language picks it (default: detected) and translate gives English.\n\
 - act background:true works without the real mouse, keyboard or focus: UI Automation patterns first, and window messages for apps without them (clicks, drags, scrolls, typing and plain keys at a target); modifier chords and file pickers still need the foreground. Windows on other virtual desktops always get that.\n\
 - The user can stop all input with the kill hotkey ({hotkey}); act then fails with stopped_by_user. Tell the user instead of retrying.";
 
@@ -294,6 +296,8 @@ mod tests {
             "cursor",
             "path",
             "audio",
+            "language",
+            "translate",
         ];
         for field in observe_fields {
             assert!(observe.input_schema["properties"].get(field).is_some(), "observe lacks {field}");
@@ -311,6 +315,7 @@ mod tests {
                 "text",
                 "screenshot",
                 "record",
+                "listen",
                 "windows",
                 "monitors",
                 "apps",

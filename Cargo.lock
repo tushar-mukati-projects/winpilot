@@ -473,6 +473,7 @@ dependencies = [
  "deckhand-desktop",
  "deckhand-fixture",
  "deckhand-input",
+ "deckhand-speech",
  "deckhand-uia",
  "parking_lot",
  "serde_json",

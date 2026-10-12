@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::{
     glide_timing::MAX_GLIDE_MS,
     keys::parse_keys,
+    listening::DEFAULT_LISTEN_SECONDS,
     observe::{ObserveArgs, ObserveMode},
     protocol::Call,
     recording::RecordAction,
@@ -19,6 +20,7 @@ const PICK_OVERHEAD: Duration = Duration::from_secs(10);
 const WAIT_SLACK: Duration = Duration::from_secs(1);
 const CHARS_PER_EXTRA_SECOND: u64 = 2000;
 const KEY_PRESS_BUDGET: Duration = Duration::from_millis(100);
+const LISTEN_OVERHEAD: Duration = Duration::from_secs(60);
 
 impl Call {
     pub fn deadline_with_glide(&self, default_glide_ms: u64) -> Duration {
@@ -33,15 +35,24 @@ impl Call {
     }
 }
 
-const fn observe_budget(args: &ObserveArgs) -> Duration {
+fn observe_budget(args: &ObserveArgs) -> Duration {
     match args.mode {
         ObserveMode::Elements | ObserveMode::Apps => Duration::from_secs(10),
         ObserveMode::Text => Duration::from_secs(20),
         ObserveMode::Screenshot => Duration::from_secs(8),
         ObserveMode::Record => record_budget(args.action),
+        ObserveMode::Listen => listen_budget(args),
         ObserveMode::Windows | ObserveMode::Monitors | ObserveMode::Clipboard => Duration::from_secs(5),
         ObserveMode::Status => Duration::from_secs(3),
     }
+}
+
+fn listen_budget(args: &ObserveArgs) -> Duration {
+    if args.path.is_some() {
+        return MAX_DEADLINE;
+    }
+    let seconds = args.max_seconds.unwrap_or(DEFAULT_LISTEN_SECONDS);
+    Duration::from_secs(u64::from(seconds)).saturating_add(LISTEN_OVERHEAD)
 }
 
 const fn record_budget(action: Option<RecordAction>) -> Duration {
@@ -128,6 +139,9 @@ mod tests {
             (r#"{"mode":"monitors"}"#, 5),
             (r#"{"mode":"apps"}"#, 10),
             (r#"{"mode":"clipboard"}"#, 5),
+            (r#"{"mode":"listen"}"#, 70),
+            (r#"{"mode":"listen","max_seconds":90}"#, 150),
+            (r#"{"mode":"listen","path":"C:\\a.mp4"}"#, 180),
             (r#"{"mode":"status"}"#, 3),
         ];
         for (json, seconds) in cases {

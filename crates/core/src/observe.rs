@@ -7,6 +7,7 @@ use crate::{
     field_rules::only_one,
     format::ObserveFormat,
     geometry::Rect,
+    listening::{Hearing, ListenRequest, language_code},
     null_default::or_default,
     observe_fields::check_fields,
     observe_request::{
@@ -26,6 +27,7 @@ pub enum ObserveMode {
     Text,
     Screenshot,
     Record,
+    Listen,
     Windows,
     Monitors,
     Apps,
@@ -56,7 +58,7 @@ pub enum MediaFormat {
 pub struct ObserveArgs {
     #[serde(deserialize_with = "or_default")]
     #[schemars(
-        description = "elements (default), text, screenshot, record, windows, monitors, apps, clipboard or status."
+        description = "elements (default), text, screenshot, record, listen, windows, monitors, apps, clipboard or status."
     )]
     pub mode: ObserveMode,
     #[schemars(
@@ -88,7 +90,7 @@ pub struct ObserveArgs {
     #[schemars(description = "text: auto (default: UI Automation text, OCR as fallback), never or always.")]
     pub ocr: Option<OcrMode>,
     #[schemars(
-        description = "text, clipboard: maximum characters (default 20000, at most 200000).",
+        description = "text, clipboard, listen: maximum characters (default 20000, at most 200000).",
         range(min = 1, max = 200_000)
     )]
     pub max_chars: Option<u32>,
@@ -120,20 +122,24 @@ pub struct ObserveArgs {
     )]
     pub fps: Option<u32>,
     #[schemars(
-        description = "record: stop and save after this many seconds, 1-1800 (default 300).",
+        description = "record: stop and save after this many seconds, 1-1800 (default 300). listen: seconds to listen, 1-90 (default 10).",
         range(min = 1, max = 1800)
     )]
     pub max_seconds: Option<u32>,
     #[schemars(description = "record: show the mouse pointer (default true).")]
     pub cursor: Option<bool>,
     #[schemars(
-        description = "record: absolute .mp4 or .gif path that does not exist yet. Default: Videos\\Deckhand\\deckhand-<time>.mp4."
+        description = "record: absolute .mp4 or .gif path that does not exist yet. Default: Videos\\Deckhand\\deckhand-<time>.mp4. listen: an audio or video file to transcribe instead of listening live."
     )]
     pub path: Option<String>,
     #[schemars(
-        description = "record start, mp4 only: system (default; what the PC plays), mic, both or none. gif has no sound."
+        description = "record start, mp4 only: system (default; what the PC plays), mic, both or none. gif has no sound. listen: system (default), mic or both."
     )]
     pub audio: Option<RecordAudio>,
+    #[schemars(description = "listen: the spoken language as a code like en or hi; default: detect it.")]
+    pub language: Option<String>,
+    #[schemars(description = "listen: translate the speech into English (default false).")]
+    pub translate: Option<bool>,
 }
 
 impl ObserveMode {
@@ -143,6 +149,7 @@ impl ObserveMode {
             Self::Text => "text",
             Self::Screenshot => "screenshot",
             Self::Record => "record",
+            Self::Listen => "listen",
             Self::Windows => "windows",
             Self::Monitors => "monitors",
             Self::Apps => "apps",
@@ -157,6 +164,7 @@ impl ObserveMode {
             Self::Text => "observe text",
             Self::Screenshot => "observe screenshot",
             Self::Record => "observe record",
+            Self::Listen => "observe listen",
             Self::Windows => "observe windows",
             Self::Monitors => "observe monitors",
             Self::Apps => "observe apps",
@@ -206,6 +214,7 @@ impl ObserveArgs {
             ObserveMode::Text => self.text().map(ObserveRequest::Text),
             ObserveMode::Screenshot => self.screenshot().map(ObserveRequest::Screenshot),
             ObserveMode::Record => self.record().map(ObserveRequest::Record),
+            ObserveMode::Listen => self.listen().map(ObserveRequest::Listen),
             ObserveMode::Windows => Ok(ObserveRequest::Windows),
             ObserveMode::Monitors => Ok(ObserveRequest::Monitors),
             ObserveMode::Apps => Ok(ObserveRequest::Apps(self.apps())),
@@ -305,6 +314,15 @@ impl ObserveArgs {
         };
         request.validate()?;
         Ok(request)
+    }
+
+    fn listen(&self) -> Result<ListenRequest> {
+        Ok(ListenRequest {
+            hearing: Hearing::chosen(self.path.as_deref(), self.audio, self.max_seconds)?,
+            language: language_code(self.language.as_deref())?,
+            translate: self.translate.unwrap_or(false),
+            max_chars: char_limit(self.max_chars),
+        })
     }
 
     fn apps(&self) -> AppsRequest {
@@ -440,6 +458,27 @@ mod tests {
     }
 
     #[test]
+    fn listening_takes_a_source_a_length_a_language_or_a_file() {
+        let ObserveRequest::Listen(live) =
+            request(r#"{"mode":"listen","audio":"mic","max_seconds":30,"language":"HI","translate":true}"#)
+        else {
+            panic!("expected listening")
+        };
+        assert_eq!(live.hearing, Hearing::Live { source: crate::listening::ListenSource::Mic, seconds: 30 });
+        assert_eq!(live.language.as_deref(), Some("hi"));
+        assert!(live.translate);
+        let ObserveRequest::Listen(file) = request(r#"{"mode":"listen","path":"C:\\Talks\\demo.mp4"}"#) else {
+            panic!("expected listening")
+        };
+        assert_eq!(file.hearing, Hearing::File("C:\\Talks\\demo.mp4".to_string()));
+        assert_eq!(
+            invalid(r#"{"mode":"screenshot","language":"en"}"#),
+            "language does not apply to mode=screenshot; it is for mode=listen"
+        );
+        assert!(invalid(r#"{"mode":"listen","audio":"none"}"#).contains("something to hear"));
+    }
+
+    #[test]
     fn recordings_take_an_audio_source() {
         let ObserveRequest::Record(record) = request(r#"{"mode":"record","action":"start","audio":"both"}"#) else {
             panic!("expected a recording")
@@ -451,7 +490,7 @@ mod tests {
         );
         assert_eq!(
             invalid(r#"{"mode":"screenshot","audio":"system"}"#),
-            "audio does not apply to mode=screenshot; it is for mode=record"
+            "audio does not apply to mode=screenshot; it is for mode=record or listen"
         );
         assert!(serde_json::from_str::<ObserveArgs>(r#"{"mode":"record","audio":"speakers"}"#).is_err());
     }

@@ -1,4 +1,4 @@
-use crate::{geometry::Rect, observe::OcrMode, quality::Quality, recording::RecordRequest};
+use crate::{geometry::Rect, listening::ListenRequest, observe::OcrMode, quality::Quality, recording::RecordRequest};
 
 pub(crate) const DEFAULT_ELEMENTS: usize = 300;
 pub(crate) const DEFAULT_MATCHES: usize = 20;
@@ -18,6 +18,7 @@ pub enum ObserveRequest {
     Text(TextRequest),
     Screenshot(ScreenshotRequest),
     Record(RecordRequest),
+    Listen(ListenRequest),
     Windows,
     Monitors,
     Apps(AppsRequest),

@@ -54,6 +54,8 @@ fn observe(args: &ObserveArgs, redaction: Redaction<'_>) -> String {
         ("fps", args.fps.map(|fps| fps.to_string())),
         ("audio", args.audio.map(|audio| audio.name().to_string())),
         ("name", args.path.as_deref().map(base_name)),
+        ("language", args.language.clone()),
+        ("translate", flag(args.translate)),
     ]);
     joined(&format!("mode={}", args.mode.name()), &details)
 }
@@ -386,6 +388,16 @@ mod tests {
         assert_eq!(summary, "mode=record monitor=1 format=gif action=start name=demo.gif");
         assert!(!summary.contains("Private"));
         assert_eq!(quiet(&observe_call(json!({"mode": "record", "action": "stop"}))), "mode=record action=stop");
+    }
+
+    #[test]
+    fn listening_keeps_only_the_file_name_and_the_language() {
+        let file = observe_call(json!({
+            "mode": "listen", "path": "C:\\Users\\me\\Private\\call.m4a", "language": "hi", "translate": true
+        }));
+        let summary = verbose(&file);
+        assert_eq!(summary, "mode=listen name=call.m4a language=hi translate=true");
+        assert_eq!(quiet(&observe_call(json!({"mode": "listen", "audio": "mic"}))), "mode=listen audio=mic");
     }
 
     #[test]
