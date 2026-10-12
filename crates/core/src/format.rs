@@ -5,6 +5,7 @@ use crate::{
     geometry::{Point, Rect},
     matching::is_gap,
     object_marks::without_object_marks,
+    ocr::{self, NO_UIA_NOTE, OcrLine, coords},
     recording::{RecordReport, RecordState},
     reports::{
         ActReport, After, AppInfo, AppKind, AppsReport, ClipboardReport, DiffReport, Found, MonitorInfo,
@@ -36,6 +37,7 @@ const RECENT_TIMINGS: usize = 5;
 const PASSWORD_MASK: &str = "•••";
 const ELLIPSIS: char = '…';
 const INDENT: &str = "  ";
+const NO_OCR_TEXT: &str = "(OCR found no text)";
 const TREE_TRUNCATED: &str = "(tree truncated: window has more elements than the snapshot limit)";
 const BYTES_PER_KB: f64 = 1024.0;
 const BYTES_PER_MB: f64 = 1024.0 * 1024.0;
@@ -52,6 +54,7 @@ pub fn observation(observation: &Observation, format: &ObserveFormat) -> String 
     if snapshot.truncated {
         lines.push(TREE_TRUNCATED.to_string());
     }
+    lines.extend(observation.ocr.as_deref().map(ocr_lines).unwrap_or_default());
     lines.extend(window_list("other windows", &observation.others));
     lines.join("\n")
 }
@@ -243,7 +246,7 @@ pub fn element_line(element: &Element, coords: bool) -> String {
     parts.extend(element_value(element));
     parts.extend(element_flags(element).map(str::to_string));
     if coords {
-        parts.push(coordinates(element.rect));
+        parts.push(ocr::coords(element.rect));
     }
     parts.join(" ")
 }
@@ -286,11 +289,6 @@ const fn shows_read_only(role: Role) -> bool {
     matches!(role, Role::Edit | Role::Combobox | Role::Document)
 }
 
-fn coordinates(rect: Rect) -> String {
-    let Rect { x, y, width, height } = rect;
-    format!("@{x},{y},{width}x{height}")
-}
-
 fn window_tag(window: &WindowInfo) -> String {
     let process = window.process.trim();
     if process.is_empty() {
@@ -317,6 +315,17 @@ fn window_list(label: &str, windows: &[WindowInfo]) -> Option<String> {
         parts.push(format!("… {} more", windows.len() - MAX_LISTED_WINDOWS));
     }
     Some(format!("{label}: {}", parts.join(", ")))
+}
+
+fn ocr_lines(found: &[OcrLine]) -> Vec<String> {
+    let mut lines = vec![NO_UIA_NOTE.to_string()];
+    if found.is_empty() {
+        lines.push(format!("{INDENT}{NO_OCR_TEXT}"));
+    }
+    lines.extend(
+        found.iter().map(|line| format!("{INDENT}ocr {} {}", quote(&line.text, NAME_LIMIT), coords(line.rect))),
+    );
+    lines
 }
 
 fn observation_header(snapshot: &Snapshot) -> String {
@@ -685,11 +694,12 @@ mod tests {
         Observation {
             snapshot: snap,
             others: vec![app_window(2, "chrome.exe", "Inbox"), app_window(3, "notes.exe", "Notes")],
+            ocr: None,
         }
     }
 
     fn plain_observation(elements: Vec<Element>) -> Observation {
-        Observation { snapshot: snapshot(elements), others: Vec::new() }
+        Observation { snapshot: snapshot(elements), others: Vec::new(), ocr: None }
     }
 
     const HEADER: &str = "window w16 notepad.exe \"Untitled - Notepad\" foreground 800x600@0,0";
@@ -834,7 +844,7 @@ mod tests {
     }
 
     #[test]
-    fn element_line_coordinates() {
+    fn element_line_coords() {
         assert_eq!(element_line(&element(12, 0, Role::Button, "Save"), true), "e12 button \"Save\" @10,10,50x20");
         let mut far = element(13, 0, Role::Button, "Left");
         far.rect = Rect::new(-1920, 5, 100, 30);
@@ -981,7 +991,7 @@ mod tests {
     }
 
     #[test]
-    fn observation_with_coordinates() {
+    fn observation_with_coords() {
         let format = ObserveFormat { coords: true, ..ObserveFormat::default() };
         let text = observation(&plain_observation(vec![element(1, 0, Role::Button, "OK")]), &format);
         assert_eq!(text, format!("{HEADER}\ne1 button \"OK\" @10,10,50x20"));
@@ -1029,6 +1039,31 @@ mod tests {
         let text = observation(&found, &ObserveFormat::default());
         let listed: Vec<String> = (1..=8).map(|hwnd| format!("w{hwnd} app.exe \"W{hwnd}\"")).collect();
         assert_eq!(text, format!("{HEADER}\nother windows: {}, … 2 more", listed.join(", ")));
+    }
+
+    #[test]
+    fn a_window_without_ui_automation_lists_its_ocr_lines_with_positions() {
+        let mut found = plain_observation(vec![element(1, 0, Role::Window, "CapCut")]);
+        found.ocr = Some(vec![
+            OcrLine { text: "Import".to_string(), rect: Rect::new(40, 80, 60, 18), words: Vec::new() },
+            OcrLine { text: "Say \"hi\"".to_string(), rect: Rect::new(40, 120, 70, 18), words: Vec::new() },
+        ]);
+        let text = observation(&found, &ObserveFormat::default());
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(
+            lines[1],
+            "this app exposes no UI Automation; showing OCR text \u{2014} target it with ocr:\"\u{2026}\""
+        );
+        assert_eq!(lines[2], "  ocr \"Import\" @40,80,60x18");
+        assert_eq!(lines[3], "  ocr \"Say \\\"hi\\\"\" @40,120,70x18");
+    }
+
+    #[test]
+    fn ocr_that_found_nothing_says_so() {
+        let mut found = plain_observation(Vec::new());
+        found.ocr = Some(Vec::new());
+        let text = observation(&found, &ObserveFormat::default());
+        assert!(text.ends_with("ocr:\"\u{2026}\"\n  (OCR found no text)"), "{text}");
     }
 
     #[test]

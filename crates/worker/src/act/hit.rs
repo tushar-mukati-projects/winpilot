@@ -3,17 +3,28 @@ use deckhand_core::{
 };
 
 use super::{locate::Located, target::Prepared};
-use crate::{engine::Engine, on_screen::visible_part};
+use crate::{cover::window_covers, engine::Engine, on_screen::visible_part};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HitRelation {
     pub same: bool,
     pub target_contains_hit: bool,
     pub hit_contains_target: bool,
+    pub in_target_window: bool,
 }
 
-pub const fn accepts_hit(relation: HitRelation) -> bool {
-    relation.same || relation.target_contains_hit || relation.hit_contains_target
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HitVerdict {
+    OnTarget,
+    CoveredByWindow,
+    CoveredInWindow,
+}
+
+pub const fn judge_hit(relation: HitRelation) -> HitVerdict {
+    if relation.same || relation.target_contains_hit || relation.hit_contains_target {
+        return HitVerdict::OnTarget;
+    }
+    if relation.in_target_window { HitVerdict::CoveredInWindow } else { HitVerdict::CoveredByWindow }
 }
 
 pub fn quarter_points(rect: Rect) -> [Point; 4] {
@@ -47,7 +58,7 @@ pub fn hit_point(engine: &Engine, prepared: &Prepared, located: &Located) -> Res
 
 pub fn confirm_hit(engine: &Engine, prepared: &Prepared, located: &Located, point: Point) -> Result<()> {
     match tracked_hit(prepared, located) {
-        Some(element) => confirm_element_at(engine, element.id, point),
+        Some(element) => confirm_element_at(engine, element.id, located.window.hwnd, point),
         None => require_window_at(engine, point, &located.window),
     }
 }
@@ -57,7 +68,7 @@ pub fn lands_in(engine: &Engine, point: Point, window: &WindowInfo) -> bool {
         let hit = uia.element_at(point)?;
         uia.window_of(hit.id)
     });
-    landed.is_ok_and(|hwnd| hwnd == window.hwnd)
+    landed.is_ok_and(|hwnd| !window_covers(engine, window.hwnd, hwnd))
 }
 
 fn tracked_hit<'a>(prepared: &Prepared, located: &'a Located) -> Option<&'a Element> {
@@ -71,43 +82,48 @@ fn require_window_at(engine: &Engine, point: Point, window: &WindowInfo) -> Resu
     Err(window_covered(window.hwnd, point))
 }
 
-fn confirm_element_at(engine: &Engine, id: ElementRef, point: Point) -> Result<()> {
-    let (relation, hit) = probe(engine, id, point)?;
-    if accepts_hit(relation) {
-        return Ok(());
+fn confirm_element_at(engine: &Engine, id: ElementRef, window: WindowRef, point: Point) -> Result<()> {
+    match probe(engine, id, window, point)? {
+        (HitVerdict::OnTarget, _) => Ok(()),
+        (verdict, hit) => Err(covered(id, verdict, &hit)),
     }
-    Err(covered(id, Some(&hit)))
 }
 
 fn verify_hit(engine: &Engine, element: &Element, first: Point, window: &WindowInfo) -> Result<Point> {
-    let visible = visible_part(element, window).ok_or_else(|| covered(element.id, None))?;
+    let visible = visible_part(element, window).ok_or_else(|| not_visible(element.id))?;
     let mut covering = None;
     for point in candidate_points(first, visible) {
-        let (relation, hit) = probe(engine, element.id, point)?;
-        if accepts_hit(relation) {
-            return Ok(point);
+        match probe(engine, element.id, window.hwnd, point)? {
+            (HitVerdict::OnTarget, _) => return Ok(point),
+            found => covering = Some(found),
         }
-        covering = Some(hit);
     }
-    Err(covered(element.id, covering.as_ref()))
+    Err(covering.map_or_else(|| not_visible(element.id), |(verdict, hit)| covered(element.id, verdict, &hit)))
 }
 
-fn probe(engine: &Engine, target: ElementRef, point: Point) -> Result<(HitRelation, Element)> {
+fn probe(engine: &Engine, target: ElementRef, window: WindowRef, point: Point) -> Result<(HitVerdict, Element)> {
     engine.uia.run(move |uia| {
         let hit = uia.element_at(point)?;
         let same = hit.id == target;
         let target_contains_hit = !same && uia.contains(target, hit.id)?;
         let hit_contains_target = !same && !target_contains_hit && uia.contains(hit.id, target)?;
-        Ok((HitRelation { same, target_contains_hit, hit_contains_target }, hit))
+        let in_target_window = uia.window_of(hit.id).is_ok_and(|owner| owner == window);
+        let relation = HitRelation { same, target_contains_hit, hit_contains_target, in_target_window };
+        Ok((judge_hit(relation), hit))
     })
 }
 
-fn covered(id: ElementRef, hit: Option<&Element>) -> Error {
-    let message = match hit {
-        Some(hit) => format!("{id} is covered by {}", element_line(hit, false)),
-        None => format!("{id} is not visible on screen"),
+fn covered(id: ElementRef, verdict: HitVerdict, hit: &Element) -> Error {
+    let covering = element_line(hit, false);
+    let message = match verdict {
+        HitVerdict::CoveredByWindow => format!("{id} is covered by another window's {covering}"),
+        HitVerdict::CoveredInWindow | HitVerdict::OnTarget => format!("{id} is covered by {covering}"),
     };
     Error::new(ErrorCode::Obscured, message)
+}
+
+fn not_visible(id: ElementRef) -> Error {
+    Error::new(ErrorCode::Obscured, format!("{id} is not visible on screen"))
 }
 
 fn window_covered(hwnd: WindowRef, point: Point) -> Error {
@@ -147,14 +163,6 @@ mod tests {
     }
 
     #[test]
-    fn any_containment_relation_accepts_the_hit() {
-        assert!(accepts_hit(HitRelation { same: true, ..HitRelation::default() }));
-        assert!(accepts_hit(HitRelation { target_contains_hit: true, ..HitRelation::default() }));
-        assert!(accepts_hit(HitRelation { hit_contains_target: true, ..HitRelation::default() }));
-        assert!(!accepts_hit(HitRelation::default()));
-    }
-
-    #[test]
     fn quarter_points_sit_inside_the_rect() {
         let rect = Rect::new(100, 200, 40, 20);
         assert_eq!(
@@ -181,8 +189,42 @@ mod tests {
         assert_eq!(unique, points);
     }
 
+    fn in_window(relation: HitRelation) -> HitRelation {
+        HitRelation { in_target_window: true, ..relation }
+    }
+
     #[test]
-    fn covered_names_the_covering_element() {
+    fn the_target_itself_or_anything_inside_it_is_on_target() {
+        assert_eq!(judge_hit(in_window(HitRelation { same: true, ..HitRelation::default() })), HitVerdict::OnTarget);
+        let inside = HitRelation { target_contains_hit: true, ..HitRelation::default() };
+        assert_eq!(judge_hit(in_window(inside)), HitVerdict::OnTarget);
+    }
+
+    #[test]
+    fn a_same_window_ancestor_is_not_a_cover() {
+        let ancestor = in_window(HitRelation { hit_contains_target: true, ..HitRelation::default() });
+        assert_eq!(judge_hit(ancestor), HitVerdict::OnTarget);
+    }
+
+    #[test]
+    fn related_elements_that_deckhand_files_under_another_window_still_reach_the_target() {
+        let hosted = HitRelation { hit_contains_target: true, ..HitRelation::default() };
+        assert_eq!(judge_hit(hosted), HitVerdict::OnTarget);
+        assert_eq!(judge_hit(HitRelation { same: true, ..HitRelation::default() }), HitVerdict::OnTarget);
+    }
+
+    #[test]
+    fn an_unrelated_element_of_the_same_window_covers_the_target() {
+        assert_eq!(judge_hit(in_window(HitRelation::default())), HitVerdict::CoveredInWindow);
+    }
+
+    #[test]
+    fn an_unrelated_element_of_another_window_covers_the_target() {
+        assert_eq!(judge_hit(HitRelation::default()), HitVerdict::CoveredByWindow);
+    }
+
+    #[test]
+    fn covered_names_the_covering_element_and_whose_window_it_is() {
         let hit = Element {
             id: ElementRef(9),
             depth: 0,
@@ -195,9 +237,12 @@ mod tests {
             state: deckhand_core::ElementState { enabled: true, ..deckhand_core::ElementState::default() },
             patterns: deckhand_core::Patterns::default(),
         };
-        let error = covered(ElementRef(12), Some(&hit));
-        assert_eq!(error.code, ErrorCode::Obscured);
-        assert_eq!(error.message, "e12 is covered by e9 button \"OK\"");
-        assert_eq!(covered(ElementRef(12), None).message, "e12 is not visible on screen");
+        let inside = covered(ElementRef(12), HitVerdict::CoveredInWindow, &hit);
+        assert_eq!(inside.code, ErrorCode::Obscured);
+        assert_eq!(inside.message, "e12 is covered by e9 button \"OK\"");
+        let outside = covered(ElementRef(12), HitVerdict::CoveredByWindow, &hit);
+        assert_eq!(outside.code, ErrorCode::Obscured);
+        assert_eq!(outside.message, "e12 is covered by another window's e9 button \"OK\"");
+        assert_eq!(not_visible(ElementRef(12)).message, "e12 is not visible on screen");
     }
 }

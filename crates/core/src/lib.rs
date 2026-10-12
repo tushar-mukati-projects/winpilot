@@ -17,6 +17,7 @@ pub mod object_marks;
 mod observe;
 mod observe_fields;
 mod observe_request;
+pub mod ocr;
 mod path_guard;
 pub mod protocol;
 pub mod quality;

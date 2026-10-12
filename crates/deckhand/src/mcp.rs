@@ -34,18 +34,19 @@ query filters; all_windows with query searches every window), text (full text, U
 screenshot (an image with an img id for point targets), record (start, stop or status an MP4 or GIF), windows, \
 monitors, apps (installed; query filters), clipboard or status. window picks the window for elements and text; \
 target picks an element or window for text, screenshot and record. A field that belongs to another mode is an error.";
-const ACT: &str = "Do things: up to 50 steps per call, each {\"do\":...}, then a diff of what changed (return: diff, \
-observe, screenshot or none). Steps: click, type, key (press/down/up), mouse (move/down/up/scroll/drag), set \
+const ACT: &str = "Do things: up to 50 steps per call, each {\"do\":...}, then a diff (return: diff, observe, \
+screenshot or none). Steps: click, type, key (press/down/up), mouse (move/down/up/scroll/drag), set \
 (value/option/checked/expanded/selected), focus, window (launch/close/minimize/maximize/restore/move), pick (file \
 dialogs), wait (ms, or until appears/disappears/window/window_opens/window_closed/text/idle), clipboard, notify. Targets: refs \
-(e12, w123), selectors like role:button name:\"Save\", or {\"x\":..,\"y\":..,\"img\":\"i3\"}. background:true never \
-touches the real mouse, keyboard or focus.";
+(e12, w123), selectors like role:button name:\"Save\" or ocr:\"Export\" (OCR), or \
+{\"x\":..,\"y\":..,\"img\":\"i3\"}. background:true never uses the real mouse, keyboard or focus.";
 
 const INSTRUCTIONS: &str = "Deckhand controls the Windows desktop through UI Automation with two tools, observe and act.\n\
 - observe mode=elements (the default) lists a window as lines with refs (e12); mode=text reads it whole. Other modes: screenshot, record, windows, monitors, apps, clipboard, status.\n\
 - act runs several steps per call by ref (e12) or selector (role:button name:\"Save\") and returns a diff, so observe again only when you need the full list.\n\
 - When you know the app, act by selector without observing first; observe all_windows with a query finds elements in every window.\n\
 - Use the pick step for Open, Save or upload dialogs, window action=launch to open apps, and wait instead of sleeping.\n\
+- When observe says an app exposes no UI Automation, it lists OCR lines with positions; target that text with ocr:\"Export\" (add window:, process: or nth: as needed).\n\
 - Take a screenshot only when text is not enough. Give a point in it with its img id so it maps back to the screen: {\"x\":640,\"y\":360,\"img\":\"i7\"}; without img, x and y are physical screen pixels.\n\
 - act background:true works through UI Automation alone, without the mouse, keyboard or focus; windows on other virtual desktops always get that.\n\
 - The user can stop all input with the kill hotkey ({hotkey}); act then fails with stopped_by_user. Tell the user instead of retrying.";

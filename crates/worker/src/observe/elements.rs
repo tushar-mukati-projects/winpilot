@@ -2,11 +2,17 @@ use std::collections::BTreeSet;
 
 use deckhand_core::{
     Result, Snapshot, WindowInfo,
+    ocr::exposes_no_uia,
     protocol::{ElementsRequest, Observation},
     selector::Selector,
 };
 
-use crate::{app_windows::app_windows, engine::Engine, overlay, resolve};
+use crate::{
+    app_windows::app_windows,
+    engine::Engine,
+    ocr_read::{Freshness, window_lines},
+    overlay, resolve,
+};
 
 pub fn run(engine: &Engine, request: &ElementsRequest) -> Result<Observation> {
     let window = resolve::window(engine, request.window.as_deref())?;
@@ -21,8 +27,10 @@ pub fn run(engine: &Engine, request: &ElementsRequest) -> Result<Observation> {
 
 pub fn observe_window(engine: &Engine, window: &WindowInfo) -> Result<Observation> {
     let snapshot = engine.snapshot(window)?;
+    let ocr =
+        exposes_no_uia(&snapshot).then(|| window_lines(engine, window, None, Freshness::CachedIsFine).ok()).flatten();
     let others = app_windows(engine)?.into_iter().filter(|other| other.hwnd != window.hwnd).collect();
-    Ok(Observation { snapshot, others })
+    Ok(Observation { snapshot, others, ocr })
 }
 
 fn keep_matches_and_ancestors(snapshot: &Snapshot, query: &Selector) -> Snapshot {

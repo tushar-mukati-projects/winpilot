@@ -12,7 +12,7 @@ const FIELD_MODES: [(&str, &[ObserveMode]); 22] = [
     ("query", &[Elements, Apps]),
     ("all_windows", &[Elements]),
     ("all", &[Elements]),
-    ("coords", &[Elements]),
+    ("coords", &[Elements, Text]),
     ("max", &[Elements, Apps]),
     ("region", &[Text, Screenshot, Record]),
     ("monitor", &[Screenshot, Record]),

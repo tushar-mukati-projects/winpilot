@@ -13,7 +13,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged, expecting = "a ref or selector string, or {\"x\":int,\"y\":int,\"img\":\"i3\"}")]
 #[schemars(
-    description = "What to act on: an element ref like e12, a window ref like w2032546, a selector like role:button name:\"Save\" or window:\"Notepad\" >> name:\"File\", or a point {\"x\":640,\"y\":360,\"img\":\"i3\"} in screenshot pixels (omit img for screen pixels)"
+    description = "What to act on: an element ref like e12, a window ref like w2032546, a selector like role:button name:\"Save\" or window:\"Notepad\" >> name:\"File\", on-screen text read by OCR like ocr:\"Export\" (with window:, process: or nth:), or a point {\"x\":640,\"y\":360,\"img\":\"i3\"} in screenshot pixels (omit img for screen pixels)"
 )]
 pub enum TargetSpec {
     Text(String),

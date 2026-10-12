@@ -81,7 +81,7 @@ Other clients, such as Codex, take the same command and `args` in their own conf
 | Mode | Returns | Fields |
 |---|---|---|
 | `elements` | One line per element of a window, with refs | `window`, `query`, `all_windows`, `all`, `coords`, `max` |
-| `text` | The full text of a window, element or region | `window` or `target` or `region`, `ocr`, `max_chars` |
+| `text` | The full text of a window, element or region | `window` or `target` or `region`, `ocr`, `coords`, `max_chars` |
 | `screenshot` | A caption, then a JPEG or PNG image | `target` or `region` or `monitor`, `preset`, `quality`, `max_width`, `format`, `marks` |
 | `record` | Starts, stops or reports a screen recording | `action`, `target` or `region` or `monitor`, `format`, `fps`, `video_quality`, `max_width`, `max_seconds`, `cursor`, `path` |
 | `windows` | The open app windows | none |
@@ -97,7 +97,7 @@ Other clients, such as Codex, take the same command and `args` in their own conf
 | `query` | `elements`: a selector filter; matches are listed with their ancestors. `apps`: a name filter. |
 | `all_windows` | `elements`: search every app window with `query`. Returns match lines with window and path. Needs `query`; can't be combined with `window`, `all` or `coords`. |
 | `all` | Also list non-interactive elements such as static text and panes. |
-| `coords` | Add `@x,y,wxh` screen rectangles. |
+| `coords` | `elements`: add `@x,y,wxh` screen rectangles. `text`: read with OCR and end each line with its `@x,y,wxh` screen rectangle (so `ocr: "never"` with `coords` is an error). |
 | `max` | Cap on element lines (300), `all_windows` matches (20) or apps (30). |
 | `region` | A screen rectangle `{"x","y","width","height"}` in physical pixels. A region can only be read as text with OCR, so `ocr: "never"` with a region is an error. |
 | `monitor` | A monitor index: primary first, then by x, then by y, as `mode=monitors` lists them. |
@@ -137,12 +137,12 @@ Arguments are checked per mode before anything runs. A field from another mode i
 | `do` | Fields | Notes |
 |---|---|---|
 | `click` | `target`, `button?`, `count?` (1–3), `modifiers?`, `how?` (`auto`, `invoke`, `mouse`), `glide_ms?` | `auto` uses a UI Automation pattern on background windows and the real mouse otherwise. |
-| `type` | `target?`, `text`, `enter?`, `how?` (`auto`, `keys`, `paste`) | Without a target it types into the focused app, never the agent's terminal. `auto` pastes text longer than 200 characters when the clipboard holds only text and the field's value can be read back to confirm the paste, then restores the clipboard unless something else changed it meanwhile. |
+| `type` | `target?`, `text`, `enter?`, `how?` (`auto`, `keys`, `paste`) | Without a target it types into the focused app, never the agent's terminal. Printable text is refused when the focused element is known not to take text (a button, list item, tab, menu item, slider, checkbox, link, or anything whose value is read-only): `the focused element is button "X", not a text field; click the field first or give type a target`. Unknown or generic focus (a lone pane, a custom editor, a `contenteditable` region) is allowed, and `key` steps are never checked. A point or `ocr:` target is clicked to put the caret there. `auto` pastes text longer than 200 characters when the clipboard holds only text and the field's value can be read back to confirm the paste, then restores the clipboard unless something else changed it meanwhile. |
 | `key` | `keys`, `target?`, `repeat?` (1–100), `action?` (`press`, `down`, `up`) | `keys` holds at most 200 chords. `down` and `up` hold and release one chord, such as shift while clicking, and take no `repeat`. |
 | `mouse` | `action` (`move`, `down`, `up`, `scroll`, `drag`), `target?`, `to?`, `button?`, `direction?`, `amount?`, `glide_ms?` | `move` needs `target`. `down` and `up` default to the cursor position. `scroll` needs `direction`, defaults to the window centre and takes `amount` 1–50 (default 3). `drag` needs `target` (from) and `to`. `button` applies to `down`, `up` and `drag`. |
 | `set` | `target` plus exactly one of `value`, `option`, `checked`, `expanded`, `selected` | Sets a text value, picks a combobox or list item, or sets a checkbox, expander or selection state; `selected: false` deselects. To flip a checkbox without naming the state, use `click`. |
 | `focus` | `target` | An element gets keyboard focus; a window comes to the front. |
-| `window` | `action` (`launch`, `close`, `minimize`, `maximize`, `restore`, `move`), `target?`, `app?`, `args?`, `rect?` | `launch` needs `app` (a Start-menu name like `Notepad`, an app id or an exe path) and waits for the window; shortcut paths (`.lnk`, `.url`) are refused, and with `deny_paths` set, so are absolute paths in `args` inside them. `move` needs `target` and `rect`; the others need `target`, which must be an app window, never the desktop or taskbar. A text `target` is a window spec, so titles containing colons work. |
+| `window` | `action` (`launch`, `close`, `minimize`, `maximize`, `restore`, `move`), `target?`, `app?`, `args?`, `rect?` | `launch` needs `app` (a Start-menu name like `Notepad`, an app id or an exe path) and waits for a new window of the launched process, a process it started, or, failing those, a new window whose program or title matches the app, then brings it to the front; shortcut paths (`.lnk`, `.url`) are refused, and with `deny_paths` set, so are absolute paths in `args` inside them. A Start-menu desktop app given `args` runs the program its entry points to with the entry's own arguments first (a Chrome profile shortcut keeps its profile), under the same `deny_paths` checks; an entry that starts no program file, such as File Explorer, refuses `args`. `move` needs `target` and `rect`; the others need `target`, which must be an app window, never the desktop or taskbar. A text `target` is a window spec, so titles containing colons work. |
 | `pick` | `paths`, `open_with?`, `overwrite?`, `timeout_ms?` | Fills a native Open or Save dialog, optionally clicking `open_with` (such as an Upload button) first and waiting up to `timeout_ms` (15000, at most 60000) for the dialog. Several paths must share one folder. |
 | `wait` | `until?` (`time`, `appears`, `disappears`, `window`, `window_opens`, `window_closed`, `text`, `idle`), `ms?`, `target?`, `text?`, `window?`, `timeout_ms?` | `until` defaults to `time`, a plain pause of `ms` (at most 5000). `window` is met as soon as a window matching `window` (title text or a `window:`/`process:` selector) is open, at once if one already is; `window_opens` counts only a matching window that wasn't open when the call began, such as a second Notepad; `window_closed` waits until none is open. Conditions are event-driven, with `timeout_ms` 5000 by default and at most 60000. `idle` waits for `ms` of quiet (300 by default), which must be shorter than the timeout. While keys or buttons are held down, a wait that could last over 1 s is refused. |
 | `clipboard` | `text` | Sets the clipboard text. |
@@ -282,7 +282,7 @@ Every `target`, `to` and `open_with` takes one of four forms:
 |---|---|---|
 | Element ref | `e12` | From `observe`. Stays valid while the element exists. A stale ref is re-found by its fingerprint (window, role, name, AutomationId, tree path); if that's ambiguous you get the candidates, never a guess. |
 | Window ref | `w2032546` | From window lines. |
-| Point | `{"x":640,"y":360,"img":"i3"}` | Pixels in screenshot `i3`, mapped back through its scale and origin. Omit `img` for physical screen pixels. `set` and `type` act on the element under the point. |
+| Point | `{"x":640,"y":360,"img":"i3"}` | Pixels in screenshot `i3`, mapped back through its scale and origin. Omit `img` for physical screen pixels. `set` acts on the element under the point; `type` clicks the point first. A point in a screenshot of one window may land on that app's own menus, flyouts, dropdowns or dialogs (same process, or owned by the window); any other window there, and always the agent's terminal or the taskbar, counts as covering it. |
 | Selector | `role:button name:"Save"` | Lets the agent act without observing first when it already knows the app. |
 
 Selector terms:
@@ -295,6 +295,7 @@ Selector terms:
 | `id:1001` | AutomationId, exactly. |
 | `class:Edit` | Class name, ignoring case. |
 | `text:report` | Name or value contains. Bare words are the same: `Sign in` means `text:"Sign in"`. |
+| `ocr:"Export"` | Text on screen, read by OCR from the window (`window:`, `process:` or the default window). Matches lines or runs of words, ignoring case and spacing; an exact match beats a contains match. The target is the matched words' rectangle, and a click lands on its centre. Combines only with `window:`, `process:` and `nth:`; several matches are an `ambiguous` error listing up to five with their positions. |
 | `window:"Notepad"` | Window title contains. |
 | `process:chrome` | Process name, with or without `.exe`. |
 | `nth:2` | The second match, counting visible matches first. |
@@ -305,6 +306,8 @@ Selector terms:
 - When several elements match, an exact name beats a prefix, which beats a contains match; then visible beats hidden, enabled beats disabled, and actionable beats inert. A tie is an `ambiguous` error that lists up to five candidates; add `nth:`, a `role:`, or use a ref.
 - A selector with `window:` or `process:` terms that matches in several windows prefers the one on the current virtual desktop, then the foreground one; if that still leaves several, the step fails with `ambiguous` and lists them, topmost first.
 - A selector that matches nothing yet is waited for briefly (`[act] auto_wait_ms`, 2 s), so a step can target a button that is still appearing.
+
+**Apps without UI Automation.** Some apps (CapCut, games, custom-drawn editors) expose only their window to UI Automation. For those, `observe` elements adds the window's OCR lines with their screen rectangles under the note `this app exposes no UI Automation; showing OCR text — target it with ocr:"…"`, and `observe` text with `coords: true` does the same for any window, element or region. Act on that text with `ocr:"…"` targets: `click`, `type`, `key`, `mouse` (`move`, `down`, `up`, `scroll`, `drag` from and to) and `wait` `appears`/`disappears` all take them. The capture hides the overlay and blacks out denied windows, as screenshots do. Within one `act` call the OCR of a window is reused until the window moves, changes, or a step sends input. `wait` `text`, and `appears`/`disappears` with plain text, fall back to OCR every 400 ms when the window has no UI Automation content.
 
 **The default window.** When a call names no window, Deckhand uses the foreground app window. If that's the terminal hosting the agent, it uses the frontmost other app window that isn't minimized. The default window is always on the current virtual desktop.
 

@@ -11,7 +11,7 @@ use windows::Win32::UI::Accessibility::{
 
 use crate::{
     automation::Uia,
-    cached_tree::{CachedNode, read_tree},
+    cached_tree::CachedNode,
     failure::UiaResult,
     pattern::current_pattern,
     properties::{cached_bool, cached_text},
@@ -64,12 +64,13 @@ impl Uia {
 
     fn listed_options(&self, target: &Resolved) -> Result<Vec<ListedOption>> {
         let requests = self.requests.options();
-        let root = read_tree(&target.element, requests).uia(&target.doing("listing the options of"))?;
+        let (root, mut read) =
+            self.read_tree(&target.element, requests).uia(&target.doing("listing the options of"))?;
         let mut options = Vec::new();
-        let mut pending: Vec<CachedNode> = self.tree_children(&root, requests).into_iter().rev().collect();
+        let mut pending: Vec<CachedNode> = self.tree_children(&root, requests, &mut read).into_iter().rev().collect();
         for _ in 0..MAX_SEARCHED_ELEMENTS {
             let Some(node) = pending.pop() else { break };
-            pending.extend(self.tree_children(&node, requests).into_iter().rev());
+            pending.extend(self.tree_children(&node, requests, &mut read).into_iter().rev());
             if is_option(&node.element) {
                 let name = cached_text(unsafe { node.element.CachedName() });
                 options.push(ListedOption { element: node.element, name });

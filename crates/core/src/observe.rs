@@ -75,7 +75,9 @@ pub struct ObserveArgs {
     pub all_windows: Option<bool>,
     #[schemars(description = "elements: include non-interactive elements such as static text and panes.")]
     pub all: Option<bool>,
-    #[schemars(description = "elements: add @x,y,wxh screen rectangles.")]
+    #[schemars(
+        description = "elements: add @x,y,wxh screen rectangles. text: read the text with OCR and end each line with its @x,y,wxh screen rectangle."
+    )]
     pub coords: Option<bool>,
     #[schemars(description = "elements, apps: cap on lines (default 300), all_windows matches (20) or apps (30).")]
     pub max: Option<u32>,
@@ -251,6 +253,7 @@ impl ObserveArgs {
             region: self.region,
             ocr: self.ocr.unwrap_or_default(),
             max_chars: self.max_chars,
+            coords: self.coords.unwrap_or(false),
         };
         request.validate()?;
         Ok(request)
@@ -381,6 +384,19 @@ mod tests {
     }
 
     #[test]
+    fn text_coords_ask_for_ocr_lines_with_positions() {
+        let ObserveRequest::Text(text) = request(r#"{"mode":"text","window":"w5","coords":true}"#) else {
+            panic!("expected a text request")
+        };
+        assert!(text.coords);
+        assert_eq!(text.ocr, OcrMode::Auto);
+        assert_eq!(invalid(r#"{"mode":"text","coords":true,"ocr":"never"}"#), "coords come from OCR; drop ocr=never");
+        assert!(
+            invalid(r#"{"mode":"screenshot","coords":true}"#).starts_with("coords does not apply to mode=screenshot")
+        );
+    }
+
+    #[test]
     fn text_reads_one_source() {
         assert_eq!(
             request(r#"{"mode":"text","target":"e4","ocr":"never","max_chars":50}"#),
@@ -389,7 +405,8 @@ mod tests {
                 target: Some("e4".to_string()),
                 region: None,
                 ocr: OcrMode::Never,
-                max_chars: Some(50)
+                max_chars: Some(50),
+                coords: false
             })
         );
         assert_eq!(

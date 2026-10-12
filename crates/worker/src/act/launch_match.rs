@@ -20,12 +20,33 @@ pub struct WindowFacts<'a> {
     pub window: &'a WindowInfo,
     pub package: Option<String>,
     pub content_package: Option<String>,
+    pub from_launch: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LaunchHints {
+    pub name: String,
+    pub exe: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Expected {
+    pub identity: AppIdentity,
+    pub pid: Option<u32>,
+    pub hints: LaunchHints,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Before {
     pub windows: HashSet<WindowRef>,
     pub foreground: Option<WindowRef>,
+}
+
+impl LaunchHints {
+    pub fn new(name: &str, program: Option<&Path>) -> Self {
+        let exe = program.and_then(Path::file_stem).map(|stem| stem.to_string_lossy().to_lowercase());
+        Self { name: name.to_string(), exe }
+    }
 }
 
 impl AppIdentity {
@@ -56,7 +77,7 @@ impl AppIdentity {
 }
 
 pub fn launched_by(facts: &WindowFacts<'_>, identity: &AppIdentity, pid: Option<u32>) -> bool {
-    if pid == Some(facts.window.pid) {
+    if pid == Some(facts.window.pid) || facts.from_launch {
         return true;
     }
     let stem = process_stem(&facts.window.process);
@@ -72,16 +93,25 @@ pub fn launched_by(facts: &WindowFacts<'_>, identity: &AppIdentity, pid: Option<
     }
 }
 
+pub fn looks_launched(window: &WindowInfo, hints: &LaunchHints) -> bool {
+    let stem = process_stem(&window.process);
+    let named = words(&hints.name);
+    let titled = words(&window.title);
+    hints.exe.as_deref() == Some(stem.as_str())
+        || named.contains(&stem)
+        || (!named.is_empty() && named.iter().all(|word| titled.contains(word)))
+}
+
 pub fn pick_launched<'a>(
     candidates: &[WindowFacts<'a>],
     before: &Before,
-    identity: &AppIdentity,
-    pid: Option<u32>,
+    expected: &Expected,
 ) -> Option<&'a WindowInfo> {
-    let ours = |facts: &&WindowFacts<'a>| launched_by(facts, identity, pid);
-    let fresh = candidates.iter().filter(|facts| is_fresh(facts.window, before)).find(ours);
+    let ours = |facts: &&WindowFacts<'a>| launched_by(facts, &expected.identity, expected.pid);
+    let fresh = || candidates.iter().filter(|facts| is_fresh(facts.window, before));
     let switched = || candidates.iter().filter(|facts| switched_to(facts.window, before)).find(ours);
-    fresh.or_else(switched).map(|facts| facts.window)
+    let named = || fresh().find(|facts| looks_launched(facts.window, &expected.hints));
+    fresh().find(ours).or_else(switched).or_else(named).map(|facts| facts.window)
 }
 
 pub fn is_fresh(window: &WindowInfo, before: &Before) -> bool {
@@ -135,7 +165,7 @@ mod tests {
     }
 
     fn facts(window: &WindowInfo) -> WindowFacts<'_> {
-        WindowFacts { window, package: None, content_package: None }
+        WindowFacts { window, package: None, content_package: None, from_launch: false }
     }
 
     fn before(hwnds: &[i64], foreground: Option<i64>) -> Before {
@@ -146,9 +176,13 @@ mod tests {
         AppEntry { name: name.to_string(), id: id.to_string(), kind }
     }
 
+    fn expected(identity: &AppIdentity, pid: Option<u32>) -> Expected {
+        Expected { identity: identity.clone(), pid, hints: LaunchHints::default() }
+    }
+
     fn picked(windows: &[WindowInfo], before: &Before, identity: &AppIdentity, pid: Option<u32>) -> Option<i64> {
         let candidates: Vec<WindowFacts<'_>> = windows.iter().map(facts).collect();
-        pick_launched(&candidates, before, identity, pid).map(|window| window.hwnd.0)
+        pick_launched(&candidates, before, &expected(identity, pid)).map(|window| window.hwnd.0)
     }
 
     #[test]
@@ -195,13 +229,11 @@ mod tests {
         let identity =
             AppIdentity::Package { family: "contoso.app_abc".to_string(), words: vec!["contoso".to_string()] };
         let frame = app_window(5, 77, "ApplicationFrameHost.exe");
-        let hosted =
-            WindowFacts { window: &frame, package: None, content_package: Some("Contoso.App_abc".to_string()) };
+        let hosted = WindowFacts { content_package: Some("Contoso.App_abc".to_string()), ..facts(&frame) };
         assert!(launched_by(&hosted, &identity, None));
         assert!(!launched_by(&facts(&frame), &identity, None));
         let own = app_window(6, 78, "Worker.exe");
-        let packaged =
-            WindowFacts { window: &own, package: Some("contoso.app_abc".to_string()), content_package: None };
+        let packaged = WindowFacts { package: Some("contoso.app_abc".to_string()), ..facts(&own) };
         assert!(launched_by(&packaged, &identity, None));
         assert!(launched_by(&facts(&app_window(7, 79, "Contoso.exe")), &identity, None));
     }
@@ -216,6 +248,68 @@ mod tests {
         assert_eq!(picked(&windows, &before(&[1, 2], Some(1)), &settings, None), None);
         let other = AppIdentity::Exe("paint".to_string());
         assert_eq!(picked(&windows, &before(&[1, 2], Some(2)), &other, None), None);
+    }
+
+    fn titled(hwnd: i64, pid: u32, process: &str, title: &str) -> WindowInfo {
+        WindowInfo { title: title.to_string(), ..app_window(hwnd, pid, process) }
+    }
+
+    fn capcut_hints() -> LaunchHints {
+        LaunchHints::new("CapCut", Some(&PathBuf::from(r"C:\Users\me\AppData\Local\CapCut\Apps\CapCut.exe")))
+    }
+
+    #[test]
+    fn hints_take_the_program_stem_in_lower_case() {
+        assert_eq!(capcut_hints(), LaunchHints { name: "CapCut".to_string(), exe: Some("capcut".to_string()) });
+        assert_eq!(LaunchHints::new("Files", None).exe, None);
+    }
+
+    #[test]
+    fn a_window_of_a_process_the_launch_started_is_ours_whatever_its_exe() {
+        let window = app_window(9, 90, "Worker.exe");
+        let spawned = WindowFacts { from_launch: true, ..facts(&window) };
+        assert!(launched_by(&spawned, &AppIdentity::Exe("launcher".to_string()), Some(80)));
+        assert!(!launched_by(&facts(&window), &AppIdentity::Exe("launcher".to_string()), Some(80)));
+    }
+
+    #[test]
+    fn windows_are_recognised_by_program_name_or_title() {
+        let hints = capcut_hints();
+        assert!(looks_launched(&titled(1, 10, "CapCut.exe", "Untitled"), &hints));
+        assert!(looks_launched(&titled(2, 11, "VEEditor.exe", "CapCut"), &hints));
+        assert!(!looks_launched(&titled(3, 12, "notepad.exe", "Cap notes"), &hints));
+        let chrome = LaunchHints::new("Google Chrome", None);
+        assert!(looks_launched(&titled(4, 13, "browser.exe", "YouTube - Google Chrome"), &chrome));
+        assert!(looks_launched(&titled(5, 14, "chrome.exe", "New Tab"), &chrome));
+        assert!(!looks_launched(&titled(6, 15, "browser.exe", "Chrome flags"), &chrome));
+        assert!(!looks_launched(&titled(7, 16, "app.exe", "Anything"), &LaunchHints::default()));
+    }
+
+    #[test]
+    fn a_new_window_named_after_the_app_is_the_last_resort() {
+        let windows = [titled(2, 20, "VEEditor.exe", "CapCut"), titled(3, 30, "other.exe", "Other")];
+        let wrong_identity = AppIdentity::Exe("c:.users.me.capcut.apps.8.7.capcut".to_string());
+        let mut wanted = expected(&wrong_identity, Some(99));
+        let candidates: Vec<WindowFacts<'_>> = windows.iter().map(facts).collect();
+        assert_eq!(pick_launched(&candidates, &before(&[], None), &wanted), None);
+        wanted.hints = capcut_hints();
+        assert_eq!(pick_launched(&candidates, &before(&[], None), &wanted).map(|window| window.hwnd.0), Some(2));
+    }
+
+    #[test]
+    fn launched_processes_win_over_windows_that_only_look_right() {
+        let lookalike = titled(2, 20, "capcut.exe", "CapCut");
+        let spawned = titled(3, 30, "VEEditor.exe", "Editor");
+        let candidates = [facts(&lookalike), WindowFacts { from_launch: true, ..facts(&spawned) }];
+        let wanted = Expected { identity: AppIdentity::Unknown, pid: Some(99), hints: capcut_hints() };
+        assert_eq!(pick_launched(&candidates, &before(&[], None), &wanted).map(|window| window.hwnd.0), Some(3));
+    }
+
+    #[test]
+    fn windows_that_existed_before_never_match_by_name() {
+        let old = titled(2, 20, "capcut.exe", "CapCut");
+        let wanted = Expected { identity: AppIdentity::Unknown, pid: None, hints: capcut_hints() };
+        assert_eq!(pick_launched(&[facts(&old)], &before(&[2], None), &wanted), None);
     }
 
     #[test]

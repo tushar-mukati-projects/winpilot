@@ -45,6 +45,7 @@ mod shortcut;
 mod steps;
 mod summary;
 mod target;
+mod text_focus;
 mod toggle;
 mod typing;
 mod validate;

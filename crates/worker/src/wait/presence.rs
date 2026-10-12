@@ -1,15 +1,19 @@
 use deckhand_core::{
-    Element, ElementRef, Error, Result, Target, WindowInfo, WindowRef, WindowState, selector::Selector,
+    Element, ElementRef, Error, Result, Target, WindowInfo, WindowRef, WindowState, ocr::exposes_no_uia,
+    selector::Selector,
 };
 
-use super::check::{Presence, Shown, unless_gone};
+use super::{
+    check::{Presence, Shown, unless_gone},
+    ocr_look::OcrLook,
+};
 use crate::{app_windows::app_windows_matching, engine::Engine, resolve, watch::Watch};
 
-pub fn locate(engine: &Engine, target: &Target, scope: Option<&str>) -> Result<Presence> {
+pub fn locate(engine: &Engine, target: &Target, scope: Option<&str>, ocr: &mut OcrLook<'_>) -> Result<Presence> {
     match target {
         Target::Element(id) => element(engine, *id),
         Target::Window(hwnd) => window(*hwnd),
-        Target::Selector(selector) => selector_match(engine, selector, scope),
+        Target::Selector(selector) => selector_match(engine, selector, scope, ocr),
         Target::Point { .. } => Err(Error::invalid("wait needs an element, a window or a selector, not a point")),
     }
 }
@@ -42,20 +46,35 @@ fn window(hwnd: WindowRef) -> Result<Presence> {
     Ok(Presence::certain(found.filter(is_open).map(Shown::Window)))
 }
 
-fn selector_match(engine: &Engine, selector: &Selector, scope: Option<&str>) -> Result<Presence> {
+fn selector_match(
+    engine: &Engine,
+    selector: &Selector,
+    scope: Option<&str>,
+    ocr: &mut OcrLook<'_>,
+) -> Result<Presence> {
     let windows = scope_windows(engine, selector, scope)?;
+    if let Some(text) = selector.ocr_text() {
+        return ocr.presence(engine, &windows, text, selector.nth());
+    }
     if !selector.has_element_terms() {
         return Ok(Presence::certain(windows.into_iter().find(is_open).map(Shown::Window)));
     }
     let mut complete = true;
+    let mut blind = Vec::new();
     for window in windows {
         let Some(snapshot) = unless_gone(engine.snapshot(&window))? else { continue };
         if let Some(element) = first_visible(&selector.find(&snapshot)) {
             return Ok(Presence::certain(Some(Shown::Element(element.clone()))));
         }
         complete &= !snapshot.truncated;
+        if exposes_no_uia(&snapshot) {
+            blind.push(window);
+        }
     }
-    Ok(Presence { shown: None, complete })
+    match selector.plain_text().filter(|_| !blind.is_empty()) {
+        Some(text) => ocr.presence(engine, &blind, text, selector.nth()),
+        None => Ok(Presence { shown: None, complete }),
+    }
 }
 
 fn scope_windows(engine: &Engine, selector: &Selector, scope: Option<&str>) -> Result<Vec<WindowInfo>> {

@@ -2,6 +2,7 @@ use deckhand_capture::ocr;
 use deckhand_core::{
     Element, ElementRef, Error, Rect, Result, Role, Snapshot, Target, WindowInfo,
     object_marks::readable_lines,
+    ocr::{OcrLine, line_with_coords},
     protocol::{OcrMode, TextReport, TextRequest, TextSource},
     text_limit::{char_limit, truncated},
 };
@@ -40,6 +41,9 @@ pub fn run(engine: &Engine, request: &TextRequest, call: &CallScope) -> Result<T
 }
 
 fn read(engine: &Engine, request: &TextRequest, max: usize, call: &CallScope) -> Result<Reading> {
+    if request.coords {
+        return located_lines(engine, request, call);
+    }
     if let Some(region) = request.region {
         return ocr_capture(&frames::region(engine, region)?);
     }
@@ -51,6 +55,41 @@ fn read(engine: &Engine, request: &TextRequest, max: usize, call: &CallScope) ->
         ReadTarget::Window(spec) => scanned(engine, &resolve::window(engine, Some(&spec))?, request.ocr, max),
         ReadTarget::Element(target) => element_text(engine, &target, request.ocr, max, call),
     }
+}
+
+fn located_lines(engine: &Engine, request: &TextRequest, call: &CallScope) -> Result<Reading> {
+    if let Some(region) = request.region {
+        return ocr_with_coords(&frames::region(engine, region)?);
+    }
+    if let Some(window) = request.window.as_deref() {
+        return window_lines(engine, &resolve::window(engine, Some(window))?);
+    }
+    match read_target(request.target.as_deref())? {
+        ReadTarget::DefaultWindow => window_lines(engine, &default_window(engine)?),
+        ReadTarget::Window(spec) => window_lines(engine, &resolve::window(engine, Some(&spec))?),
+        ReadTarget::Element(target) => element_lines(engine, &target, call),
+    }
+}
+
+fn window_lines(engine: &Engine, window: &WindowInfo) -> Result<Reading> {
+    let reading = ocr_with_coords(&frames::window(engine, window)?)?;
+    overlay::scan(engine, window);
+    Ok(reading)
+}
+
+fn element_lines(engine: &Engine, target: &Target, call: &CallScope) -> Result<Reading> {
+    let resolved = resolve::target(engine, target, call)?;
+    let element = resolved.element_or_point_hit().ok_or_else(|| Error::invalid("the text target is not an element"))?;
+    ocr_with_coords(&frames::element(engine, &resolved.window, element.rect)?)
+}
+
+fn ocr_with_coords(captured: &Captured) -> Result<Reading> {
+    let lines = ocr(&captured.frame)?;
+    Ok(Reading { text: located_text(&lines), source: TextSource::Ocr, note: captured.note })
+}
+
+fn located_text(lines: &[OcrLine]) -> String {
+    lines.iter().map(line_with_coords).collect::<Vec<_>>().join("\n")
 }
 
 fn scanned(engine: &Engine, window: &WindowInfo, method: OcrMode, max: usize) -> Result<Reading> {
@@ -213,6 +252,16 @@ mod tests {
             sized(frame, Rect::new(500, 300, 300, 200)),
         ];
         snapshot("Page - Google Chrome", elements)
+    }
+
+    #[test]
+    fn located_lines_end_with_their_screen_rectangles() {
+        let lines = [
+            OcrLine { text: "Import".to_string(), rect: Rect::new(10, 20, 60, 16), words: Vec::new() },
+            OcrLine { text: "Export video".to_string(), rect: Rect::new(-1900, 40, 120, 16), words: Vec::new() },
+        ];
+        assert_eq!(located_text(&lines), "Import @10,20,60x16\nExport video @-1900,40,120x16");
+        assert_eq!(located_text(&[]), "");
     }
 
     #[test]

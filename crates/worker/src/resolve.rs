@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use deckhand_core::{
     Element, ElementRef, Error, ErrorCode, ImageRef, Point, Result, Target, WindowInfo, format::window_line,
@@ -8,8 +8,12 @@ use deckhand_core::{
 use crate::{
     app_windows::{app_windows, app_windows_matching},
     call_scope::CallScope,
+    cover,
     default_window::default_window,
     engine::Engine,
+    images::ImageRecord,
+    ocr_read::Freshness,
+    ocr_target::{self, OcrUse},
     until::until,
     watch::Watch,
     window_spec::{self, WindowSpec},
@@ -114,8 +118,13 @@ pub fn target(engine: &Engine, target: &Target, call: &CallScope) -> Result<Reso
     let Target::Selector(selector) = target else { return resolve_once(engine, target) };
     let patience = Duration::from_millis(engine.config.act.auto_wait_ms);
     let mut missing = None;
+    let mut freshness = Freshness::CachedIsFine;
     let found = until(engine, call, patience, &selector_watch(engine, selector), || {
-        match resolve_selector(engine, selector) {
+        let using = OcrUse {
+            call: Some(call),
+            freshness: std::mem::replace(&mut freshness, Freshness::TakenAfter(Instant::now())),
+        };
+        match resolve_selector(engine, selector, using) {
             Ok(resolved) => Ok(Some(resolved)),
             Err(error) if error.code == ErrorCode::NotFound => {
                 missing = Some(error);
@@ -131,7 +140,7 @@ fn resolve_once(engine: &Engine, target: &Target) -> Result<Resolved> {
     match target {
         Target::Element(id) => resolve_element(engine, *id),
         Target::Window(hwnd) => resolve_window(engine, deckhand_desktop::window(*hwnd)?),
-        Target::Selector(selector) => resolve_selector(engine, selector),
+        Target::Selector(selector) => resolve_selector(engine, selector, OcrUse::UNCACHED),
         Target::Point { point, image } => resolve_point(engine, *point, *image),
     }
 }
@@ -157,12 +166,16 @@ fn resolve_window(engine: &Engine, window: WindowInfo) -> Result<Resolved> {
     Ok(Resolved { window, reach: Reach::Window })
 }
 
-fn resolve_selector(engine: &Engine, selector: &Selector) -> Result<Resolved> {
+fn resolve_selector(engine: &Engine, selector: &Selector, using: OcrUse<'_>) -> Result<Resolved> {
     let candidates = if selector.has_window_terms() {
         app_windows_matching(engine, selector)?
     } else {
         vec![default_window(engine)?]
     };
+    if let Some(text) = selector.ocr_text() {
+        let window = one_preferred(candidates, selector)?;
+        return ocr_target::resolve(engine, window, text, selector.nth(), using);
+    }
     if !selector.has_element_terms() {
         let window = one_preferred(candidates, selector)?;
         return resolve_window(engine, window);
@@ -219,12 +232,22 @@ fn resolve_point(engine: &Engine, point: Point, image: Option<ImageRef>) -> Resu
         None => point,
     };
     let under = engine.uia.run(move |uia| uia.element_at(screen))?;
-    let window = element_window(engine, under.id)?;
-    if let Some((_, record)) = &record {
-        record.check_hit_window(window.hwnd)?;
-    }
+    let hit = element_window(engine, under.id)?;
+    let window = match &record {
+        Some((_, record)) => shot_window(engine, record, &hit)?,
+        None => hit.clone(),
+    };
+    engine.guard.check_window(&hit)?;
     engine.guard.check_window(&window)?;
     Ok(Resolved { window, reach: Reach::Point { point: screen, under } })
+}
+
+fn shot_window(engine: &Engine, record: &ImageRecord, hit: &WindowInfo) -> Result<WindowInfo> {
+    record.check_hit_window(hit.hwnd, |source| cover::window_covers(engine, source, hit.hwnd))?;
+    match record.window.filter(|source| *source != hit.hwnd) {
+        Some(source) => deckhand_desktop::window(source),
+        None => Ok(hit.clone()),
+    }
 }
 
 #[cfg(test)]

@@ -210,6 +210,9 @@ impl TextRequest {
         if self.region.is_some() && self.ocr == OcrMode::Never {
             return Err(Error::invalid("a region can only be read with OCR; drop ocr=never"));
         }
+        if self.coords && self.ocr == OcrMode::Never {
+            return Err(Error::invalid("coords come from OCR; drop ocr=never"));
+        }
         Ok(())
     }
 }

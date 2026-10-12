@@ -1,37 +1,20 @@
-use std::{collections::HashSet, ffi::c_void};
+use std::collections::HashSet;
 
 use deckhand_core::{Context, Result};
-use windows::{
-    Win32::{
-        System::Com::{CoTaskMemFree, IBindCtx},
-        UI::Shell::{
-            BHID_EnumItems, FOLDERID_AppsFolder, IEnumShellItems, IShellItem, KF_FLAG_DEFAULT, SHGetKnownFolderItem,
-            SIGDN, SIGDN_NORMALDISPLAY, SIGDN_PARENTRELATIVEPARSING,
-        },
+use windows::Win32::{
+    System::Com::IBindCtx,
+    UI::Shell::{
+        BHID_EnumItems, FOLDERID_AppsFolder, IEnumShellItems, IShellItem, KF_FLAG_DEFAULT, SHGetKnownFolderItem, SIGDN,
+        SIGDN_NORMALDISPLAY, SIGDN_PARENTRELATIVEPARSING,
     },
-    core::PWSTR,
 };
 
-use crate::apps::{AppEntry, AppKind};
+use crate::{
+    apps::{AppEntry, AppKind},
+    co_task_string::CoTaskString,
+};
 
 const BATCH_SIZE: usize = 64;
-
-struct CoTaskString(PWSTR);
-
-impl CoTaskString {
-    fn read(&self) -> Option<String> {
-        if self.0.is_null() {
-            return None;
-        }
-        unsafe { self.0.to_string() }.ok()
-    }
-}
-
-impl Drop for CoTaskString {
-    fn drop(&mut self) {
-        unsafe { CoTaskMemFree(Some(self.0.0.cast_const().cast::<c_void>())) };
-    }
-}
 
 pub(crate) fn list_apps_folder() -> Result<Vec<AppEntry>> {
     let items = apps_folder_items()?;

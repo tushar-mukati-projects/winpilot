@@ -6,7 +6,7 @@ use std::{
 use deckhand_core::{Error, Point, Result, keys::Chord, protocol::MouseButton};
 use parking_lot::Mutex;
 
-use crate::cancel::Cancel;
+use crate::{cancel::Cancel, ocr_read::OcrReading};
 
 const SLACK: Duration = Duration::from_secs(1);
 const OUT_OF_TIME: &str =
@@ -19,6 +19,7 @@ pub struct CallScope {
     overlay_shown: AtomicBool,
     held: Mutex<Vec<HeldButton>>,
     held_keys: Mutex<Vec<Chord>>,
+    ocr: Mutex<Option<OcrReading>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +37,7 @@ impl CallScope {
             overlay_shown: AtomicBool::new(false),
             held: Mutex::new(Vec::new()),
             held_keys: Mutex::new(Vec::new()),
+            ocr: Mutex::new(None),
         }
     }
 
@@ -111,6 +113,18 @@ impl CallScope {
 
     pub fn showed_overlay(&self) -> bool {
         self.overlay_shown.load(Ordering::SeqCst)
+    }
+
+    pub fn remember_ocr(&self, reading: OcrReading) {
+        *self.ocr.lock() = Some(reading);
+    }
+
+    pub fn recalled_ocr(&self) -> Option<OcrReading> {
+        self.ocr.lock().clone()
+    }
+
+    pub fn forget_ocr(&self) {
+        *self.ocr.lock() = None;
     }
 }
 

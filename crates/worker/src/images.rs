@@ -66,9 +66,9 @@ impl ImageRecord {
         Ok(self.mapping.to_screen(point))
     }
 
-    pub fn check_hit_window(&self, hit: WindowRef) -> Result<()> {
+    pub fn check_hit_window(&self, hit: WindowRef, covers: impl FnOnce(WindowRef) -> bool) -> Result<()> {
         match self.window {
-            Some(source) if source != hit => Err(Error::new(ErrorCode::Obscured, COVERED)),
+            Some(source) if source != hit && covers(source) => Err(Error::new(ErrorCode::Obscured, COVERED)),
             _ => Ok(()),
         }
     }
@@ -141,10 +141,23 @@ mod tests {
     #[test]
     fn window_shots_insist_on_their_window() {
         let shot = ImageRecord { window: Some(WindowRef(7)), ..record(1.0) };
-        assert!(shot.check_hit_window(WindowRef(7)).is_ok());
-        let error = shot.check_hit_window(WindowRef(8)).unwrap_err();
+        let covering = |_| true;
+        assert!(shot.check_hit_window(WindowRef(7), |_| panic!("asked about its own window")).is_ok());
+        let error = shot.check_hit_window(WindowRef(8), covering).unwrap_err();
         assert_eq!(error.code, ErrorCode::Obscured);
         assert_eq!(error.message, COVERED);
-        assert!(record(1.0).check_hit_window(WindowRef(8)).is_ok());
+        assert!(record(1.0).check_hit_window(WindowRef(8), covering).is_ok());
+    }
+
+    #[test]
+    fn windows_that_belong_to_the_shot_window_are_not_covers() {
+        let shot = ImageRecord { window: Some(WindowRef(7)), ..record(1.0) };
+        let mut asked = None;
+        let flyout = shot.check_hit_window(WindowRef(9), |source| {
+            asked = Some(source);
+            false
+        });
+        assert!(flyout.is_ok());
+        assert_eq!(asked, Some(WindowRef(7)));
     }
 }

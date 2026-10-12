@@ -74,6 +74,13 @@ impl Rect {
         (!overlap.is_empty()).then_some(overlap)
     }
 
+    #[must_use]
+    pub fn union(self, other: Self) -> Self {
+        let left = self.x.min(other.x);
+        let top = self.y.min(other.y);
+        Self::from_edges(left, top, self.right().max(other.right()), self.bottom().max(other.bottom()))
+    }
+
     pub fn area(self) -> i64 {
         if self.is_empty() { 0 } else { i64::from(self.width).saturating_mul(i64::from(self.height)) }
     }
@@ -136,6 +143,14 @@ mod tests {
         let a = Rect::new(0, 0, 100, 100);
         let b = Rect::new(50, 60, 100, 100);
         assert_eq!(a.intersection(b), Some(Rect::new(50, 60, 50, 40)));
+    }
+
+    #[test]
+    fn union_spans_both_rects() {
+        let a = Rect::new(10, 20, 30, 10);
+        let b = Rect::new(50, 15, 10, 30);
+        assert_eq!(a.union(b), Rect::new(10, 15, 50, 30));
+        assert_eq!(a.union(a), a);
     }
 
     #[test]

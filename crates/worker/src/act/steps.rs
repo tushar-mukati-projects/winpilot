@@ -24,6 +24,9 @@ pub fn run_all(engine: &Engine, args: &ActArgs, context: &StepContext<'_>) -> Ve
     let mut outcomes = Vec::with_capacity(args.steps.len());
     for (index, step) in args.steps.iter().enumerate() {
         let result = engine.guard.check_running(context.call).and_then(|()| perform(engine, step, context));
+        if step.uses_input() {
+            context.call.forget_ocr();
+        }
         let outcome = outcome(index, summarize(step), result);
         let stop =
             outcome.error.as_ref().is_some_and(|error| args.stop_on_error || halts(error) || context.call.expired());

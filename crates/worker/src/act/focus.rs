@@ -7,7 +7,7 @@ use super::{
     mouse_click::click_by_mouse,
     target::{Prepared, foreground_app},
 };
-use crate::{call_scope::CallScope, engine::Engine, wait::is_gone};
+use crate::{call_scope::CallScope, engine::Engine, resolve::Reach, wait::is_gone};
 
 #[derive(Debug, Clone)]
 pub struct Focused {
@@ -30,11 +30,15 @@ pub fn focus_prepared(engine: &Engine, prepared: &Prepared, call: &CallScope) ->
     let Some(element) = prepared.element_or_point_hit().cloned() else {
         return Ok(Focused { window, element: None, clicked: false });
     };
-    if set_focus_verified(engine, element.id)? {
+    if !is_point(prepared) && set_focus_verified(engine, element.id)? {
         return Ok(Focused { window, element: Some(element), clicked: false });
     }
     click_by_mouse(engine, prepared, ClickOptions::default(), call)?;
     Ok(Focused { window, element: Some(element), clicked: true })
+}
+
+fn is_point(prepared: &Prepared) -> bool {
+    matches!(prepared.reach, Reach::Point { .. })
 }
 
 pub fn set_focus_verified(engine: &Engine, id: ElementRef) -> Result<bool> {
@@ -67,5 +71,20 @@ mod tests {
         assert!(must_surface(&Error::new(ErrorCode::Ambiguous, "two matches")));
         assert!(must_surface(&Error::new(ErrorCode::StaleRef, "gone")));
         assert!(!must_surface(&Error::unsupported("no focus")));
+    }
+
+    #[test]
+    fn points_and_ocr_text_are_focused_by_clicking_them() {
+        use deckhand_core::{Point, Rect, Role};
+
+        use crate::test_fixture::{element, window};
+
+        let field = element(3, 1, Role::Edit, "Name");
+        let app = window(5, "app.exe", "App", Rect::new(0, 0, 100, 100));
+        let point =
+            Prepared { window: app.clone(), reach: Reach::Point { point: Point::new(5, 5), under: field.clone() } };
+        assert!(is_point(&point));
+        assert!(!is_point(&Prepared { window: app.clone(), reach: Reach::Element(field) }));
+        assert!(!is_point(&Prepared { window: app, reach: Reach::Window }));
     }
 }

@@ -1,7 +1,10 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use deckhand_core::{Context, Error, Point, Rect, Result};
+use deckhand_core::{
+    Context, Error, Point, Rect, Result,
+    ocr::{OcrLine, OcrWord},
+};
 use windows::Foundation::Rect as WinRect;
 use windows::Globalization::Language;
 use windows::Graphics::Imaging::{BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap};
@@ -14,12 +17,6 @@ use crate::frame::Frame;
 use crate::resize::{Fit, fit, fitted_pixels};
 
 const RECOGNITION_TIMEOUT: Duration = Duration::from_secs(10);
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OcrLine {
-    pub text: String,
-    pub rect: Rect,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Scaling {
@@ -117,12 +114,17 @@ fn collect_lines(result: &OcrResult, scaling: Scaling) -> Result<Vec<OcrLine>> {
 
 fn convert_line(line: &WinOcrLine, scaling: Scaling) -> Result<OcrLine> {
     let text = line.Text().context("reading OCR line text")?.to_string_lossy();
-    let words = line.Words().context("reading OCR words")?;
+    let found = line.Words().context("reading OCR words")?;
     let mut boxes = Vec::new();
-    for index in 0..words.Size().context("counting OCR words")? {
-        boxes.push(words.GetAt(index).context("reading an OCR word")?.BoundingRect().context("reading a word box")?);
+    let mut words = Vec::new();
+    for index in 0..found.Size().context("counting OCR words")? {
+        let word = found.GetAt(index).context("reading an OCR word")?;
+        let rect = word.BoundingRect().context("reading a word box")?;
+        let text = word.Text().context("reading OCR word text")?.to_string_lossy();
+        words.push(OcrWord { text, rect: union_to_screen(&[rect], scaling) });
+        boxes.push(rect);
     }
-    Ok(OcrLine { text, rect: union_to_screen(&boxes, scaling) })
+    Ok(OcrLine { text, rect: union_to_screen(&boxes, scaling), words })
 }
 
 fn union_to_screen(boxes: &[WinRect], scaling: Scaling) -> Rect {
@@ -220,6 +222,9 @@ mod tests {
         assert!(line.rect.x >= 100 + 20 && line.rect.x <= 100 + 60, "{:?}", line.rect);
         assert!(line.rect.y >= 50 && line.rect.bottom() <= 50 + 160, "{:?}", line.rect);
         assert!(line.rect.width > 300);
+        let word = line.words.iter().find(|word| word.text.contains("Deckhand")).unwrap();
+        assert!(word.rect.x >= line.rect.x && word.rect.right() <= line.rect.right(), "{:?}", word.rect);
+        assert!(word.rect.width < line.rect.width);
     }
 
     #[test]

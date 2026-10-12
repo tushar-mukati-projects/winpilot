@@ -5,6 +5,7 @@ use crate::{
     element::{Element, Snapshot, WindowInfo},
     error::Error,
     geometry::{ImageMapping, Rect},
+    ocr::OcrLine,
     refs::ImageRef,
 };
 
@@ -12,6 +13,8 @@ use crate::{
 pub struct Observation {
     pub snapshot: Snapshot,
     pub others: Vec<WindowInfo>,
+    #[serde(default)]
+    pub ocr: Option<Vec<OcrLine>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

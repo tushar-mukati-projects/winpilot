@@ -75,9 +75,7 @@ impl NodeProps {
         let patterns = read_patterns(element);
         let state = read_state(element, &patterns);
         Self {
-            runtime_id: cached_variant(element, UIA_RuntimeIdPropertyId)
-                .and_then(|variant| variant.as_i32_array())
-                .unwrap_or_default(),
+            runtime_id: cached_runtime_id(element),
             role: Role::from_control_type(unsafe { element.CachedControlType() }.map_or(0, |kind| kind.0)),
             name: cached_text(unsafe { element.CachedName() }),
             automation_id: cached_text(unsafe { element.CachedAutomationId() }),
@@ -119,6 +117,18 @@ impl NodeProps {
 
 pub(crate) fn cached_text(result: windows_core::Result<BSTR>) -> String {
     result.map(|text| text.to_string()).unwrap_or_default()
+}
+
+pub(crate) fn cached_runtime_id(element: &IUIAutomationElement) -> Vec<i32> {
+    cached_variant(element, UIA_RuntimeIdPropertyId).and_then(|variant| variant.as_i32_array()).unwrap_or_default()
+}
+
+pub(crate) fn current_runtime_id(element: &IUIAutomationElement) -> Vec<i32> {
+    unsafe { element.GetCurrentPropertyValue(UIA_RuntimeIdPropertyId) }
+        .ok()
+        .map(OwnedVariant::from_raw)
+        .and_then(|variant| variant.as_i32_array())
+        .unwrap_or_default()
 }
 
 fn cached_flag(result: windows_core::Result<BOOL>) -> bool {

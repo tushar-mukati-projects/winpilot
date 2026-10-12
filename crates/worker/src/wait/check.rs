@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use deckhand_core::{Element, Error, ErrorCode, Result, Target, WindowInfo, format::window_line};
+use deckhand_core::{Element, Error, ErrorCode, Rect, Result, Target, WindowInfo, format::window_line, ocr::coords};
 
 use super::WaitReport;
 use crate::engine::duration_ms;
@@ -18,6 +18,7 @@ pub struct Check {
 pub enum Shown {
     Element(Element),
     Window(WindowInfo),
+    Text { text: String, rect: Rect },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -61,13 +62,14 @@ impl Shown {
         match self {
             Self::Element(_) => label.to_string(),
             Self::Window(window) => format!("{label} ({})", window_line(window)),
+            Self::Text { text, rect } => format!("{label} (\"{text}\" {}, read by OCR)", coords(*rect)),
         }
     }
 
     fn element(self) -> Option<Element> {
         match self {
             Self::Element(element) => Some(element),
-            Self::Window(_) => None,
+            Self::Window(_) | Self::Text { .. } => None,
         }
     }
 }
@@ -185,6 +187,18 @@ mod tests {
         assert!(check.met);
         assert_eq!(check.detail, "w77 (w77 notepad.exe \"Save As\") is visible");
         assert_eq!(check.element, None);
+    }
+
+    #[test]
+    fn text_read_by_ocr_is_described_with_its_position() {
+        let shown = Shown::Text { text: "Export".to_string(), rect: Rect::new(40, 50, 60, 18) };
+        let check = appears("ocr:Export", Presence::certain(Some(shown.clone())));
+        assert!(check.met);
+        assert_eq!(check.detail, "ocr:Export (\"Export\" @40,50,60x18, read by OCR) is visible");
+        assert_eq!(check.element, None);
+        let still = disappears("ocr:Export", Presence::certain(Some(shown)));
+        assert!(!still.met);
+        assert!(still.detail.ends_with("is still visible"), "{}", still.detail);
     }
 
     #[test]

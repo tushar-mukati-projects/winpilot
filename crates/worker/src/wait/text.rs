@@ -1,6 +1,9 @@
-use deckhand_core::{Element, Result, Snapshot, format::window_line};
+use deckhand_core::{Element, Result, Snapshot, format::window_line, ocr::exposes_no_uia};
 
-use super::check::{Check, unless_gone};
+use super::{
+    check::{Check, Presence, unless_gone},
+    ocr_look::OcrLook,
+};
 use crate::{engine::Engine, resolve, watch::Watch};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,14 +12,23 @@ pub enum TextHit<'a> {
     Element(&'a Element),
 }
 
-pub fn check(engine: &Engine, text: &str, scope: Option<&str>) -> Result<Check> {
+pub fn check(engine: &Engine, text: &str, scope: Option<&str>, ocr: &mut OcrLook<'_>) -> Result<Check> {
     let Some(window) = unless_gone(resolve::window(engine, scope))? else {
         return Ok(Check::unmet(format!("no window to search for \"{text}\"")));
     };
     let Some(snapshot) = unless_gone(engine.snapshot(&window))? else {
         return Ok(Check::unmet(format!("{} closed before \"{text}\" showed", window_line(&window))));
     };
-    Ok(text_check(&snapshot, text))
+    let check = text_check(&snapshot, text);
+    if check.met || !exposes_no_uia(&snapshot) {
+        return Ok(check);
+    }
+    let read = ocr.presence(engine, std::slice::from_ref(&snapshot.window), text, None)?;
+    Ok(read_by_ocr(text, read).unwrap_or(check))
+}
+
+fn read_by_ocr(text: &str, read: Presence) -> Option<Check> {
+    read.shown.map(|_| Check::met(format!("\"{text}\" is showing (read by OCR)")))
 }
 
 pub fn watch(engine: &Engine, scope: Option<&str>) -> Watch {
@@ -111,6 +123,15 @@ mod tests {
         let check = text_check(&snap, "Done");
         assert!(!check.met);
         assert_eq!(check.detail, "\"Done\" is not showing in w5 app.exe \"App\"");
+    }
+
+    #[test]
+    fn text_found_by_ocr_meets_the_wait_and_says_how() {
+        let shown = super::super::check::Shown::Text { text: "Export done".to_string(), rect: Rect::new(1, 2, 3, 4) };
+        let check = read_by_ocr("export done", Presence::certain(Some(shown))).unwrap();
+        assert!(check.met);
+        assert_eq!(check.detail, "\"export done\" is showing (read by OCR)");
+        assert_eq!(read_by_ocr("export done", Presence::certain(None)), None);
     }
 
     fn hit_id(hit: TextHit<'_>) -> Option<u32> {

@@ -53,7 +53,8 @@ mod tests {
         assert!(!all.is_empty(), "no visible windows found");
         assert!(all.iter().all(|window| !window.rect.is_empty()));
         let apps = windows().unwrap();
-        let shown = apps.iter().filter(|app| app.state != deckhand_core::WindowState::Minimized);
+        let shown =
+            apps.iter().filter(|app| app.state != deckhand_core::WindowState::Minimized && app.on_current_desktop);
         let missing = shown.filter(|app| all.iter().all(|window| window.hwnd != app.hwnd)).count();
         assert!(missing <= 1, "{missing} app windows are missing from the visible list");
     }

@@ -16,6 +16,7 @@ pub enum Term {
     Id(String),
     Class(String),
     Text(String),
+    Ocr(String),
     Window(String),
     Process(String),
     Nth(u32),
@@ -35,7 +36,9 @@ pub struct Selector {
 const CHAIN: &str = ">>";
 const FOCUSED: &str = "focused";
 const MAX_LISTED_CANDIDATES: usize = 5;
-const SELECTOR_KEYS: &str = "role, name, name~, id, class, text, window, process and nth, plus the bare word focused";
+const SELECTOR_KEYS: &str =
+    "role, name, name~, id, class, text, ocr, window, process and nth, plus the bare word focused";
+const OCR_ALONE: &str = "ocr: takes one text and combines only with window:, process: and nth:";
 const QUOTE_HINT: &str = "put text containing ':' in quotes, e.g. \"File name:\"";
 
 type TermBuilder = fn(&str) -> Result<Term>;
@@ -64,7 +67,9 @@ impl FromStr for Selector {
             return Err(Error::invalid("empty selector"));
         }
         let steps = pieces.split(|piece| *piece == Piece::Chain).map(|group| build_step(group, text));
-        Ok(Self { steps: steps.collect::<Result<_>>()? })
+        let selector = Self { steps: steps.collect::<Result<_>>()? };
+        selector.check_ocr()?;
+        Ok(selector)
     }
 }
 
@@ -102,6 +107,38 @@ impl Selector {
             &[only] => Ok(only),
             _ => self.best_ranked(&matches).ok_or_else(|| self.ambiguous(&matches)),
         }
+    }
+
+    pub fn ocr_text(&self) -> Option<&str> {
+        self.terms().find_map(|term| match term {
+            Term::Ocr(text) => Some(text.as_str()),
+            _ => None,
+        })
+    }
+
+    pub fn nth(&self) -> Option<u32> {
+        self.terms().find_map(|term| match term {
+            Term::Nth(position) => Some(*position),
+            _ => None,
+        })
+    }
+
+    pub fn plain_text(&self) -> Option<&str> {
+        let mut element_terms = self.terms().filter(|term| term.is_element_term());
+        match (element_terms.next(), element_terms.next()) {
+            (Some(Term::Text(text) | Term::Ocr(text)), None) => Some(text.as_str()),
+            _ => None,
+        }
+    }
+
+    fn check_ocr(&self) -> Result<()> {
+        let texts = self.terms().filter(|term| matches!(term, Term::Ocr(_))).count();
+        let combinable =
+            self.terms().all(|term| matches!(term, Term::Ocr(_) | Term::Window(_) | Term::Process(_) | Term::Nth(_)));
+        if texts == 0 || (texts == 1 && combinable) {
+            return Ok(());
+        }
+        Err(Error::invalid(OCR_ALONE))
     }
 
     fn terms(&self) -> impl Iterator<Item = &Term> {
@@ -208,6 +245,7 @@ impl Term {
                     || element.value.as_deref().is_some_and(|value| contains_folded(value, text))
             }
             Self::Focused => element.state.focused,
+            Self::Ocr(_) => false,
             Self::Window(_) | Self::Process(_) | Self::Nth(_) => true,
         }
     }
@@ -371,6 +409,7 @@ fn term_builder(key: &str) -> Option<TermBuilder> {
         "id" => |value| Ok(Term::Id(value.to_string())),
         "class" => |value| Ok(Term::Class(value.to_string())),
         "text" => |value| Ok(Term::Text(value.to_string())),
+        "ocr" => |value| Ok(Term::Ocr(value.to_string())),
         "window" => |value| Ok(Term::Window(value.to_string())),
         "process" => |value| Ok(Term::Process(value.to_string())),
         "nth" => parse_nth,
@@ -440,6 +479,7 @@ impl fmt::Display for Term {
             Self::Id(value) => write_keyed(f, "id", value),
             Self::Class(value) => write_keyed(f, "class", value),
             Self::Text(value) => write_keyed(f, "text", value),
+            Self::Ocr(value) => write_keyed(f, "ocr", value),
             Self::Window(value) => write_keyed(f, "window", value),
             Self::Process(value) => write_keyed(f, "process", value),
             Self::Nth(position) => write!(f, "nth:{position}"),
@@ -647,7 +687,7 @@ mod tests {
 
     #[test]
     fn unknown_keys_are_rejected() {
-        let expected = "'foo:' is not a selector key; put text containing ':' in quotes, e.g. \"File name:\". Keys are role, name, name~, id, class, text, window, process and nth, plus the bare word focused";
+        let expected = "'foo:' is not a selector key; put text containing ':' in quotes, e.g. \"File name:\". Keys are role, name, name~, id, class, text, ocr, window, process and nth, plus the bare word focused";
         assert_eq!(parse_error("foo:bar"), expected);
         assert_eq!(parse_error("foo:"), expected);
         assert!(parse_error("Role~:x").starts_with("'role~:' is not a selector key;"));
@@ -693,6 +733,50 @@ mod tests {
     #[test]
     fn text_glued_to_a_closing_quote_is_rejected() {
         assert_eq!(parse_error("name:\"a\"b c"), "unexpected 'b' right after a closing quote in selector");
+    }
+
+    #[test]
+    fn ocr_terms_parse_and_print_back() {
+        assert_eq!(terms("ocr:\"Export video\""), [Term::Ocr("Export video".to_string())]);
+        assert_eq!(canonical("ocr:\"Export video\""), "ocr:\"Export video\"");
+        assert_eq!(canonical("OCR:Export"), "ocr:Export");
+        let scoped = parse("window:CapCut ocr:Export nth:2");
+        assert_eq!(scoped.ocr_text(), Some("Export"));
+        assert_eq!(scoped.nth(), Some(2));
+        assert!(scoped.has_window_terms());
+        let chained = parse("process:capcut >> ocr:\"Media\"");
+        assert_eq!(chained.ocr_text(), Some("Media"));
+        assert_eq!(chained.nth(), None);
+    }
+
+    #[test]
+    fn ocr_combines_only_with_window_process_and_nth() {
+        let expected = "ocr: takes one text and combines only with window:, process: and nth:";
+        assert_eq!(parse_error("ocr:Export role:button"), expected);
+        assert_eq!(parse_error("ocr:Export Save"), expected);
+        assert_eq!(parse_error("ocr:a ocr:b"), expected);
+        assert_eq!(parse_error("role:pane >> ocr:Export"), expected);
+        assert_eq!(parse_error("focused ocr:Export"), expected);
+        assert_eq!(parse_error("ocr:\" \""), "empty value for 'ocr:' in selector");
+    }
+
+    #[test]
+    fn ocr_selectors_never_match_elements() {
+        let snapshot = notepad();
+        assert_eq!(found("ocr:File", &snapshot), NONE);
+        assert_eq!(resolve_error("ocr:File", &snapshot).code, ErrorCode::NotFound);
+        assert_eq!(parse("name:File").ocr_text(), None);
+    }
+
+    #[test]
+    fn plain_text_is_a_lone_text_or_ocr_term() {
+        assert_eq!(parse("Export").plain_text(), Some("Export"));
+        assert_eq!(parse("window:CapCut text:\"Export video\" nth:1").plain_text(), Some("Export video"));
+        assert_eq!(parse("ocr:Media").plain_text(), Some("Media"));
+        assert_eq!(parse("role:button Export").plain_text(), None);
+        assert_eq!(parse("Save role:button as").plain_text(), None);
+        assert_eq!(parse("window:CapCut").plain_text(), None);
+        assert_eq!(parse("name:Export").plain_text(), None);
     }
 
     #[test]

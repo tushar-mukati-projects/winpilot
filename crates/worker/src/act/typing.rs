@@ -1,5 +1,6 @@
 use deckhand_core::{Element, Error, Result, keys::NamedKey, protocol::TypeHow};
 use deckhand_desktop::clipboard;
+use deckhand_uia::Uia;
 
 use super::{
     append,
@@ -14,6 +15,7 @@ use super::{
     paste::{Readback, paste, readback},
     settle,
     target::Prepared,
+    text_focus::{has_printable, refusal},
 };
 use crate::{call_scope::CallScope, engine::Engine, overlay};
 
@@ -66,6 +68,9 @@ fn type_for_real(
     call: &CallScope,
 ) -> Result<Done> {
     let focused = keyboard_target(engine, target, call)?;
+    if has_printable(request.text) {
+        refuse_non_text_focus(engine)?;
+    }
     if let Some(element) = &focused.element {
         overlay::focus_field(engine, element.rect);
     }
@@ -105,6 +110,11 @@ pub fn choose_typing(
         return instead(Typing::KeysToKeepClipboard);
     }
     Typing::Paste(readback)
+}
+
+fn refuse_non_text_focus(engine: &Engine) -> Result<()> {
+    let focused = engine.uia.run(Uia::focused).ok().flatten();
+    focused.as_ref().and_then(refusal).map_or(Ok(()), Err)
 }
 
 fn clipboard_holds_only_text() -> bool {

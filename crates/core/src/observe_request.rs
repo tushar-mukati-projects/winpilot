@@ -49,6 +49,7 @@ pub struct TextRequest {
     pub region: Option<Rect>,
     pub ocr: OcrMode,
     pub max_chars: Option<u32>,
+    pub coords: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
