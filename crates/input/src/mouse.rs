@@ -25,7 +25,7 @@ use crate::{
 };
 
 const CLICK_COUNTS: std::ops::RangeInclusive<u8> = 1..=3;
-const MAX_SCROLL_NOTCHES: u32 = 50;
+pub(crate) const MAX_SCROLL_NOTCHES: u32 = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ButtonTransition {
@@ -116,7 +116,7 @@ pub(crate) fn scroll_events(
     Ok(vec![move_event(desktop, point), wheel_event(direction, notches.min(MAX_SCROLL_NOTCHES))])
 }
 
-fn validate_click_count(count: u8) -> Result<()> {
+pub(crate) fn validate_click_count(count: u8) -> Result<()> {
     if CLICK_COUNTS.contains(&count) {
         return Ok(());
     }

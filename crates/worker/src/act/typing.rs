@@ -7,10 +7,11 @@ use super::{
     chords::named,
     clip::{NOTE_LIMIT, quoted},
     done::{Done, via_focus_click},
-    field::{is_readable, read_value},
+    field::{is_readable, is_writable, read_value},
     focus::{Focused, keyboard_target},
     landing::ensure_keys_land,
     lift::with_held_modifiers_lifted,
+    message_keys,
     mode::Mode,
     paste::{Readback, paste, readback},
     settle,
@@ -22,6 +23,12 @@ use crate::{call_scope::CallScope, engine::Engine, overlay};
 const PASTE_THRESHOLD: usize = 200;
 const KEPT_CLIPBOARD: &str = "the clipboard holds more than text, so the text was typed to keep it intact";
 const UNCONFIRMABLE: &str = "the field does not expose its value to confirm a paste, so the text was typed";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BackgroundTyping {
+    Value,
+    Message,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Typing {
@@ -56,9 +63,26 @@ pub(crate) fn step(
 ) -> Result<Done> {
     match (mode, target) {
         (Mode::Foreground, _) => type_for_real(engine, target, request, call),
-        (Mode::Background, Some(prepared)) => append::step(engine, prepared, request.text, call),
+        (Mode::Background, Some(prepared)) => type_in_background(engine, prepared, request, call),
         (Mode::Background, None) => Err(Error::invalid("type in background mode needs a target")),
     }
+}
+
+fn type_in_background(
+    engine: &Engine,
+    prepared: &Prepared,
+    request: &TypeRequest<'_>,
+    call: &CallScope,
+) -> Result<Done> {
+    match background_typing(request.how, request.enter, prepared.tracked_element()) {
+        BackgroundTyping::Value => append::step(engine, prepared, request.text, call),
+        BackgroundTyping::Message => message_keys::type_text(engine, prepared, request.text, request.enter, call),
+    }
+}
+
+fn background_typing(how: TypeHow, enter: bool, tracked: Option<&Element>) -> BackgroundTyping {
+    let writable = tracked.is_some_and(is_writable);
+    if how == TypeHow::Auto && !enter && writable { BackgroundTyping::Value } else { BackgroundTyping::Message }
 }
 
 fn type_for_real(
@@ -164,6 +188,24 @@ mod tests {
 
     fn field() -> Readback {
         Readback { id: ElementRef(4), before: String::new() }
+    }
+
+    #[test]
+    fn background_typing_sets_writable_fields_and_messages_everything_else() {
+        use deckhand_core::Role;
+
+        use crate::test_fixture::element;
+
+        let mut field = element(1, 1, Role::Edit, "Name");
+        field.patterns.value = true;
+        let canvas = element(2, 1, Role::Pane, "Editor");
+        assert_eq!(background_typing(TypeHow::Auto, false, Some(&field)), BackgroundTyping::Value);
+        assert_eq!(background_typing(TypeHow::Auto, true, Some(&field)), BackgroundTyping::Message);
+        assert_eq!(background_typing(TypeHow::Keys, false, Some(&field)), BackgroundTyping::Message);
+        assert_eq!(background_typing(TypeHow::Auto, false, Some(&canvas)), BackgroundTyping::Message);
+        assert_eq!(background_typing(TypeHow::Auto, false, None), BackgroundTyping::Message);
+        field.state.read_only = true;
+        assert_eq!(background_typing(TypeHow::Auto, false, Some(&field)), BackgroundTyping::Message);
     }
 
     #[test]

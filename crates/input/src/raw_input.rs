@@ -5,16 +5,24 @@ use windows::Win32::UI::Input::{
     GetRawInputData, HRAWINPUT, RAWINPUT, RAWINPUTHEADER, RID_INPUT, RIM_TYPEKEYBOARD, RIM_TYPEMOUSE,
 };
 
-use crate::{chord_detector::PhysicalKey, input_clock::record_user_input, physical_hotkey};
+use crate::{
+    chord_detector::PhysicalKey,
+    input_clock::{record_user_input, record_user_press},
+    physical_hotkey,
+};
 
 const READ_FAILED: u32 = u32::MAX;
 const MOUSE: u32 = RIM_TYPEMOUSE.0;
 const KEYBOARD: u32 = RIM_TYPEKEYBOARD.0;
+const BUTTON_DOWN_FLAGS: u16 = 0x0001 | 0x0004 | 0x0010 | 0x0040 | 0x0100;
 
 pub(crate) fn handle_raw_input(handle: HRAWINPUT) {
     let Some(input) = read_raw_input(handle) else { return };
     if counts_as_user(&input) {
         record_user_input();
+        if presses_a_mouse_button(&input) {
+            record_user_press();
+        }
     }
     if let Some(key) = physical_key(&input) {
         physical_hotkey::observe(key);
@@ -30,6 +38,14 @@ fn physical_key(input: &RAWINPUT) -> Option<PhysicalKey> {
         return None;
     }
     Some(PhysicalKey { make_code: keyboard.MakeCode, flags: keyboard.Flags, vk: keyboard.VKey })
+}
+
+fn presses_a_mouse_button(input: &RAWINPUT) -> bool {
+    if input.header.dwType != MOUSE {
+        return false;
+    }
+    let flags = unsafe { input.data.mouse.Anonymous.Anonymous.usButtonFlags };
+    flags & BUTTON_DOWN_FLAGS != 0
 }
 
 fn read_raw_input(handle: HRAWINPUT) -> Option<RAWINPUT> {
@@ -127,6 +143,21 @@ mod tests {
         assert_eq!(physical_key(&keyboard_input(HANDLE::default(), 0)), None);
         assert_eq!(physical_key(&keyboard_input(SOME_DEVICE, MARK)), None);
         assert_eq!(physical_key(&mouse_input(SOME_DEVICE, 0)), None);
+    }
+
+    #[test]
+    fn only_mouse_button_downs_count_as_presses() {
+        let mut moved = mouse_input(SOME_DEVICE, 0);
+        assert!(!presses_a_mouse_button(&moved));
+        for down in [0x0001, 0x0004, 0x0010, 0x0040, 0x0100] {
+            moved.data.mouse.Anonymous.Anonymous.usButtonFlags = down;
+            assert!(presses_a_mouse_button(&moved), "{down:#x}");
+        }
+        for up_or_wheel in [0x0002, 0x0008, 0x0020, 0x0080, 0x0200, 0x0400, 0x0800] {
+            moved.data.mouse.Anonymous.Anonymous.usButtonFlags = up_or_wheel;
+            assert!(!presses_a_mouse_button(&moved), "{up_or_wheel:#x}");
+        }
+        assert!(!presses_a_mouse_button(&keyboard_input(SOME_DEVICE, 0)));
     }
 
     #[test]

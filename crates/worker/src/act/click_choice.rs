@@ -1,5 +1,5 @@
 use deckhand_core::{
-    Error, Patterns, Result,
+    Element, Error, Patterns, Result,
     keys::{Modifiers, parse_chord},
     protocol::{ClickHow, MouseButton},
 };
@@ -17,6 +17,12 @@ pub(crate) struct ClickOptions {
 pub(crate) enum ClickPath {
     Pattern,
     Mouse,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BackgroundPath {
+    Pattern,
+    Message,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,6 +77,15 @@ pub(crate) fn choose_path(options: ClickOptions, foreground: bool, patterns: Opt
         ClickHow::Mouse => ClickPath::Mouse,
         ClickHow::Auto => auto_path(options.button, options.count, options.modifiers, foreground, patterns),
     }
+}
+
+pub(crate) fn background_path(options: ClickOptions, tracked: Option<&Element>) -> BackgroundPath {
+    if options.how == ClickHow::Invoke {
+        return BackgroundPath::Pattern;
+    }
+    let plain = options.button == MouseButton::Left && options.count == 1 && options.modifiers.is_empty();
+    let operable = tracked.is_some_and(|element| !pattern_actions(element.patterns, element.state.expanded).is_empty());
+    if plain && operable { BackgroundPath::Pattern } else { BackgroundPath::Message }
 }
 
 fn auto_path(
@@ -156,6 +171,27 @@ mod tests {
         let mouse = ClickOptions { how: ClickHow::Mouse, ..ClickOptions::default() };
         assert_eq!(choose_path(mouse, false, Some(invokable())), ClickPath::Mouse);
         assert_eq!(choose_path(ClickOptions::default(), false, Some(invokable())), ClickPath::Pattern);
+    }
+
+    #[test]
+    fn background_clicks_use_a_pattern_only_for_plain_clicks_on_operable_elements() {
+        use deckhand_core::Role;
+
+        use crate::test_fixture::element;
+
+        let mut button = element(1, 1, Role::Button, "OK");
+        button.patterns.invoke = true;
+        let canvas = element(2, 1, Role::Pane, "Timeline");
+        let plain = ClickOptions::default();
+        assert_eq!(background_path(plain, Some(&button)), BackgroundPath::Pattern);
+        assert_eq!(background_path(plain, Some(&canvas)), BackgroundPath::Message);
+        assert_eq!(background_path(plain, None), BackgroundPath::Message);
+        let right = ClickOptions { button: MouseButton::Right, ..plain };
+        assert_eq!(background_path(right, Some(&button)), BackgroundPath::Message);
+        let double = ClickOptions { count: 2, ..plain };
+        assert_eq!(background_path(double, Some(&button)), BackgroundPath::Message);
+        let invoke = ClickOptions { how: ClickHow::Invoke, ..plain };
+        assert_eq!(background_path(invoke, None), BackgroundPath::Pattern);
     }
 
     #[test]

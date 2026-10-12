@@ -23,6 +23,12 @@ const LISTED_MATCHES: usize = 8;
 const NARROW_THE_SELECTOR: &str =
     "add window: or process: terms to say which, or observe that window and use its element ref";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Cover {
+    Refused,
+    Ignored,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum Reach {
     Element(Element),
@@ -115,11 +121,15 @@ fn first_matching(engine: &Engine, spec: &WindowSpec) -> Result<WindowInfo> {
 }
 
 pub(crate) fn target(engine: &Engine, target: &Target, call: &CallScope) -> Result<Resolved> {
+    target_with(engine, target, call, Cover::Refused)
+}
+
+pub(crate) fn target_with(engine: &Engine, target: &Target, call: &CallScope, covering: Cover) -> Result<Resolved> {
     match target {
         Target::Element(id) => resolve_element(engine, *id),
         Target::Window(hwnd) => resolve_window(engine, deckhand_desktop::window(*hwnd)?),
         Target::Selector(selector) => wait_for_selector(engine, selector, call),
-        Target::Point { point, image } => resolve_point(engine, *point, *image),
+        Target::Point { point, image } => resolve_point(engine, *point, *image, covering),
     }
 }
 
@@ -220,7 +230,7 @@ fn no_window(selector: &Selector) -> Error {
     Error::not_found(format!("no open window matches {selector}"))
 }
 
-fn resolve_point(engine: &Engine, point: Point, image: Option<ImageRef>) -> Result<Resolved> {
+fn resolve_point(engine: &Engine, point: Point, image: Option<ImageRef>, covering: Cover) -> Result<Resolved> {
     let record = image.map(|image| engine.images.lock().record(image).map(|record| (image, record))).transpose()?;
     let screen = match &record {
         Some((image, record)) => record.screen_point(*image, point)?,
@@ -229,7 +239,7 @@ fn resolve_point(engine: &Engine, point: Point, image: Option<ImageRef>) -> Resu
     let under = engine.uia.run(move |uia| uia.element_at(screen))?;
     let hit = element_window(engine, under.id)?;
     let window = match &record {
-        Some((_, record)) => shot_window(engine, record, &hit)?,
+        Some((_, record)) => shot_window(engine, record, &hit, covering)?,
         None => hit.clone(),
     };
     engine.guard.check_window(&hit)?;
@@ -237,8 +247,10 @@ fn resolve_point(engine: &Engine, point: Point, image: Option<ImageRef>) -> Resu
     Ok(Resolved { window, reach: Reach::Point { point: screen, under } })
 }
 
-fn shot_window(engine: &Engine, record: &ImageRecord, hit: &WindowInfo) -> Result<WindowInfo> {
-    record.check_hit_window(hit.hwnd, |source| cover::window_covers(engine, source, hit.hwnd))?;
+fn shot_window(engine: &Engine, record: &ImageRecord, hit: &WindowInfo, covering: Cover) -> Result<WindowInfo> {
+    if covering == Cover::Refused {
+        record.check_hit_window(hit.hwnd, |source| cover::window_covers(engine, source, hit.hwnd))?;
+    }
     match record.window.filter(|source| *source != hit.hwnd) {
         Some(source) => deckhand_desktop::window(source),
         None => Ok(hit.clone()),

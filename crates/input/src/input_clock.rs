@@ -10,20 +10,37 @@ const NEVER: u64 = 0;
 
 static EPOCH: OnceLock<Instant> = OnceLock::new();
 static LAST_USER_INPUT_MS: AtomicU64 = AtomicU64::new(NEVER);
+static LAST_USER_PRESS_MS: AtomicU64 = AtomicU64::new(NEVER);
 
 pub(crate) fn start_clock() {
     EPOCH.get_or_init(Instant::now);
 }
 
 pub(crate) fn record_user_input() {
-    let Some(epoch) = EPOCH.get() else {
-        return;
-    };
-    LAST_USER_INPUT_MS.store(millis_since(*epoch, Instant::now()), Ordering::Relaxed);
+    record_now(&LAST_USER_INPUT_MS);
+}
+
+pub(crate) fn record_user_press() {
+    record_now(&LAST_USER_PRESS_MS);
 }
 
 pub(crate) fn last_user_input() -> Option<Instant> {
-    let millis = LAST_USER_INPUT_MS.load(Ordering::Relaxed);
+    read_instant(&LAST_USER_INPUT_MS)
+}
+
+pub(crate) fn last_user_press() -> Option<Instant> {
+    read_instant(&LAST_USER_PRESS_MS)
+}
+
+fn record_now(slot: &AtomicU64) {
+    let Some(epoch) = EPOCH.get() else {
+        return;
+    };
+    slot.store(millis_since(*epoch, Instant::now()), Ordering::Relaxed);
+}
+
+fn read_instant(slot: &AtomicU64) -> Option<Instant> {
+    let millis = slot.load(Ordering::Relaxed);
     if millis == NEVER {
         return None;
     }
@@ -60,5 +77,14 @@ mod tests {
         let seen = last_user_input().unwrap();
         assert!(seen <= Instant::now() + Duration::from_millis(1));
         assert!(seen + Duration::from_millis(2) >= before);
+    }
+
+    #[test]
+    fn a_press_is_kept_apart_from_other_input() {
+        start_clock();
+        let before = Instant::now();
+        record_user_press();
+        let pressed = last_user_press().unwrap();
+        assert!(pressed + Duration::from_millis(2) >= before);
     }
 }

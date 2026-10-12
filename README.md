@@ -21,7 +21,7 @@ after: window w2033540 notepad.exe "Save as" foreground …
 ## Features at a glance
 
 - **Two tools.** `observe` sees the screen in any form: elements, full text, screenshots, recordings, window, monitor and app lists, the clipboard and status. `act` runs a batch of up to 50 steps and reports a diff.
-- **Background mode.** Steps can run through UI Automation patterns only, without touching your mouse, keyboard or focus, including on windows on other virtual desktops.
+- **Background mode.** Steps can run without touching your mouse, keyboard or focus, through UI Automation patterns or, for apps without them, window messages, including on windows on other virtual desktops.
 - **Visible agent.** An animated overlay rings the window being driven and names the agent ("Claude is controlling"), with themes, custom colours and a demo mode for screen recorders.
 - **Recording.** Record a window, element, region or monitor to MP4 (H.264) or GIF. Files stay playable even if something crashes.
 - **Notifications.** The agent can send you a Windows toast from "Deckhand" when a long task finishes.
@@ -228,7 +228,8 @@ Work on a window in the background, without moving your mouse:
   {"do":"click","target":"window:\"Build Settings\" >> role:button name:\"Refresh\""},
   {"do":"set","target":"window:\"Build Settings\" >> id:chkVerbose","checked":true},
   {"do":"type","target":"window:\"Build Settings\" >> name:\"Notes\"","text":" (nightly)"},
-  {"do":"key","keys":"ctrl+s"}
+  {"do":"click","target":"ocr:\"Export\" window:\"CapCut\""},
+  {"do":"key","keys":"ctrl+s","target":"window:\"Build Settings\""}
 ]}
 ```
 
@@ -236,7 +237,8 @@ Work on a window in the background, without moving your mouse:
 ✓ 1 click window:"Build Settings" >> role:button name:"Refresh" (invoke)
 ✓ 2 check window:"Build Settings" >> id:chkVerbose (toggle): now on
 ✓ 3 type " (nightly)" into window:"Build Settings" >> name:"Notes" (value): appended to the existing text; background mode can't place a caret
-✗ 4 key ctrl+s — error[needs_user]: key needs the real keyboard; background mode never touches it (drop background or use set)
+✓ 4 click ocr:"Export" window:"CapCut" (message)
+✗ 5 key ctrl+s in window:"Build Settings" — error[needs_user]: a key chord with modifiers needs the real keyboard, because apps read ctrl, alt, shift and win from it; background mode never touches it (drop background)
 …
 ```
 
@@ -319,25 +321,28 @@ Selector terms:
 
 ## Background mode and virtual desktops
 
-Normally Deckhand acts like a careful person at the keyboard: it brings the window forward, glides the real mouse and types with real keystrokes. With `background: true` (per call) or `[act] background = true` (config), steps use only UI Automation patterns and never touch the real mouse, keyboard or focus.
+Normally Deckhand acts like a careful person at the keyboard: it brings the window forward, glides the real mouse and types with real keystrokes. With `background: true` (per call) or `[act] background = true` (config), steps never touch the real mouse, keyboard or focus. They use UI Automation patterns where the target has them, and otherwise window messages: Deckhand finds the innermost child window of the target window under the point and sends it the mouse, wheel, character and key messages a real click or keystroke would produce (`SendMessageTimeout`, so a hung app fails the step after a second instead of blocking it). The step's method says which: `(invoke)`, `(value)`, `(pattern)` or `(message)`. That is how background mode drives apps with no UI Automation, such as Qt apps like CapCut or canvas editors, through `ocr:` and screenshot-point targets, even while they sit behind other windows.
 
 | Step | In background mode |
 |---|---|
-| `click` | A plain left single click only (no `modifiers`, no `how: "mouse"`). Tries Invoke, then Toggle, SelectionItem, ExpandCollapse and the legacy default action. |
-| `type` | Needs a `target`, no `enter`, and `how: "auto"`. The text is appended to the field's current value through `SetValue`, with the note "appended to the existing text; background mode can't place a caret". |
+| `click` | A plain left single click on an element with a pattern, or on a point that lands on such an element of the target window itself, tries Invoke, then Toggle, SelectionItem, ExpandCollapse and the legacy default action. Points on covered windows, `ocr:` targets, elements without a pattern, and right, middle, double and triple clicks are sent as window messages: a short hover sweep from the left, then the button messages (the second click is a double-click message). `how: "invoke"` never falls back to messages. `modifiers` and `how: "mouse"` are refused. |
+| `type` | Needs a `target`; `how: "paste"` is refused. A writable field (an element with a value pattern) without `enter` gets the text appended through `SetValue`, with the note "appended to the existing text; background mode can't place a caret". Anything else, and `how: "keys"` or `enter`, is typed by message: the target is message-clicked first (a window target types into that window's focused control without a click), then each character is sent as `WM_CHAR`, and newlines and `enter` as the Enter key. |
+| `key` | Needs a `target` and plain keys only: no ctrl, alt, shift or win, because apps read those from the real keyboard state, and only `action: "press"`. An element or point target is message-clicked first; a window target gets the keys in its focused control. Named keys send key-down and key-up messages (Enter, Backspace, Tab and Escape also send their control character in between, as a real keypress does); characters are sent as `WM_CHAR`. Keys still never go to the agent's own app. |
 | `set` | UI Automation patterns only, with no typing or mouse fallback. |
-| `mouse action=scroll` | Needs an element `target` and uses its scroll pattern. |
+| `mouse action=scroll` | Needs a `target`. An element tries its scroll pattern (and its scrollable containers) first; points, `ocr:` targets, windows and elements that can't scroll that way get wheel messages at the spot. |
+| `mouse action=drag` | Needs a `target` and a `to` in the same window. Sent as button-down, held moves and button-up messages to the window under the start point. |
 | `window` | Only `close`. `launch`, `minimize`, `maximize`, `restore` and `move` are refused. |
-| `key`, `focus`, `pick`, `mouse` move/down/up/drag | Always refused with `needs_user`. |
+| `focus`, `pick`, `mouse` move/down/up, `key` down/up | Always refused with `needs_user`. |
 | `wait`, `clipboard`, `notify` | Unchanged. |
 
-Background steps don't wait for you to stop using the mouse and keyboard, because they never touch them. They still take the actor lock and still respect the kill switch, the deny lists and the elevation check, and they refuse a window that has a modal dialog open, just like real clicks do.
+Background steps don't wait for you to stop using the mouse and keyboard, because they never touch them. They still take the actor lock and still respect the kill switch, the deny lists, the elevation check and the agent's own terminal, and they refuse a window that has a modal dialog open, just like real clicks do. Window messages go only to the target app: the child window under the point must belong to the target window's process or program, a message spot must lie inside the target window, and in a partial host app the spot must be visibly the host's and outside every `deckhand-protected` terminal. The window the user is working in (the foreground window) gets no window messages and no point clicks at all, so a bare screen point that lands on the user's window is refused; point at a covered app with the `img` of its window screenshot instead. If an app takes the foreground in reaction to a background step, Deckhand gives it back unless the user clicked during the step.
 
 **Virtual desktops.** Window lines show `desktop N`, or `another desktop` when Windows doesn't say which, for windows on other virtual desktops; a hidden window whose desktop can't be looked up counts as on another desktop. The default window is always on the current desktop, and Deckhand never switches your desktop. Real input only reaches the current desktop, so steps aimed at a window on another desktop always get background behaviour; a step that can't be done that way fails with an error that names the desktop. A screenshot of such a window is printed from the window itself and fails, suggesting `mode=text`, when Windows hasn't drawn it. Recording a window on another desktop is refused, and the overlay draws nothing for those windows.
 
 **Honest limits.**
 
-- Web apps that ignore `SetValue`, such as some React-controlled inputs, need the real keyboard, so they can't be typed into in background mode.
+- Web apps that ignore `SetValue`, such as some React-controlled inputs, need the real keyboard or a message-typed `how: "keys"` step.
+- Window messages reach what the app's window procedure handles. Shortcuts with modifiers, hover-only menus, apps that read the raw cursor or keyboard state, and title-bar buttons drawn by Windows itself don't respond to them. Classic Win32 push buttons can drop a message click while their window is in the background (the press needs mouse capture), so click them by element ref, which uses Invoke. DPI-unaware apps on a scaled monitor may receive the point slightly off.
 - Full parallel control, where the agent has its own mouse and keyboard while you keep working, needs a separate Windows session: RDP loopback, a VM, or Microsoft's Agent Workspace preview. Windows 11 Home doesn't offer this out of the box.
 
 ## The overlay

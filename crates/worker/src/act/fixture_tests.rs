@@ -248,13 +248,13 @@ fn background_mode_clicks_types_and_checks_through_patterns_only() {
 fn background_mode_refuses_real_input_steps() {
     let engine = engine();
     let Some(fixture) = FixtureApp::launch() else { return };
-    let key = step(json!({ "do": "key", "keys": "f5", "target": fixture.selector("id:2002") }));
+    let key = step(json!({ "do": "key", "keys": "ctrl+f5", "target": fixture.selector("id:2002") }));
     let report = act_with(engine, vec![key], true, true);
     let error = report.steps[0].error.as_ref().unwrap();
     assert_eq!(error.code, ErrorCode::NeedsUser);
     assert_eq!(
         error.message,
-        "key needs the real keyboard; background mode never touches it (drop background or use set)"
+        "a key chord with modifiers needs the real keyboard, because apps read ctrl, alt, shift and win from it; background mode never touches it (drop background)"
     );
     assert_eq!(fixture.text(2020), "Last key: none");
     assert_background(&fixture);

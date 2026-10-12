@@ -7,7 +7,7 @@ use deckhand_core::Result;
 use parking_lot::Mutex;
 
 use crate::{
-    input_clock::{last_user_input, start_clock},
+    input_clock::{last_user_input, last_user_press, start_clock},
     message_thread::MessageThread,
     raw_input_sink::RawInputSink,
 };
@@ -34,6 +34,10 @@ impl ActivityMonitor {
 
     pub fn last_physical_input(&self) -> Option<Instant> {
         last_user_input()
+    }
+
+    pub fn last_physical_press(&self) -> Option<Instant> {
+        last_user_press()
     }
 
     pub fn idle_for(&self) -> Option<Duration> {

@@ -73,10 +73,18 @@ enum ImagePath {
     Unavailable,
 }
 
+pub fn process_image_path(pid: u32) -> Option<String> {
+    full_image_path(&open_for_query(pid)?)
+}
+
 fn image_file_name(process: &OwnedHandle) -> Option<String> {
+    full_image_path(process).and_then(|path| path.rsplit('\\').next().map(str::to_string))
+}
+
+fn full_image_path(process: &OwnedHandle) -> Option<String> {
     for capacity in IMAGE_PATH_CAPACITIES {
         match image_path(process, capacity) {
-            ImagePath::Found(path) => return path.rsplit('\\').next().map(str::to_string),
+            ImagePath::Found(path) => return Some(path),
             ImagePath::BufferTooSmall => {}
             ImagePath::Unavailable => return None,
         }
@@ -107,6 +115,13 @@ mod tests {
         let facts = lookup.facts(std::process::id());
         assert!(facts.name.to_ascii_lowercase().ends_with(".exe"));
         assert!(!facts.elevated);
+    }
+
+    #[test]
+    fn own_process_has_a_full_image_path() {
+        let path = process_image_path(std::process::id()).unwrap();
+        assert!(path.contains('\\') && path.to_ascii_lowercase().ends_with(".exe"), "{path}");
+        assert_eq!(process_image_path(0), None);
     }
 
     #[test]

@@ -44,7 +44,7 @@ pub struct ActArgs {
     pub stop_on_error: bool,
     #[serde(default)]
     #[schemars(
-        description = "Use UI Automation patterns only and never touch the real mouse, keyboard or focus. Default: the [act] background config (false)."
+        description = "Never touch the real mouse, keyboard or focus: UI Automation patterns, else window messages. Default: the [act] background config (false)."
     )]
     pub background: Option<bool>,
 }

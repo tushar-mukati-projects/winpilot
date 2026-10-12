@@ -67,8 +67,10 @@ mod tests {
     }
 
     #[test]
-    fn steps_without_a_pattern_equivalent_are_refused_there() {
-        let key = step(r#"{"do":"key","keys":"enter","target":"w5"}"#);
+    fn steps_that_need_real_input_are_refused_there() {
+        let typed = step(r#"{"do":"key","keys":"enter","target":"w5"}"#);
+        assert_eq!(for_window(Mode::Foreground, &elsewhere(), &typed).unwrap(), Mode::Background);
+        let key = step(r#"{"do":"key","keys":"ctrl+s","target":"w5"}"#);
         let error = for_window(Mode::Foreground, &elsewhere(), &key).unwrap_err();
         assert_eq!(error.code, ErrorCode::NeedsUser);
         assert!(error.message.starts_with("w5 is on desktop 3, "), "{}", error.message);

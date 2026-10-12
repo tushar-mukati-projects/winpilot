@@ -36,7 +36,7 @@ impl<'a> KeptForeground<'a> {
     fn hand_back(&self) -> Option<String> {
         let previous = self.previous.filter(|previous| *previous != self.target)?;
         let taken = deckhand_desktop::foreground_window() == Some(self.target);
-        if !taken || self.guard.physical_input_since(self.since) {
+        if !taken || self.guard.physical_press_since(self.since) {
             return None;
         }
         Some(handed_back_note(self.target, previous, deckhand_desktop::focus_window(previous)))

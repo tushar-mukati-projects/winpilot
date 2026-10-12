@@ -28,7 +28,7 @@ The e2e test drives the real mouse and keyboard against the fixture app, so buil
 | `deckhand-core` | Pure logic and the shared protocol: tool arguments and validation, errors, geometry, selectors, keys, diff, output formatting, config, themes, agent names, OCR text matching, IPC framing. No Windows APIs. | serde, serde_json, schemars |
 | `deckhand-uia` | UI Automation on one dedicated MTA thread: snapshots, element refs and fingerprints, pattern actions, text | core, windows |
 | `deckhand-capture` | Screen capture (DXGI, GDI, PrintWindow), resize, JPEG/PNG encode, marks, OCR, recording (WGC to Media Foundation MP4 and GIF) | core, windows |
-| `deckhand-input` | SendInput mouse/keyboard/text, cursor glide, physical-input monitor, kill-switch hotkey | core, windows |
+| `deckhand-input` | SendInput mouse/keyboard/text, window-message input for background mode, cursor glide, physical-input monitor, kill-switch hotkey | core, windows |
 | `deckhand-desktop` | Windows, focus, launch, clipboard, monitors, virtual desktops, integrity, change monitor, overlay, notifications, named sync objects | core, windows |
 | `deckhand-worker` | The engine: runs every observe mode and act step using the platform crates | all of the above |
 | `deckhand` | The binary: `deckhand mcp` (rmcp stdio server, worker supervisor, audit log) and `deckhand worker` | core, worker, rmcp |
@@ -51,7 +51,7 @@ Public APIs live in each crate's `lib.rs`, which only declares modules and re-ex
 | Selectors, keys, themes, agent names | `crates/core/src/selector.rs`, `keys.rs`, `theme.rs`, `agent.rs` |
 | `observe` modes | `crates/worker/src/observe/`: `elements`, `search` (`all_windows`), `text`, `screenshot`, `record` (with `record/`), `windows`, `monitors`, `apps`, `clipboard`, `status` |
 | `act` steps | `crates/worker/src/act/`: one module per step (`click`, `typing`, `keys`, `mouse`, `set`, `focus_step`, `window`, `launch`, `pick` with `pick/`, `wait_step`, `clipboard`, `notify`) plus shared helpers |
-| Background mode: refusals and the per-window mode | `crates/worker/src/act/refusal.rs`, `mode.rs`, `append.rs` |
+| Background mode: refusals, the per-window mode and the window-message path | `crates/worker/src/act/refusal.rs`, `mode.rs`, `append.rs`, `message.rs`, `message_keys.rs`; message plans and delivery in `crates/input/src/message_*.rs` |
 | Kill switch, user yield, deny lists, actor lock | `crates/worker/src/guard.rs`, `kill_switch.rs` |
 | OCR text matching and `ocr:` targets | `crates/core/src/ocr.rs`, `crates/worker/src/ocr_read.rs`, `ocr_target.rs`, `wait/ocr_look.rs` |
 | The agent's own terminal | `crates/worker/src/host.rs`, partial hosts in `host_terminal.rs`, ids in `crates/core/src/host_marks.rs` |

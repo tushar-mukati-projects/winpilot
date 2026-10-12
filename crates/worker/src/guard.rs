@@ -70,6 +70,11 @@ impl Guard {
         last.is_some_and(|at| at > since)
     }
 
+    pub(crate) fn physical_press_since(&self, since: Instant) -> bool {
+        let last = self.activity.as_ref().and_then(ActivityMonitor::last_physical_press);
+        last.is_some_and(|at| at > since)
+    }
+
     pub(crate) fn own_process_elevated(&self) -> bool {
         self.elevated
     }

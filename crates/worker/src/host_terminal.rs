@@ -1,5 +1,5 @@
 use deckhand_core::{
-    Error, ErrorCode, Result, WindowInfo,
+    Error, ErrorCode, Point, Result, WindowInfo,
     host_marks::{is_opt_in_marker, is_protected_id},
 };
 
@@ -30,6 +30,23 @@ pub(crate) fn check_target(engine: &Engine, resolved: &Resolved) -> Result<()> {
     }
 }
 
+pub(crate) fn check_point(engine: &Engine, window: &WindowInfo, point: Point) -> Result<()> {
+    if !engine.host.contains(window.pid) {
+        return Ok(());
+    }
+    let (hit, owner) = engine.uia.run(move |uia| {
+        let hit = uia.element_at(point)?;
+        uia.window_of(hit.id).map(|owner| (hit.id, owner))
+    })?;
+    if owner != window.hwnd {
+        return Err(hidden_spot(window, point));
+    }
+    match engine.uia.run(move |uia| uia.marked_ancestor(hit, is_protected_id))? {
+        Some(protected) => Err(inside_terminal(&protected)),
+        None => Ok(()),
+    }
+}
+
 pub(crate) fn refuse_keys(engine: &Engine, window: &WindowInfo) -> Result<()> {
     if engine.host.contains(window.pid) {
         return Err(Error::new(ErrorCode::Denied, KEYS_IN_HOST));
@@ -49,6 +66,16 @@ fn whole_window(window: &WindowInfo) -> Error {
     Error::new(
         ErrorCode::Denied,
         format!("{} is the agent's own app; target a specific control outside its session terminals", window.hwnd),
+    )
+}
+
+fn hidden_spot(window: &WindowInfo, point: Point) -> Error {
+    Error::new(
+        ErrorCode::Denied,
+        format!(
+            "{},{} in {} is covered by another window, so Deckhand can't confirm it is outside the agent's session terminals",
+            point.x, point.y, window.hwnd
+        ),
     )
 }
 
@@ -74,5 +101,8 @@ mod tests {
             crate::test_fixture::window(7, "claude-deck.exe", "Claude Deck", deckhand_core::Rect::new(0, 0, 9, 9));
         let whole = whole_window(&window);
         assert!(whole.message.starts_with("w7 is the agent's own app"), "{}", whole.message);
+        let hidden = hidden_spot(&window, Point::new(3, 4));
+        assert_eq!(hidden.code, ErrorCode::Denied);
+        assert!(hidden.message.starts_with("3,4 in w7 is covered by another window"), "{}", hidden.message);
     }
 }

@@ -1,9 +1,12 @@
 use deckhand_core::keys::Modifiers;
-use windows::Win32::UI::{
-    Input::KeyboardAndMouse::{
-        GetKeyboardLayout, HKL, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC_EX, MapVirtualKeyExW, VIRTUAL_KEY, VkKeyScanExW,
+use windows::Win32::{
+    Foundation::HWND,
+    UI::{
+        Input::KeyboardAndMouse::{
+            GetKeyboardLayout, HKL, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC_EX, MapVirtualKeyExW, VIRTUAL_KEY, VkKeyScanExW,
+        },
+        WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
     },
-    WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
 };
 
 const SHIFT_STATE_SHIFT: u8 = 1;
@@ -35,6 +38,12 @@ impl SystemLayout {
         let foreground = thread_layout(foreground_thread_id());
         let handle = if foreground.is_invalid() { thread_layout(CURRENT_THREAD) } else { foreground };
         Self { handle }
+    }
+
+    pub(crate) fn of_window(window: HWND) -> Self {
+        let thread = unsafe { GetWindowThreadProcessId(window, None) };
+        let handle = thread_layout(thread);
+        if thread == CURRENT_THREAD || handle.is_invalid() { Self::of_foreground_window() } else { Self { handle } }
     }
 }
 

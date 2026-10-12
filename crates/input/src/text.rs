@@ -25,7 +25,7 @@ pub(crate) fn text_events(text: &str, layout: &impl KeyboardLayout) -> Vec<Input
     events
 }
 
-fn normalize_newlines(text: &str) -> String {
+pub(crate) fn normalize_newlines(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\r', "\n")
 }
 

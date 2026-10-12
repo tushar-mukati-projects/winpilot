@@ -8,7 +8,7 @@ use crate::{
     default_window::default_window,
     engine::Engine,
     host_terminal, overlay,
-    resolve::{self, Reach, Resolved},
+    resolve::{self, Cover, Reach, Resolved},
 };
 
 const HOST_TERMINAL: &str = "the foreground window is the agent's own terminal; give a target or focus the app first";
@@ -18,8 +18,15 @@ pub(crate) type Prepared = Resolved;
 
 pub(crate) fn prepare(engine: &Engine, spec: &TargetSpec, mode: Mode, call: &CallScope) -> Result<Prepared> {
     let target = spec.parse()?;
-    let resolved = resolve::target(engine, &target, call)?;
+    let resolved = resolve::target_with(engine, &target, call, cover_for(mode))?;
     ready(engine, resolved, mode, call)
+}
+
+const fn cover_for(mode: Mode) -> Cover {
+    match mode {
+        Mode::Foreground => Cover::Refused,
+        Mode::Background => Cover::Ignored,
+    }
 }
 
 pub(crate) fn prepare_default_window(engine: &Engine, call: &CallScope) -> Result<Prepared> {
@@ -84,5 +91,11 @@ mod tests {
         assert!(matches!(chosen, Cow::Borrowed(_)));
         assert_eq!(given_or_else(None, || Ok(whole(2))).unwrap().window.hwnd, WindowRef(2));
         assert!(given_or_else(None, || Err(Error::not_found("nothing here"))).is_err());
+    }
+
+    #[test]
+    fn only_background_steps_reach_a_screenshot_point_behind_another_window() {
+        assert_eq!(cover_for(Mode::Foreground), Cover::Refused);
+        assert_eq!(cover_for(Mode::Background), Cover::Ignored);
     }
 }

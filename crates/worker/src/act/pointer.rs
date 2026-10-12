@@ -12,7 +12,7 @@ use super::{
 };
 use crate::{call_scope::CallScope, engine::Engine, overlay};
 
-const SHORTEST_DRAG: Duration = Duration::from_millis(100);
+pub(crate) const SHORTEST_DRAG: Duration = Duration::from_millis(100);
 
 pub(crate) struct Drag<'a> {
     pub(crate) from: &'a Prepared,

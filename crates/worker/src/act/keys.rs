@@ -1,5 +1,5 @@
 use deckhand_core::{
-    Result,
+    Error, Result,
     keys::{Chord, parse_keys},
     protocol::KeyAction,
 };
@@ -8,6 +8,8 @@ use super::{
     done::{Done, via_focus_click},
     focus::keyboard_target,
     key_labels::key_chips,
+    message_keys,
+    mode::Mode,
     settle,
     target::Prepared,
 };
@@ -25,11 +27,15 @@ pub(crate) fn step(
     engine: &Engine,
     target: Option<&Prepared>,
     request: &KeyRequest<'_>,
+    mode: Mode,
     call: &CallScope,
 ) -> Result<Done> {
     let chords = parse_keys(request.keys)?;
     if let Some(prepared) = target {
         host_terminal::refuse_keys(engine, &prepared.window)?;
+    }
+    if mode == Mode::Background {
+        return press_in_background(engine, target, &chords, request, call);
     }
     match request.action {
         KeyAction::Up => release(engine, &chords, call),
@@ -40,6 +46,20 @@ pub(crate) fn step(
             send_to_focus(engine, target, &chords, call, || press(engine, &chords, request.repeat, call).map(|()| None))
         }
     }
+}
+
+fn press_in_background(
+    engine: &Engine,
+    target: Option<&Prepared>,
+    chords: &[Chord],
+    request: &KeyRequest<'_>,
+    call: &CallScope,
+) -> Result<Done> {
+    let Some(prepared) = target else { return Err(Error::invalid("key in background mode needs a target")) };
+    if request.action != KeyAction::Press {
+        return Err(Error::invalid("background mode only presses keys; key down and up need the real keyboard"));
+    }
+    message_keys::press(engine, prepared, chords, request.repeat, call)
 }
 
 fn send_to_focus(

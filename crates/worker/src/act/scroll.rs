@@ -5,6 +5,7 @@ use super::{
     done::Done,
     hit::lands_in,
     locate::refreshed,
+    message,
     mode::Mode,
     motion::Motion,
     settle,
@@ -29,15 +30,29 @@ pub(crate) fn step(
     call: &CallScope,
 ) -> Result<Done> {
     let prepared = given_or_else(target, || prepare_default_window(engine, call))?;
-    let wheel_at = match mode {
-        Mode::Foreground => wheel_point(engine, &prepared)?,
-        Mode::Background => None,
-    };
-    match (wheel_at, prepared.element_or_point_hit()) {
+    if mode == Mode::Background {
+        return scroll_in_background(engine, &prepared, request, call);
+    }
+    match (wheel_point(engine, &prepared)?, prepared.element_or_point_hit()) {
         (Some(point), _) => wheel(engine, &prepared.window, point, request, call),
         (None, Some(element)) => scroll_by_pattern(engine, &prepared.window, element, request, call),
-        (None, None) => Err(no_scroll_target(&prepared.window, mode)),
+        (None, None) => Err(no_scroll_target(&prepared.window)),
     }
+}
+
+fn scroll_in_background(
+    engine: &Engine,
+    prepared: &Prepared,
+    request: &ScrollRequest,
+    call: &CallScope,
+) -> Result<Done> {
+    if let Some(element) = prepared.tracked_element() {
+        match scroll_by_pattern(engine, &prepared.window, element, request, call) {
+            Err(error) if error.code == ErrorCode::Unsupported => {}
+            outcome => return outcome,
+        }
+    }
+    message::scroll(engine, prepared, request.direction, amount(request), call)
 }
 
 fn edge_note(moved: u32) -> Option<String> {
@@ -54,7 +69,7 @@ fn wheel(
     let motion = Motion::start(engine, call);
     motion.glide_to(point, request.glide_ms)?;
     if !lands_in(engine, point, window) {
-        return Err(no_scroll_target(window, Mode::Foreground));
+        return Err(no_scroll_target(window));
     }
     motion.check()?;
     deckhand_input::scroll(point, request.direction, amount(request))?;
@@ -94,17 +109,8 @@ fn current_point(engine: &Engine, prepared: &Prepared) -> Result<Option<Point>> 
     })
 }
 
-fn no_scroll_target(window: &WindowInfo, mode: Mode) -> Error {
-    match mode {
-        Mode::Foreground => Error::new(
-            ErrorCode::Obscured,
-            format!("another window covers {} where the wheel would scroll", window.hwnd),
-        ),
-        Mode::Background => Error::invalid(format!(
-            "scrolling {} without the real mouse needs an element with a scroll pattern as target",
-            window.hwnd
-        )),
-    }
+fn no_scroll_target(window: &WindowInfo) -> Error {
+    Error::new(ErrorCode::Obscured, format!("another window covers {} where the wheel would scroll", window.hwnd))
 }
 
 #[cfg(test)]

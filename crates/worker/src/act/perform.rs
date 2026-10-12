@@ -61,7 +61,7 @@ fn dispatch(
             typing::step(engine, prepared, &TypeRequest { text, enter: *enter, how: *how }, mode, call)
         }
         Step::Key { keys, repeat, action, .. } => {
-            keys::step(engine, prepared, &KeyRequest { keys, repeat: *repeat, action: *action }, call)
+            keys::step(engine, prepared, &KeyRequest { keys, repeat: *repeat, action: *action }, mode, call)
         }
         Step::Mouse { .. } => mouse::step(engine, &MouseRequest::try_from(step)?, prepared, step, mode, call),
         Step::Set { .. } => set::step(engine, required(prepared, step)?, &step.set_change()?, mode, call),

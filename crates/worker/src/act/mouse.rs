@@ -6,6 +6,7 @@ use deckhand_core::{
 use super::{
     buttons::{self, Press},
     done::Done,
+    message::{self, MessageDrag},
     mode::{Mode, for_window},
     perform::required,
     pointer::{self, Drag},
@@ -60,16 +61,27 @@ pub(crate) fn step(
             let scroll = ScrollRequest { direction, amount: request.amount, glide_ms: request.glide_ms };
             scroll::step(engine, target, &scroll, mode, call)
         }
-        MouseAction::Drag => drag(engine, request, required(target, step)?, step, call),
+        MouseAction::Drag => drag(engine, request, required(target, step)?, step, mode, call),
     }
 }
 
-fn drag(engine: &Engine, request: &MouseRequest<'_>, from: &Prepared, step: &Step, call: &CallScope) -> Result<Done> {
+fn drag(
+    engine: &Engine,
+    request: &MouseRequest<'_>,
+    from: &Prepared,
+    step: &Step,
+    mode: Mode,
+    call: &CallScope,
+) -> Result<Done> {
     let to = request.to.ok_or_else(|| Error::invalid("mouse action=drag needs \"to\""))?;
-    let to = prepare(engine, to, Mode::Foreground, call)?;
-    for_window(Mode::Foreground, &to.window, step)?;
+    let to = prepare(engine, to, mode, call)?;
     let button = request.button.unwrap_or_default();
-    pointer::drag(engine, &Drag { from, to: &to, button, glide_ms: request.glide_ms }, call)
+    match for_window(mode, &to.window, step)? {
+        Mode::Foreground => pointer::drag(engine, &Drag { from, to: &to, button, glide_ms: request.glide_ms }, call),
+        Mode::Background => {
+            message::drag(engine, &MessageDrag { from, to: &to, button, glide_ms: request.glide_ms }, call)
+        }
+    }
 }
 
 #[cfg(test)]

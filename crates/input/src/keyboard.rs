@@ -20,12 +20,17 @@ pub(crate) enum KeyTransition {
 }
 
 pub(crate) fn key_event(vk: VIRTUAL_KEY, transition: KeyTransition, layout: &impl KeyboardLayout) -> InputEvent {
-    let code = layout.scan_code(vk);
+    let (scan, extended) = scan_and_extended(vk, layout);
     let mut flags = release_flag(transition);
-    if is_extended_key(vk) || code >> 8 == EXTENDED_PREFIX {
+    if extended {
         flags |= KEYEVENTF_EXTENDEDKEY;
     }
-    InputEvent::Key(KeyStroke { vk, scan: scan_byte(code), flags })
+    InputEvent::Key(KeyStroke { vk, scan, flags })
+}
+
+pub(crate) fn scan_and_extended(vk: VIRTUAL_KEY, layout: &impl KeyboardLayout) -> (u16, bool) {
+    let code = layout.scan_code(vk);
+    (scan_byte(code), is_extended_key(vk) || code >> 8 == EXTENDED_PREFIX)
 }
 
 pub(crate) fn key_tap(vk: VIRTUAL_KEY, layout: &impl KeyboardLayout) -> [InputEvent; 2] {

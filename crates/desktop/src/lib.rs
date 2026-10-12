@@ -63,6 +63,7 @@ pub use known_folder::videos_folder;
 pub use monitors::{Monitor, monitors};
 pub use notify::{Notifier, NotifyOutcome};
 pub use package_identity::package_family;
+pub use process::process_image_path;
 pub use quiet_state::QuietReason;
 pub use toast::ToastBlock;
 pub use token::own_process_elevated;

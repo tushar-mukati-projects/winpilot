@@ -1,16 +1,22 @@
-use deckhand_core::{Element, Error, Result, protocol::ClickHow};
+use deckhand_core::{Element, Error, Result, WindowInfo, protocol::ClickHow};
 
 use super::{
     by_pattern::by_pattern,
-    click_choice::{ClickOptions, ClickPath, choose_path, pattern_actions},
+    click_choice::{BackgroundPath, ClickOptions, ClickPath, background_path, choose_path, pattern_actions},
     done::Done,
+    message,
     mode::Mode,
     mouse_click::click_by_mouse,
     pattern_click::click_by_pattern,
     settle,
     target::Prepared,
 };
-use crate::{call_scope::CallScope, engine::Engine, overlay};
+use crate::{
+    call_scope::CallScope,
+    engine::Engine,
+    overlay,
+    resolve::{Reach, element_window},
+};
 
 const MOUSE: &str = "mouse";
 
@@ -23,7 +29,7 @@ pub(crate) fn step(
 ) -> Result<Done> {
     match mode {
         Mode::Foreground => click_prepared(engine, prepared, options, call),
-        Mode::Background => click_in_background(engine, prepared, call),
+        Mode::Background => click_in_background(engine, prepared, options, call),
     }
 }
 
@@ -62,14 +68,49 @@ fn pattern_or_fallback(engine: &Engine, prepared: &Prepared, options: ClickOptio
     )))
 }
 
-fn click_in_background(engine: &Engine, prepared: &Prepared, call: &CallScope) -> Result<Done> {
-    let element = prepared.require_element("a background click")?;
-    clicked_by_pattern(engine, prepared, element, call)?.ok_or_else(|| {
-        Error::unsupported(format!(
-            "{} has no invoke, toggle, selection, expand/collapse or default-action pattern, so it can't be clicked without the real mouse",
-            element.id
-        ))
-    })
+fn click_in_background(engine: &Engine, prepared: &Prepared, options: ClickOptions, call: &CallScope) -> Result<Done> {
+    if matches!(prepared.reach, Reach::Point { .. }) {
+        message::require_not_in_use(&deckhand_desktop::window(prepared.window.hwnd)?)?;
+    }
+    let candidate = background_candidate(engine, prepared);
+    match background_path(options, candidate) {
+        BackgroundPath::Message => message::click(engine, prepared, options, call),
+        BackgroundPath::Pattern => pattern_or_message(engine, prepared, candidate, options, call),
+    }
+}
+
+fn background_candidate<'a>(engine: &Engine, prepared: &'a Prepared) -> Option<&'a Element> {
+    match &prepared.reach {
+        Reach::Element(element) => Some(element),
+        Reach::Point { under, .. } => belongs_to(engine, under, &prepared.window).then_some(under),
+        Reach::Window => None,
+    }
+}
+
+fn belongs_to(engine: &Engine, element: &Element, window: &WindowInfo) -> bool {
+    element_window(engine, element.id).is_ok_and(|owner| owner.hwnd == window.hwnd)
+}
+
+fn pattern_or_message(
+    engine: &Engine,
+    prepared: &Prepared,
+    candidate: Option<&Element>,
+    options: ClickOptions,
+    call: &CallScope,
+) -> Result<Done> {
+    let Some(element) = candidate else {
+        return Err(Error::invalid("how=invoke needs an element target, not a point or a window"));
+    };
+    if let Some(done) = clicked_by_pattern(engine, prepared, element, call)? {
+        return Ok(done);
+    }
+    if options.how == ClickHow::Auto {
+        return message::click(engine, prepared, options, call);
+    }
+    Err(Error::unsupported(format!(
+        "{} has no invoke, toggle, selection, expand/collapse or default-action pattern; drop how=invoke to click it by window message",
+        element.id
+    )))
 }
 
 fn clicked_by_pattern(
