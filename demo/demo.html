@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0d1a">
+<title>Acme Cloud — Create project</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%237c3aed'/%3E%3Cstop offset='.55' stop-color='%234f46e5'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M9 23 16 8l7 15h-4l-3-7-3 7z' fill='white'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #0b0d1a;
+  --panel: rgba(20, 23, 44, 0.82);
+  --panel-solid: #14172c;
+  --field: rgba(7, 9, 22, 0.62);
+  --line: rgba(255, 255, 255, 0.075);
+  --line-strong: rgba(255, 255, 255, 0.13);
+  --text: #eef0fb;
+  --text-2: #a7aecb;
+  --text-3: #6f7695;
+  --violet: #7c3aed;
+  --indigo: #4f46e5;
+  --sky: #0ea5e9;
+  --cyan: #22d3ee;
+  --pink: #f472b6;
+  --focus: #8b5cf6;
+  --green: #34d399;
+  --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 var(--ui);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 560px at 22% -12%, rgba(124, 58, 237, 0.24), transparent 62%),
+    radial-gradient(760px 520px at 104% -4%, rgba(14, 165, 233, 0.13), transparent 60%),
+    radial-gradient(820px 620px at 92% 118%, rgba(244, 114, 182, 0.11), transparent 62%);
+}
+svg { display: block; }
+button, input, select { font: inherit; color: inherit; }
+
+.app { position: relative; display: grid; grid-template-columns: 252px 1fr; height: 100%; }
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 16px 18px;
+  border-right: 1px solid var(--line);
+  background: rgba(8, 10, 22, 0.55);
+}
+.brand { display: flex; align-items: center; gap: 11px; padding: 6px 10px 24px; font: 650 17.5px/1 var(--display); letter-spacing: -0.01em; }
+.brand-mark { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, var(--violet), var(--indigo) 55%, var(--cyan)); display: grid; place-items: center; box-shadow: 0 6px 18px -6px rgba(124, 58, 237, 0.8); }
+.brand-mark svg { width: 18px; height: 18px; }
+.nav-label { padding: 16px 12px 8px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-3); }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav a { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 10px; color: var(--text-2); text-decoration: none; font-size: 14.5px; }
+.nav a svg { width: 18px; height: 18px; opacity: 0.85; }
+.nav a.active { color: var(--text); background: rgba(139, 92, 246, 0.14); box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.28); }
+.nav a .count { margin-left: auto; font-size: 12px; color: var(--text-3); }
+.usage { margin: 22px 4px 0; padding: 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); }
+.usage-top { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-2); }
+.usage-top b { color: var(--text); font-weight: 600; }
+.bar { height: 6px; margin-top: 10px; border-radius: 99px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+.bar i { display: block; width: 38%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--violet), var(--sky)); }
+.avatar { width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: linear-gradient(135deg, var(--pink), var(--violet)); }
+
+main { display: flex; flex-direction: column; min-width: 0; }
+.topbar { height: 62px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 34px; border-bottom: 1px solid var(--line); }
+.crumbs { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-3); }
+.crumbs b { color: var(--text); font-weight: 600; }
+.top-actions { display: flex; align-items: center; gap: 12px; }
+.search { width: 290px; height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.035); color: var(--text-3); font-size: 13.5px; }
+.search svg { width: 16px; height: 16px; }
+.search kbd { margin-left: auto; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line-strong); font: 11.5px var(--ui); color: var(--text-3); }
+.icon-btn { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.035); color: var(--text-2); }
+.icon-btn svg { width: 18px; height: 18px; }
+
+.content { flex: 1; display: flex; justify-content: center; padding-top: 30px; }
+.inner { width: 1112px; }
+.head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 22px; }
+h1 { font: 650 32px/1.15 var(--display); letter-spacing: -0.02em; }
+.sub { margin-top: 7px; font-size: 15.5px; color: var(--text-2); }
+.status { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 99px; font-size: 13px; font-weight: 600; color: var(--text-2); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line-strong); }
+.status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #8a91ad; }
+.status.live { color: #c9fbe6; background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.35); }
+.status.live::before { background: var(--green); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6); animation: ping 1.6s infinite; }
+
+.grid { display: grid; grid-template-columns: 1fr 348px; gap: 24px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 30px 80px -24px rgba(0, 0, 0, 0.65); }
+
+form.card { padding: 26px 30px 24px; display: flex; flex-direction: column; gap: 21px; }
+.field { display: flex; flex-direction: column; gap: 8px; }
+.label { font-size: 13.5px; font-weight: 600; color: var(--text-2); letter-spacing: 0.01em; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.input, .select select {
+  width: 100%;
+  height: 50px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--field);
+  font-size: 16.5px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.input::placeholder { color: #575e7c; }
+.input:focus, .select select:focus { border-color: rgba(139, 92, 246, 0.85); box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.2); background: rgba(9, 11, 26, 0.8); }
+.hint { font-size: 13px; color: var(--text-3); }
+.hint b { font-weight: 600; color: #7fe7f7; font-family: var(--mono); font-size: 12.5px; }
+.select { position: relative; }
+.select select { appearance: none; padding-right: 130px; cursor: pointer; }
+.select .code { position: absolute; right: 42px; top: 50%; transform: translateY(-50%); padding: 3px 8px; border-radius: 7px; background: rgba(34, 211, 238, 0.1); border: 1px solid rgba(34, 211, 238, 0.22); color: #8eeefb; font: 12px var(--mono); pointer-events: none; }
+.select .chev { position: absolute; right: 15px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--text-3); pointer-events: none; }
+
+.plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.plan { position: relative; padding: 15px 16px 14px; border-radius: 14px; border: 1px solid var(--line-strong); background: var(--field); transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s; }
+.plan input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 2; }
+.plan-top { display: flex; align-items: center; justify-content: space-between; }
+.plan-name { font-size: 15.5px; font-weight: 650; }
+.dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.25); display: grid; place-items: center; transition: all 0.2s; }
+.dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: white; transform: scale(0); transition: transform 0.2s; }
+.price { margin-top: 8px; font: 700 24px/1.1 var(--display); letter-spacing: -0.01em; }
+.price small { font: 500 13px var(--ui); color: var(--text-3); }
+.plan-desc { margin-top: 4px; font-size: 13px; color: var(--text-2); }
+.popular { position: absolute; top: -10px; right: 14px; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: white; background: linear-gradient(90deg, var(--violet), var(--sky)); box-shadow: 0 6px 16px -6px rgba(124, 58, 237, 0.9); }
+.plan:has(input:checked) {
+  border-color: transparent;
+  background: linear-gradient(#171a33, #121429) padding-box, linear-gradient(135deg, var(--violet), var(--sky) 60%, var(--pink)) border-box;
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.13), 0 14px 34px -12px rgba(99, 102, 241, 0.6);
+}
+.plan:has(input:checked) .dot { border-color: transparent; background: linear-gradient(135deg, var(--violet), var(--sky)); }
+.plan:has(input:checked) .dot::after { transform: scale(1); }
+
+.switch-row, .drop { position: relative; display: flex; align-items: center; gap: 14px; min-height: 74px; padding: 14px 16px; border-radius: 14px; }
+.switch-row { border: 1px solid var(--line-strong); background: var(--field); }
+.switch { position: relative; width: 46px; height: 26px; flex: none; }
+.switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 2; }
+.track { position: absolute; inset: 0; border-radius: 99px; background: #2a2f4a; transition: background 0.25s; }
+.track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: white; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); transition: transform 0.25s cubic-bezier(0.3, 1.4, 0.5, 1); }
+.switch input:checked + .track { background: linear-gradient(90deg, var(--violet), var(--sky)); }
+.switch input:checked + .track::after { transform: translateX(20px); }
+.row-text b { display: block; font-size: 15px; font-weight: 600; }
+.row-text small { display: block; font-size: 13px; color: var(--text-3); }
+
+.drop { border: 1.5px dashed rgba(255, 255, 255, 0.18); background: rgba(7, 9, 22, 0.38); transition: border-color 0.2s, background 0.2s; }
+.drop input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 2; }
+.drop-icon { width: 42px; height: 42px; flex: none; display: grid; place-items: center; border-radius: 11px; background: rgba(139, 92, 246, 0.14); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.28); }
+.drop-icon svg { width: 20px; height: 20px; }
+.drop .pdf { display: none; }
+.drop.has-file { border-style: solid; border-color: rgba(52, 211, 153, 0.45); background: rgba(52, 211, 153, 0.07); }
+.drop.has-file .drop-icon { background: rgba(52, 211, 153, 0.14); border-color: rgba(52, 211, 153, 0.35); color: #6ee7b7; }
+.drop.has-file .upload { display: none; }
+.drop.has-file .pdf { display: block; }
+
+.actions { display: flex; align-items: center; justify-content: space-between; padding-top: 20px; border-top: 1px solid var(--line); }
+.actions .note { font-size: 13px; color: var(--text-3); }
+.buttons { display: flex; gap: 12px; }
+.btn { height: 50px; padding: 0 22px; border-radius: 12px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.04); font-size: 15.5px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+.btn-primary {
+  min-width: 212px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 0;
+  color: white;
+  font-size: 16px;
+  background: linear-gradient(135deg, #7c3aed, #4f46e5 48%, #0ea5e9);
+  box-shadow: 0 12px 30px -10px rgba(99, 102, 241, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transition: filter 0.2s, background 0.3s;
+}
+.btn-primary svg { width: 18px; height: 18px; }
+.btn-primary .spin { display: none; width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(255, 255, 255, 0.35); border-top-color: white; animation: spin 0.7s linear infinite; }
+.btn-primary.loading { filter: saturate(0.85) brightness(0.92); }
+.btn-primary.loading .spin { display: block; }
+.btn-primary.loading .arrow, .btn-primary.done .arrow { display: none; }
+.btn-primary .tick { display: none; }
+.btn-primary.done { background: linear-gradient(135deg, #059669, #10b981 60%, #34d399); box-shadow: 0 12px 30px -10px rgba(16, 185, 129, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.28); }
+.btn-primary.done .tick { display: block; }
+
+.summary { padding: 22px 22px 20px; }
+.sum-head { display: flex; align-items: center; justify-content: space-between; font-size: 13.5px; font-weight: 600; color: var(--text-2); letter-spacing: 0.01em; }
+.tile { display: flex; align-items: center; gap: 13px; margin: 16px 0 6px; padding: 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); }
+.mono-badge { width: 44px; height: 44px; flex: none; border-radius: 12px; display: grid; place-items: center; font: 700 19px var(--display); background: linear-gradient(135deg, var(--violet), var(--indigo) 50%, var(--cyan)); box-shadow: 0 8px 22px -8px rgba(124, 58, 237, 0.9); }
+.tile b { display: block; font-size: 16px; font-weight: 650; }
+.tile small { display: block; font: 12.5px var(--mono); color: #7fe7f7; }
+.rows { display: flex; flex-direction: column; }
+.sum-row { display: flex; justify-content: space-between; gap: 12px; padding: 11px 10px; margin: 0 -10px; border-radius: 10px; font-size: 14px; transition: background 0.6s; }
+.sum-row + .sum-row { border-top: 1px solid var(--line); }
+.sum-row span { color: var(--text-3); }
+.sum-row strong { font-weight: 600; text-align: right; }
+.sum-row.flash { background: rgba(139, 92, 246, 0.16); transition: none; }
+.total { display: flex; align-items: baseline; justify-content: space-between; margin-top: 12px; padding-top: 16px; border-top: 1px solid var(--line-strong); }
+.total span { font-size: 13.5px; color: var(--text-2); }
+.total b { font: 700 28px/1 var(--display); letter-spacing: -0.02em; }
+.total small { font-size: 13px; color: var(--text-3); font-weight: 500; }
+.secure { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 12.5px; color: var(--text-3); }
+.secure svg { width: 15px; height: 15px; }
+
+.toast {
+  position: fixed;
+  right: 32px;
+  bottom: 30px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 340px;
+  padding: 15px 18px 15px 15px;
+  border-radius: 16px;
+  background: #161a31;
+  border: 1px solid rgba(52, 211, 153, 0.38);
+  box-shadow: 0 24px 60px -16px rgba(0, 0, 0, 0.75), 0 0 0 6px rgba(52, 211, 153, 0.07);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(16px) scale(0.97);
+  transition: opacity 0.3s, transform 0.45s cubic-bezier(0.2, 1.3, 0.4, 1), visibility 0.3s;
+}
+.toast.show { opacity: 1; visibility: visible; transform: none; }
+.toast-icon { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 12px; color: #04140d; background: linear-gradient(135deg, #34d399, #22d3ee); }
+.toast-icon svg { width: 20px; height: 20px; }
+.toast b { display: block; font-size: 15.5px; font-weight: 650; }
+.toast small { display: block; font-size: 13px; color: var(--text-2); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes ping { 70% { box-shadow: 0 0 0 7px rgba(52, 211, 153, 0); } 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" aria-label="Main navigation">
+    <div class="brand">
+      <span class="brand-mark"><svg viewBox="0 0 24 24" fill="white" aria-hidden="true"><path d="M4 20 12 3l8 17h-4.6L12 12.2 8.6 20z"/></svg></span>
+      Acme Cloud
+    </div>
+    <nav class="nav">
+      <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Overview</a>
+      <a href="#" tabindex="-1" class="active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Projects<span class="count">12</span></a>
+      <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Deployments</a>
+      <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Databases</a>
+      <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/></svg>Storage</a>
+      <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Monitoring</a>
+    </nav>
+    <div class="nav-label">Workspace</div>
+    <nav class="nav">
+      <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></svg>Billing</a>
+      <a href="#" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</a>
+    </nav>
+    <div class="usage" aria-hidden="true">
+      <div class="usage-top"><span>Monthly credits</span><b>$38 / $100</b></div>
+      <div class="bar"><i></i></div>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div class="crumbs" aria-hidden="true">Projects <span>/</span> <b>New project</b></div>
+      <div class="top-actions" aria-hidden="true">
+        <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search projects<kbd>Ctrl K</kbd></div>
+        <div class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></div>
+        <div class="avatar">AL</div>
+      </div>
+    </header>
+
+    <div class="content">
+      <div class="inner">
+        <div class="head">
+          <div>
+            <h1>Create project</h1>
+            <p class="sub">Spin up a new environment in seconds.</p>
+          </div>
+          <span class="status" id="status">Draft</span>
+        </div>
+
+        <div class="grid">
+          <form class="card" id="form" novalidate autocomplete="off">
+            <div class="field">
+              <label class="label" for="name">Project name</label>
+              <input class="input" id="name" name="name" type="text" placeholder="e.g. apollo" spellcheck="false" autocomplete="off" aria-describedby="slug-hint">
+              <p class="hint" id="slug-hint">Your app will live at <b id="slug">your-project.acme.app</b></p>
+            </div>
+
+            <div class="row">
+              <div class="field">
+                <label class="label" for="email">Owner email</label>
+                <input class="input" id="email" name="email" type="email" placeholder="you@company.com" spellcheck="false" autocomplete="off">
+              </div>
+              <div class="field">
+                <label class="label" for="region">Region</label>
+                <div class="select">
+                  <select id="region" name="region">
+                    <option data-code="us-east-1" selected>N. Virginia</option>
+                    <option data-code="us-west-2">Oregon</option>
+                    <option data-code="eu-west-2">London</option>
+                    <option data-code="eu-central-1">Frankfurt</option>
+                    <option data-code="ap-northeast-1">Tokyo</option>
+                    <option data-code="ap-southeast-1">Singapore</option>
+                    <option data-code="ap-southeast-2">Sydney</option>
+                  </select>
+                  <span class="code" id="region-code" aria-hidden="true">us-east-1</span>
+                  <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </div>
+              </div>
+            </div>
+
+            <div class="field" role="radiogroup" aria-labelledby="plan-label">
+              <span class="label" id="plan-label">Plan</span>
+              <div class="plans">
+                <label class="plan">
+                  <input type="radio" name="plan" value="starter" aria-label="Starter" aria-describedby="starter-desc" checked>
+                  <div class="plan-top" aria-hidden="true"><span class="plan-name">Starter</span><span class="dot"></span></div>
+                  <div class="price" aria-hidden="true">$0 <small>/ mo</small></div>
+                  <div class="plan-desc" id="starter-desc">For side projects</div>
+                </label>
+                <label class="plan">
+                  <input type="radio" name="plan" value="pro" aria-label="Pro" aria-describedby="pro-desc">
+                  <span class="popular" aria-hidden="true">Popular</span>
+                  <div class="plan-top" aria-hidden="true"><span class="plan-name">Pro</span><span class="dot"></span></div>
+                  <div class="price" aria-hidden="true">$29 <small>/ mo</small></div>
+                  <div class="plan-desc" id="pro-desc">For production apps</div>
+                </label>
+                <label class="plan">
+                  <input type="radio" name="plan" value="team" aria-label="Team" aria-describedby="team-desc">
+                  <div class="plan-top" aria-hidden="true"><span class="plan-name">Team</span><span class="dot"></span></div>
+                  <div class="price" aria-hidden="true">$99 <small>/ mo</small></div>
+                  <div class="plan-desc" id="team-desc">For growing teams</div>
+                </label>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="switch-row">
+                <span class="switch">
+                  <input type="checkbox" id="backups" aria-label="Enable backups" aria-describedby="backups-desc">
+                  <span class="track"></span>
+                </span>
+                <span class="row-text"><b aria-hidden="true">Enable backups</b><small id="backups-desc">Daily snapshots, kept 30 days · +$5</small></span>
+              </div>
+              <div class="drop" id="drop">
+                <input type="file" id="spec" accept=".pdf,application/pdf" aria-label="Attach spec">
+                <span class="drop-icon" aria-hidden="true">
+                  <svg class="upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+                  <svg class="pdf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 14l2 2 4-4"/></svg>
+                </span>
+                <span class="row-text" aria-hidden="true"><b id="drop-title">Attach a spec</b><small id="drop-meta">PDF up to 10 MB · click to browse</small></span>
+              </div>
+            </div>
+
+            <div class="actions">
+              <span class="note">You can change all of this later.</span>
+              <div class="buttons">
+                <button class="btn" type="button">Cancel</button>
+                <button class="btn btn-primary" type="submit" id="create">
+                  <span class="spin" aria-hidden="true"></span>
+                  <svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                  <span id="create-label">Create project</span>
+                  <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <aside class="card summary" aria-label="Summary">
+            <div class="sum-head"><span>Summary</span><span id="sum-plan-tag">Starter</span></div>
+            <div class="tile">
+              <div class="mono-badge" id="badge">A</div>
+              <div><b id="s-name">Untitled project</b><small id="s-url">your-project.acme.app</small></div>
+            </div>
+            <div class="rows">
+              <div class="sum-row" id="r-owner"><span>Owner</span><strong id="s-owner">—</strong></div>
+              <div class="sum-row" id="r-region"><span>Location</span><strong id="s-region">N. Virginia</strong></div>
+              <div class="sum-row" id="r-plan"><span>Tier</span><strong id="s-plan">Starter</strong></div>
+              <div class="sum-row" id="r-backups"><span>Snapshots</span><strong id="s-backups">Off</strong></div>
+              <div class="sum-row" id="r-spec"><span>Document</span><strong id="s-spec">None</strong></div>
+            </div>
+            <div class="total"><span>Estimated</span><span><b id="s-total">$0</b> <small>/ month</small></span></div>
+            <div class="secure"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6z"/></svg>Billed monthly. Cancel anytime.</div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const prices = { starter: 0, pro: 29, team: 99 };
+const planNames = { starter: "Starter", pro: "Pro", team: "Team" };
+let ready = false;
+let busy = false;
+
+function slugOf(name) {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "your-project";
+}
+
+function readForm() {
+  const region = $("region").selectedOptions[0];
+  const plan = document.querySelector("input[name=plan]:checked")?.value ?? "starter";
+  const file = $("spec").files[0];
+  return {
+    name: $("name").value.trim(),
+    email: $("email").value.trim(),
+    region: region.textContent,
+    code: region.dataset.code,
+    plan,
+    backups: $("backups").checked,
+    file,
+  };
+}
+
+function show(id, text, rowId) {
+  const element = $(id);
+  if (element.textContent === text) return;
+  element.textContent = text;
+  if (!ready || !rowId) return;
+  const row = $(rowId);
+  row.classList.add("flash");
+  setTimeout(() => row.classList.remove("flash"), 60);
+}
+
+function render() {
+  const form = readForm();
+  const slug = slugOf(form.name);
+  show("slug", `${slug}.acme.app`);
+  show("s-name", form.name || "Untitled project", null);
+  show("s-url", `${slug}.acme.app`);
+  show("badge", (form.name[0] || "A").toUpperCase());
+  show("s-owner", form.email || "—", "r-owner");
+  show("region-code", form.code);
+  show("s-region", `${form.region} · ${form.code}`, "r-region");
+  show("s-plan", planNames[form.plan], "r-plan");
+  show("sum-plan-tag", planNames[form.plan]);
+  show("s-backups", form.backups ? "Daily · 30 days" : "Off", "r-backups");
+  show("s-spec", form.file ? form.file.name : "None", "r-spec");
+  show("s-total", `$${prices[form.plan] + (form.backups ? 5 : 0)}`, null);
+  $("drop").classList.toggle("has-file", Boolean(form.file));
+  if (form.file) {
+    show("drop-title", form.file.name);
+    show("drop-meta", `${Math.max(0.1, form.file.size / 1024).toFixed(1)} KB · ready to upload`);
+  }
+  ready = true;
+}
+
+function finish() {
+  const form = readForm();
+  const slug = slugOf(form.name);
+  $("create").classList.replace("loading", "done");
+  $("create-label").textContent = "Created";
+  $("status").textContent = "Live";
+  $("status").classList.add("live");
+  $("toast").innerHTML =
+    '<span class="toast-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 15c-1.5 1.3-2 4-2 4s2.7-.5 4-2m7.5-9.5a2 2 0 1 1 0 .01M9 15l-3-3c1-3 4.5-8 12-9-1 7.5-6 11-9 12z"/></svg></span>' +
+    `<div><b>Project created ✓</b><small>${slug}.acme.app is deploying to ${form.region}</small></div>`;
+  $("toast").classList.add("show");
+}
+
+$("form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (busy) return;
+  busy = true;
+  $("create").classList.add("loading");
+  $("create-label").textContent = "Creating…";
+  setTimeout(finish, 650);
+});
+
+for (const type of ["input", "change"]) document.addEventListener(type, render, true);
+setInterval(render, 120);
+render();
+</script>
+</body>
+</html>
