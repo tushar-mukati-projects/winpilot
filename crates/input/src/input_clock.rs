@@ -11,18 +11,18 @@ const NEVER: u64 = 0;
 static EPOCH: OnceLock<Instant> = OnceLock::new();
 static LAST_USER_INPUT_MS: AtomicU64 = AtomicU64::new(NEVER);
 
-pub fn start_clock() {
+pub(crate) fn start_clock() {
     EPOCH.get_or_init(Instant::now);
 }
 
-pub fn record_user_input() {
+pub(crate) fn record_user_input() {
     let Some(epoch) = EPOCH.get() else {
         return;
     };
     LAST_USER_INPUT_MS.store(millis_since(*epoch, Instant::now()), Ordering::Relaxed);
 }
 
-pub fn last_user_input() -> Option<Instant> {
+pub(crate) fn last_user_input() -> Option<Instant> {
     let millis = LAST_USER_INPUT_MS.load(Ordering::Relaxed);
     if millis == NEVER {
         return None;

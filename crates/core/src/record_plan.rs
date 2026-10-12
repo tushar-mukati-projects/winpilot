@@ -7,8 +7,8 @@ use crate::{
     recording::{RecordRequest, VideoFormat},
 };
 
-pub const RECORD_SECONDS: RangeInclusive<u32> = 1..=1800;
-pub const RECORD_WIDTHS: RangeInclusive<u32> = 160..=3840;
+pub(crate) const RECORD_SECONDS: RangeInclusive<u32> = 1..=1800;
+pub(crate) const RECORD_WIDTHS: RangeInclusive<u32> = 160..=3840;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RecordPlan {

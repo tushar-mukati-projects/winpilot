@@ -18,7 +18,7 @@ impl Default for CoverHold {
 }
 
 impl CoverHold {
-    pub const fn new(hold: Duration) -> Self {
+    const fn new(hold: Duration) -> Self {
         Self { hold, seen: Vec::new(), whole_frame_seen: None }
     }
 

@@ -2,7 +2,6 @@ use std::time::{Duration, Instant};
 
 use deckhand_core::{Point, Rect};
 
-pub(crate) use super::scene_items::Look;
 use super::{
     chip_text::ChipText,
     fade::Fade,
@@ -10,7 +9,7 @@ use super::{
     presence::{FRAME, Presence, timed},
     scan::SCAN_COOLDOWN,
     scene_frame::{Frame, MAX_RIPPLES},
-    scene_items::{Chips, Focus, Recording, Ripple, Scan, Trail, Viewfinder},
+    scene_items::{Chips, Focus, Look, Recording, Ripple, Scan, Trail, Viewfinder},
     trail::{TrailDot, glide_dots, trail_dots},
 };
 

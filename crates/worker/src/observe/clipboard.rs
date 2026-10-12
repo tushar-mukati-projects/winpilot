@@ -10,7 +10,7 @@ use crate::{engine::Engine, guard::Guard};
 const MARKED_PRIVATE: &str =
     "the app that filled the clipboard marked it private (as password managers do), so Deckhand won't read it";
 
-pub fn read(engine: &Engine, request: ClipboardRequest) -> Result<ClipboardReport> {
+pub(crate) fn read(engine: &Engine, request: ClipboardRequest) -> Result<ClipboardReport> {
     let read = clipboard::read()?;
     check_allowed(&engine.guard, &read)?;
     let Some(text) = read.text else { return Ok(ClipboardReport { text: None, truncated: false }) };

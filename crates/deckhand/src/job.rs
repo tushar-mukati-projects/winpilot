@@ -64,7 +64,7 @@ impl Job {
 
 #[cfg(test)]
 impl Job {
-    pub fn limits(&self) -> JOB_OBJECT_LIMIT {
+    fn limits(&self) -> JOB_OBJECT_LIMIT {
         use windows::Win32::System::JobObjects::QueryInformationJobObject;
         let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
         let size = size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;

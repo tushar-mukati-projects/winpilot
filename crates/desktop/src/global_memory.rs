@@ -9,7 +9,7 @@ use windows::Win32::{
 pub(crate) struct OwnedGlobal(HGLOBAL);
 
 impl OwnedGlobal {
-    pub(crate) fn moveable(bytes: usize) -> Result<Self> {
+    fn moveable(bytes: usize) -> Result<Self> {
         let memory = unsafe { GlobalAlloc(GMEM_MOVEABLE, bytes) }.context("allocating clipboard memory")?;
         Ok(Self(memory))
     }
@@ -65,7 +65,7 @@ impl LockedGlobal {
         unsafe { std::slice::from_raw_parts(self.start.cast::<u16>(), units) }
     }
 
-    pub(crate) fn bytes_mut(&mut self) -> &mut [u8] {
+    fn bytes_mut(&mut self) -> &mut [u8] {
         unsafe { std::slice::from_raw_parts_mut(self.start.cast::<u8>(), self.bytes) }
     }
 }

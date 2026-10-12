@@ -2,7 +2,7 @@ use deckhand_core::protocol::StatusReport;
 
 use crate::engine::{Engine, duration_ms};
 
-pub fn report(engine: &Engine) -> StatusReport {
+pub(crate) fn report(engine: &Engine) -> StatusReport {
     StatusReport {
         version: env!("CARGO_PKG_VERSION").to_string(),
         server_uptime_ms: None,

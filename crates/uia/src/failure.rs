@@ -25,7 +25,7 @@ const UIA_MESSAGES: [(u32, &str); 7] = [
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Failure {
+enum Failure {
     Gone,
     NotResponding,
     AccessDenied,
@@ -34,7 +34,7 @@ pub(crate) enum Failure {
     Other,
 }
 
-pub(crate) fn classify(code: HRESULT) -> Failure {
+fn classify(code: HRESULT) -> Failure {
     match code.0 as u32 {
         UIA_E_ELEMENTNOTAVAILABLE | DISCONNECTED | NOT_CONNECTED | RPC_SERVER_UNAVAILABLE => Failure::Gone,
         UIA_E_TIMEOUT => Failure::NotResponding,

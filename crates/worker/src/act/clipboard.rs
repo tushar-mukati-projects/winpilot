@@ -1,14 +1,14 @@
 use deckhand_core::Result;
 use deckhand_desktop::clipboard;
 
-use super::{done::Done, mode::Mode};
+use super::{
+    done::Done,
+    mode::{Mode, check_before},
+};
 use crate::{call_scope::CallScope, engine::Engine};
 
-pub fn step(engine: &Engine, text: &str, mode: Mode, call: &CallScope) -> Result<Done> {
-    match mode {
-        Mode::Foreground => engine.guard.before_input(None, call)?,
-        Mode::Background => engine.guard.before_patterns(None, call)?,
-    }
+pub(crate) fn step(engine: &Engine, text: &str, mode: Mode, call: &CallScope) -> Result<Done> {
+    check_before(engine, None, mode, call)?;
     clipboard::set_text(text)?;
     Ok(Done::noting(set_note(text)))
 }

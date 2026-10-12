@@ -2,18 +2,18 @@ use deckhand_core::protocol::MouseButton;
 use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_SWAPBUTTON};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PhysicalButton {
+pub(crate) enum PhysicalButton {
     Left,
     Right,
     Middle,
 }
 
 impl PhysicalButton {
-    pub fn current(button: MouseButton) -> Self {
+    pub(crate) fn current(button: MouseButton) -> Self {
         Self::of(button, buttons_swapped())
     }
 
-    pub fn of(button: MouseButton, swapped: bool) -> Self {
+    pub(crate) fn of(button: MouseButton, swapped: bool) -> Self {
         match (button, swapped) {
             (MouseButton::Left, false) | (MouseButton::Right, true) => Self::Left,
             (MouseButton::Right, false) | (MouseButton::Left, true) => Self::Right,

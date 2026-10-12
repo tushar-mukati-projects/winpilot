@@ -6,7 +6,7 @@ pub(crate) fn scale_from_dpi(dpi: u32) -> f32 {
     sane_scale(dpi as f32 / BASE_DPI)
 }
 
-pub(crate) fn sane_scale(scale: f32) -> f32 {
+fn sane_scale(scale: f32) -> f32 {
     if scale.is_finite() { scale.clamp(MIN_SCALE, MAX_SCALE) } else { MIN_SCALE }
 }
 

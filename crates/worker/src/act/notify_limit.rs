@@ -2,16 +2,16 @@ use std::time::{Duration, Instant};
 
 use deckhand_core::{Error, ErrorCode, Result};
 
-pub const MAX_PER_CALL: usize = 3;
+pub(crate) const MAX_PER_CALL: usize = 3;
 const GAP_BETWEEN_CALLS: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Default)]
-pub struct NotifyLimit {
+pub(crate) struct NotifyLimit {
     last_sent: Option<Instant>,
 }
 
 impl NotifyLimit {
-    pub fn admit(&mut self, call_started: Instant, now: Instant) -> Result<()> {
+    pub(crate) fn admit(&mut self, call_started: Instant, now: Instant) -> Result<()> {
         if let Some(left) = self.wait_left(call_started, now) {
             return Err(too_soon(left));
         }
@@ -26,7 +26,7 @@ impl NotifyLimit {
     }
 }
 
-pub fn too_many(count: usize) -> Error {
+pub(crate) fn too_many(count: usize) -> Error {
     Error::invalid(format!(
         "a call may send at most {MAX_PER_CALL} notifications so the user isn't flooded, and this one has {count}; put the news in fewer notify steps"
     ))

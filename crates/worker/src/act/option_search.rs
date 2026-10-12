@@ -6,30 +6,30 @@ use deckhand_desktop::VisibleWindow;
 use super::target::Prepared;
 use crate::{engine::Engine, resolve::Reach, wait::unless_gone, window_classes::is_popup_class};
 
-pub const LISTED_NAMES: usize = 10;
+pub(crate) const LISTED_NAMES: usize = 10;
 
 #[derive(Debug, Clone)]
-pub struct Combo {
-    pub window: WindowInfo,
-    pub id: ElementRef,
-    pub opened_at: Instant,
+pub(crate) struct Combo {
+    pub(crate) window: WindowInfo,
+    pub(crate) id: ElementRef,
+    pub(crate) opened_at: Instant,
 }
 
 #[derive(Debug, Clone)]
-pub struct Found {
-    pub element: Element,
-    pub window: WindowInfo,
+pub(crate) struct Found {
+    pub(crate) element: Element,
+    pub(crate) window: WindowInfo,
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Search {
-    pub found: Option<Found>,
-    pub names: Vec<String>,
-    pub popup: Option<WindowRef>,
+pub(crate) struct Search {
+    pub(crate) found: Option<Found>,
+    pub(crate) names: Vec<String>,
+    pub(crate) popup: Option<WindowRef>,
 }
 
 impl Found {
-    pub fn prepared(&self) -> Prepared {
+    pub(crate) fn prepared(&self) -> Prepared {
         Prepared { window: self.window.clone(), reach: Reach::Element(self.element.clone()) }
     }
 }
@@ -41,7 +41,7 @@ impl Search {
     }
 }
 
-pub fn search(engine: &Engine, combo: &Combo, option: &str) -> Result<Search> {
+pub(crate) fn search(engine: &Engine, combo: &Combo, option: &str) -> Result<Search> {
     let mine = in_subtree(engine, &combo.window, combo.id, option)?;
     if mine.found.is_some() {
         return Ok(mine);
@@ -53,7 +53,7 @@ pub fn search(engine: &Engine, combo: &Combo, option: &str) -> Result<Search> {
     Ok(popups.joined(in_opened_windows(engine, combo, option)?))
 }
 
-pub fn in_subtree(engine: &Engine, window: &WindowInfo, id: ElementRef, option: &str) -> Result<Search> {
+pub(crate) fn in_subtree(engine: &Engine, window: &WindowInfo, id: ElementRef, option: &str) -> Result<Search> {
     let own = engine.snapshot(&deckhand_desktop::window(window.hwnd)?)?;
     let subtree = subtree_of(&own, id);
     Ok(scope_search(subtree, &own.window, option, false))
@@ -94,11 +94,11 @@ fn same_process_popups(combo: &Combo) -> Result<Vec<VisibleWindow>> {
     Ok(windows.into_iter().filter(|window| is_combo_popup(window, combo)).collect())
 }
 
-pub fn is_combo_popup(window: &VisibleWindow, combo: &Combo) -> bool {
+fn is_combo_popup(window: &VisibleWindow, combo: &Combo) -> bool {
     window.pid == combo.window.pid && window.hwnd != combo.window.hwnd && is_popup_class(&window.class_name)
 }
 
-pub fn opened_by_combo_app(window: &WindowInfo, combo: &Combo) -> bool {
+fn opened_by_combo_app(window: &WindowInfo, combo: &Combo) -> bool {
     window.pid == combo.window.pid && window.hwnd != combo.window.hwnd && !is_popup_class(&window.class_name)
 }
 
@@ -117,11 +117,11 @@ fn scope_search(elements: &[Element], window: &WindowInfo, option: &str, items_o
     Search { found, names, popup: None }
 }
 
-pub fn subtree_of(snapshot: &Snapshot, id: ElementRef) -> &[Element] {
+fn subtree_of(snapshot: &Snapshot, id: ElementRef) -> &[Element] {
     snapshot.index_of(id).map_or(&[], |index| snapshot.descendants(index))
 }
 
-pub fn find_option<'a>(elements: &'a [Element], option: &str, items_only: bool) -> Option<&'a Element> {
+fn find_option<'a>(elements: &'a [Element], option: &str, items_only: bool) -> Option<&'a Element> {
     let wanted = fold(option);
     let mut matches = elements.iter().filter(|element| element.is_visible() && fold(&element.name) == wanted);
     let first = matches.next()?;
@@ -132,12 +132,12 @@ pub fn find_option<'a>(elements: &'a [Element], option: &str, items_only: bool) 
     if items_only { item } else { item.or(Some(first)) }
 }
 
-pub fn is_item(element: &Element) -> bool {
+fn is_item(element: &Element) -> bool {
     matches!(element.role, Role::ListItem | Role::MenuItem | Role::TreeItem | Role::DataItem)
         || element.patterns.selection_item
 }
 
-pub fn item_names(elements: &[Element]) -> Vec<String> {
+fn item_names(elements: &[Element]) -> Vec<String> {
     let names = elements
         .iter()
         .filter(|element| element.is_visible() && is_item(element))
@@ -165,24 +165,15 @@ fn fold(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ElementState, Patterns, Rect};
+    use deckhand_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;
 
     fn element(id: u32, role: Role, name: &str, offscreen: bool) -> Element {
-        Element {
-            id: ElementRef(id),
-            depth: 1,
-            role,
-            name: name.to_string(),
-            value: None,
-            automation_id: String::new(),
-            class_name: String::new(),
-            rect: Rect::new(0, 0, 10, 10),
-            state: ElementState { enabled: true, offscreen, ..ElementState::default() },
-            patterns: Patterns::default(),
-        }
+        let mut element = crate::test_fixture::element(id, 1, role, name);
+        element.state.offscreen = offscreen;
+        element
     }
 
     fn combo() -> Combo {

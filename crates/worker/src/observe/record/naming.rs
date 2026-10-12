@@ -1,12 +1,12 @@
 use chrono::NaiveDateTime;
 
-pub const MAX_SUFFIX: u32 = 999;
+const MAX_SUFFIX: u32 = 999;
 
-pub fn default_stem(now: NaiveDateTime) -> String {
+pub(crate) fn default_stem(now: NaiveDateTime) -> String {
     format!("deckhand-{}", now.format("%Y%m%d-%H%M%S"))
 }
 
-pub fn candidates(stem: &str, extension: &str) -> impl Iterator<Item = String> {
+pub(crate) fn candidates(stem: &str, extension: &str) -> impl Iterator<Item = String> {
     let first = format!("{stem}.{extension}");
     let numbered = (2..=MAX_SUFFIX).map(move |suffix| format!("{stem}-{suffix}.{extension}"));
     std::iter::once(first).chain(numbered)

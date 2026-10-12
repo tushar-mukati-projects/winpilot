@@ -27,9 +27,9 @@ const SELECTION_CHANGED: u16 = 1;
 const ACCELERATOR: u16 = 1;
 const CTRL_K_COMMAND: u16 = 3002;
 const CLIENT_WIDTH_AT_96_DPI: i64 = 624;
-const CLIENT_HEIGHT_AT_96_DPI: i64 = 688;
+const CLIENT_HEIGHT_AT_96_DPI: i64 = 644;
 
-const CONTRACT: [(i32, &str); 20] = [
+const CONTRACT: [(i32, &str); 18] = [
     (2001, "Edit"),
     (2002, "Edit"),
     (2003, "Button"),
@@ -47,12 +47,10 @@ const CONTRACT: [(i32, &str); 20] = [
     (2015, "Button"),
     (2016, "Button"),
     (2017, "Static"),
-    (2018, "Button"),
-    (2019, "Static"),
     (2020, "Static"),
 ];
 
-const INITIAL_TEXTS: [(i32, &str); 13] = [
+const INITIAL_TEXTS: [(i32, &str); 12] = [
     (2003, "Click me"),
     (2004, "Clicks: 0"),
     (2005, "Enable feature"),
@@ -64,7 +62,6 @@ const INITIAL_TEXTS: [(i32, &str); 13] = [
     (2014, "Saved: none"),
     (2016, "Appeared"),
     (2017, ""),
-    (2019, "Confirm: none"),
     (2020, "Last key: none"),
 ];
 

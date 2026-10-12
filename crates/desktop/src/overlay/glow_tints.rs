@@ -88,7 +88,7 @@ fn tint_at(along: f32, perimeter: &Perimeter, palette: &Palette, look: &GlowLook
     Tint::of(color.mix(WHITE, CORE_WHITENESS), color, shimmer * ignite * look.gain)
 }
 
-pub(crate) fn ignite_gain(along: f32, perimeter: &Perimeter, progress: f32) -> f32 {
+fn ignite_gain(along: f32, perimeter: &Perimeter, progress: f32) -> f32 {
     let half = (perimeter.length() / 2.0).max(1.0);
     let from_top = wrapped_distance(perimeter.width() / 2.0, along, perimeter.length()).abs() / half;
     let front = ease_out_cubic(progress) * 1.1;

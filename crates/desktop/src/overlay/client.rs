@@ -10,7 +10,7 @@ use super::{
     chip_text::ChipText,
     command::OverlayCommand,
     options::OverlayOptions,
-    render_thread::{OverlaySettings, OverlayThread, WAKE_OVERLAY},
+    render_thread::{OverlayThread, WAKE_OVERLAY},
     wake_flag::WakeFlag,
 };
 use crate::message_thread::MessageThread;
@@ -28,11 +28,9 @@ impl Overlay {
     pub fn spawn(options: OverlayOptions) -> Result<Self> {
         let (commands, receiver) = mpsc::channel();
         let wake = WakeFlag::default();
-        let OverlayOptions { animations, capturable, kill_hotkey, label, palette } = options;
-        let settings = OverlaySettings { animations, capturable, kill_hotkey, label, palette };
         let thread_wake = wake.clone();
         let (thread, every_layer_excluded) =
-            MessageThread::spawn("deckhand-overlay", move || OverlayThread::create(receiver, thread_wake, settings))?;
+            MessageThread::spawn("deckhand-overlay", move || OverlayThread::create(receiver, thread_wake, options))?;
         Ok(Self { commands, wake, thread, every_layer_excluded })
     }
 
@@ -117,19 +115,16 @@ impl Overlay {
         self.thread.thread_id()
     }
 
-    fn send(&self, command: OverlayCommand) -> bool {
-        self.commands.send(command).is_ok() && self.wake()
+    fn send(&self, command: OverlayCommand) {
+        if self.commands.send(command).is_ok() {
+            self.wake();
+        }
     }
 
-    fn wake(&self) -> bool {
-        if !self.wake.claim() {
-            return true;
-        }
-        let posted = self.thread.post(WAKE_OVERLAY);
-        if !posted {
+    fn wake(&self) {
+        if self.wake.claim() && !self.thread.post(WAKE_OVERLAY) {
             self.wake.give_back();
         }
-        posted
     }
 }
 

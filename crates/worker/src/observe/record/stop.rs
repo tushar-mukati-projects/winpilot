@@ -8,7 +8,7 @@ use crate::engine::Engine;
 const START_POLL: Duration = Duration::from_millis(20);
 const CANCELLED_NOTE: &str = "the recording was stopped while it was starting; nothing was saved";
 
-pub fn stop(engine: &Engine, patience: Duration) -> RecordReport {
+pub(crate) fn stop(engine: &Engine, patience: Duration) -> RecordReport {
     let cancelled_start = engine.recording.lock().cancel_start();
     if cancelled_start {
         wait_while_starting(engine, patience);

@@ -16,7 +16,7 @@ pub fn type_text(text: &str) -> Result<()> {
     send(&text_events(text, &layout))
 }
 
-pub fn text_events(text: &str, layout: &impl KeyboardLayout) -> Vec<InputEvent> {
+pub(crate) fn text_events(text: &str, layout: &impl KeyboardLayout) -> Vec<InputEvent> {
     let normalized = normalize_newlines(text);
     let mut events = Vec::with_capacity(normalized.len() * 2);
     for c in normalized.chars() {

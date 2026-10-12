@@ -2,32 +2,35 @@ use deckhand_core::{
     Element, ElementRef, Error, ErrorCode, Point, Rect, Result, WindowInfo, WindowRef, format::element_line,
 };
 
-use super::{locate::Located, target::Prepared};
+use super::{
+    locate::{Located, not_visible},
+    target::Prepared,
+};
 use crate::{cover::window_covers, engine::Engine, on_screen::visible_part};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct HitRelation {
-    pub same: bool,
-    pub target_contains_hit: bool,
-    pub hit_contains_target: bool,
-    pub in_target_window: bool,
+struct HitRelation {
+    same: bool,
+    target_contains_hit: bool,
+    hit_contains_target: bool,
+    in_target_window: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HitVerdict {
+enum HitVerdict {
     OnTarget,
     CoveredByWindow,
     CoveredInWindow,
 }
 
-pub const fn judge_hit(relation: HitRelation) -> HitVerdict {
+const fn judge_hit(relation: HitRelation) -> HitVerdict {
     if relation.same || relation.target_contains_hit || relation.hit_contains_target {
         return HitVerdict::OnTarget;
     }
     if relation.in_target_window { HitVerdict::CoveredInWindow } else { HitVerdict::CoveredByWindow }
 }
 
-pub fn quarter_points(rect: Rect) -> [Point; 4] {
+fn quarter_points(rect: Rect) -> [Point; 4] {
     let left = rect.x.saturating_add(fraction(rect.width, 1));
     let right = rect.x.saturating_add(fraction(rect.width, 3));
     let top = rect.y.saturating_add(fraction(rect.height, 1));
@@ -39,7 +42,7 @@ fn fraction(length: i32, quarters: i64) -> i32 {
     i32::try_from(i64::from(length) * quarters / 4).unwrap_or(0)
 }
 
-pub fn candidate_points(first: Point, visible: Rect) -> Vec<Point> {
+fn candidate_points(first: Point, visible: Rect) -> Vec<Point> {
     let mut points = vec![first];
     for point in quarter_points(visible) {
         if !points.contains(&point) {
@@ -49,21 +52,21 @@ pub fn candidate_points(first: Point, visible: Rect) -> Vec<Point> {
     points
 }
 
-pub fn hit_point(engine: &Engine, prepared: &Prepared, located: &Located) -> Result<Point> {
+pub(crate) fn hit_point(engine: &Engine, prepared: &Prepared, located: &Located) -> Result<Point> {
     match tracked_hit(prepared, located) {
         Some(element) => verify_hit(engine, element, located.point, &located.window),
         None => require_window_at(engine, located.point, &located.window).map(|()| located.point),
     }
 }
 
-pub fn confirm_hit(engine: &Engine, prepared: &Prepared, located: &Located, point: Point) -> Result<()> {
+pub(crate) fn confirm_hit(engine: &Engine, prepared: &Prepared, located: &Located, point: Point) -> Result<()> {
     match tracked_hit(prepared, located) {
         Some(element) => confirm_element_at(engine, element.id, located.window.hwnd, point),
         None => require_window_at(engine, point, &located.window),
     }
 }
 
-pub fn lands_in(engine: &Engine, point: Point, window: &WindowInfo) -> bool {
+pub(crate) fn lands_in(engine: &Engine, point: Point, window: &WindowInfo) -> bool {
     let landed = engine.uia.run(move |uia| {
         let hit = uia.element_at(point)?;
         uia.window_of(hit.id)
@@ -120,10 +123,6 @@ fn covered(id: ElementRef, verdict: HitVerdict, hit: &Element) -> Error {
         HitVerdict::CoveredInWindow | HitVerdict::OnTarget => format!("{id} is covered by {covering}"),
     };
     Error::new(ErrorCode::Obscured, message)
-}
-
-fn not_visible(id: ElementRef) -> Error {
-    Error::new(ErrorCode::Obscured, format!("{id} is not visible on screen"))
 }
 
 fn window_covered(hwnd: WindowRef, point: Point) -> Error {
@@ -225,18 +224,7 @@ mod tests {
 
     #[test]
     fn covered_names_the_covering_element_and_whose_window_it_is() {
-        let hit = Element {
-            id: ElementRef(9),
-            depth: 0,
-            role: Role::Button,
-            name: "OK".to_string(),
-            value: None,
-            automation_id: String::new(),
-            class_name: String::new(),
-            rect: Rect::new(0, 0, 10, 10),
-            state: deckhand_core::ElementState { enabled: true, ..deckhand_core::ElementState::default() },
-            patterns: deckhand_core::Patterns::default(),
-        };
+        let hit = element(9, 0, Role::Button, "OK");
         let inside = covered(ElementRef(12), HitVerdict::CoveredInWindow, &hit);
         assert_eq!(inside.code, ErrorCode::Obscured);
         assert_eq!(inside.message, "e12 is covered by e9 button \"OK\"");

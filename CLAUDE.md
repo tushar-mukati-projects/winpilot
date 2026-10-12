@@ -19,13 +19,13 @@ cargo test -p deckhand --test e2e -- --ignored --test-threads=1
 .\scripts\install.ps1 -Register
 ```
 
-The e2e test drives the real mouse and keyboard against the fixture app, so build the fixture first and run it only when the user agrees. The optional benchmark sits outside the workspace: `cargo run --release --manifest-path bench/deskbench/Cargo.toml` (`--skip-uia`, `--skip-capture`, `--skip-startup`, `--deny-title <text>`). `scripts/install.ps1` builds, installs to `%LOCALAPPDATA%\Programs\deckhand`, registers the `Deckhand.Agent` notification identity and, with `-Register`, the Claude Code MCP server. `-Uninstall` undoes it; `-Purge` also removes config and logs.
+The e2e test drives the real mouse and keyboard against the fixture app, so build the fixture first and run it only when the user agrees. The optional benchmark sits outside the workspace: `cargo run --release --manifest-path bench/deskbench/Cargo.toml` (`--skip-uia`, `--skip-capture`, `--skip-startup`, `--webview-process <exe>`, `--deny-title <text>`). `scripts/install.ps1` builds, installs to `%LOCALAPPDATA%\Programs\deckhand`, registers the `Deckhand.Agent` notification identity and, with `-Register`, the Claude Code MCP server. `-Uninstall` undoes it; `-Purge` also removes config and logs.
 
 ## Crates
 
 | Crate | Role | Depends on |
 |---|---|---|
-| `deckhand-core` | Pure logic and the shared protocol: tool arguments and validation, errors, geometry, selectors, keys, diff, output formatting, config, themes, agent names, IPC framing. No Windows APIs. | serde, schemars |
+| `deckhand-core` | Pure logic and the shared protocol: tool arguments and validation, errors, geometry, selectors, keys, diff, output formatting, config, themes, agent names, OCR text matching, IPC framing. No Windows APIs. | serde, serde_json, schemars |
 | `deckhand-uia` | UI Automation on one dedicated MTA thread: snapshots, element refs and fingerprints, pattern actions, text | core, windows |
 | `deckhand-capture` | Screen capture (DXGI, GDI, PrintWindow), resize, JPEG/PNG encode, marks, OCR, recording (WGC to Media Foundation MP4 and GIF) | core, windows |
 | `deckhand-input` | SendInput mouse/keyboard/text, cursor glide, physical-input monitor, kill-switch hotkey | core, windows |
@@ -52,13 +52,14 @@ Public APIs live in each crate's `lib.rs`, which only declares modules and re-ex
 | `observe` modes | `crates/worker/src/observe/`: `elements`, `search` (`all_windows`), `text`, `screenshot`, `record` (with `record/`), `windows`, `monitors`, `apps`, `clipboard`, `status` |
 | `act` steps | `crates/worker/src/act/`: one module per step (`click`, `typing`, `keys`, `mouse`, `set`, `focus_step`, `window`, `launch`, `pick` with `pick/`, `wait_step`, `clipboard`, `notify`) plus shared helpers |
 | Background mode: refusals and the per-window mode | `crates/worker/src/act/refusal.rs`, `mode.rs`, `append.rs` |
-| Kill switch, user yield, deny lists, actor lock | `crates/worker/src/guard.rs` |
+| Kill switch, user yield, deny lists, actor lock | `crates/worker/src/guard.rs`, `kill_switch.rs` |
+| OCR text matching and `ocr:` targets | `crates/core/src/ocr.rs`, `crates/worker/src/ocr_read.rs`, `ocr_target.rs`, `wait/ocr_look.rs` |
 | The agent's own terminal | `crates/worker/src/host.rs` |
 | Recording encoder | `crates/capture/src/recorder/` |
 | Virtual desktops | `crates/desktop/src/virtual_desktops.rs`, `desktop_ids.rs` |
 | Overlay | `crates/desktop/src/overlay/` |
 | Notifications | `crates/desktop/src/notify.rs`, `toast.rs`, `balloon*.rs` |
-| Fixture launcher for tests | `crates/fixture/src/lib.rs` (`FixtureProcess`) |
+| Fixture launcher for tests | `crates/fixture/src/launch.rs` (`FixtureProcess`, re-exported from `lib.rs`) |
 
 ## Code rules
 

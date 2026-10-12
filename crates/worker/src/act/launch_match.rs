@@ -8,7 +8,7 @@ use crate::window_classes::POPUP_MENU;
 const MIN_WORD: usize = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AppIdentity {
+pub(crate) enum AppIdentity {
     Exe(String),
     Package { family: String, words: Vec<String> },
     Words(Vec<String>),
@@ -16,41 +16,41 @@ pub enum AppIdentity {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WindowFacts<'a> {
-    pub window: &'a WindowInfo,
-    pub package: Option<String>,
-    pub content_package: Option<String>,
-    pub from_launch: bool,
+pub(crate) struct WindowFacts<'a> {
+    pub(crate) window: &'a WindowInfo,
+    pub(crate) package: Option<String>,
+    pub(crate) content_package: Option<String>,
+    pub(crate) from_launch: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct LaunchHints {
-    pub name: String,
-    pub exe: Option<String>,
+pub(crate) struct LaunchHints {
+    pub(crate) name: String,
+    pub(crate) exe: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Expected {
-    pub identity: AppIdentity,
-    pub pid: Option<u32>,
-    pub hints: LaunchHints,
+pub(crate) struct Expected {
+    pub(crate) identity: AppIdentity,
+    pub(crate) pid: Option<u32>,
+    pub(crate) hints: LaunchHints,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Before {
-    pub windows: HashSet<WindowRef>,
-    pub foreground: Option<WindowRef>,
+pub(crate) struct Before {
+    pub(crate) windows: HashSet<WindowRef>,
+    pub(crate) foreground: Option<WindowRef>,
 }
 
 impl LaunchHints {
-    pub fn new(name: &str, program: Option<&Path>) -> Self {
+    pub(crate) fn new(name: &str, program: Option<&Path>) -> Self {
         let exe = program.and_then(Path::file_stem).map(|stem| stem.to_string_lossy().to_lowercase());
         Self { name: name.to_string(), exe }
     }
 }
 
 impl AppIdentity {
-    pub fn of_path(path: &Path) -> Self {
+    pub(crate) fn of_path(path: &Path) -> Self {
         let is_exe = path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("exe"));
         match path.file_stem().filter(|_| is_exe) {
             Some(stem) => Self::Exe(stem.to_string_lossy().to_lowercase()),
@@ -58,7 +58,7 @@ impl AppIdentity {
         }
     }
 
-    pub fn of_app(app: &AppEntry) -> Self {
+    pub(crate) fn of_app(app: &AppEntry) -> Self {
         match app.kind {
             AppKind::Packaged => {
                 let family = app.id.split('!').next().unwrap_or_default().to_lowercase();
@@ -71,12 +71,12 @@ impl AppIdentity {
         }
     }
 
-    pub fn needs_packages(&self) -> bool {
+    pub(crate) fn needs_packages(&self) -> bool {
         matches!(self, Self::Package { .. })
     }
 }
 
-pub fn launched_by(facts: &WindowFacts<'_>, identity: &AppIdentity, pid: Option<u32>) -> bool {
+fn launched_by(facts: &WindowFacts<'_>, identity: &AppIdentity, pid: Option<u32>) -> bool {
     if pid == Some(facts.window.pid) || facts.from_launch {
         return true;
     }
@@ -93,7 +93,7 @@ pub fn launched_by(facts: &WindowFacts<'_>, identity: &AppIdentity, pid: Option<
     }
 }
 
-pub fn looks_launched(window: &WindowInfo, hints: &LaunchHints) -> bool {
+fn looks_launched(window: &WindowInfo, hints: &LaunchHints) -> bool {
     let stem = process_stem(&window.process);
     let named = words(&hints.name);
     let titled = words(&window.title);
@@ -102,7 +102,7 @@ pub fn looks_launched(window: &WindowInfo, hints: &LaunchHints) -> bool {
         || (!named.is_empty() && named.iter().all(|word| titled.contains(word)))
 }
 
-pub fn pick_launched<'a>(
+pub(crate) fn pick_launched<'a>(
     candidates: &[WindowFacts<'a>],
     before: &Before,
     expected: &Expected,
@@ -114,11 +114,11 @@ pub fn pick_launched<'a>(
     fresh().find(ours).or_else(switched).or_else(named).map(|facts| facts.window)
 }
 
-pub fn is_fresh(window: &WindowInfo, before: &Before) -> bool {
+pub(crate) fn is_fresh(window: &WindowInfo, before: &Before) -> bool {
     !before.windows.contains(&window.hwnd) && window.class_name != POPUP_MENU
 }
 
-pub fn switched_to(window: &WindowInfo, before: &Before) -> bool {
+pub(crate) fn switched_to(window: &WindowInfo, before: &Before) -> bool {
     window.foreground && before.foreground != Some(window.hwnd) && before.windows.contains(&window.hwnd)
 }
 

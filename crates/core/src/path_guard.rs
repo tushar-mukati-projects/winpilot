@@ -8,7 +8,7 @@ use crate::error::{Error, ErrorCode, Result};
 const VERBATIM_PREFIX: &str = r"\\?\";
 const FORBIDDEN_CHARS: [char; 7] = ['<', '>', '"', '|', '?', '*', ':'];
 
-pub fn checked_path(path: &Path, protected: &[PathBuf]) -> Result<PathBuf> {
+pub(crate) fn checked_path(path: &Path, protected: &[PathBuf]) -> Result<PathBuf> {
     let clean = plain_absolute(path)?;
     if protected.iter().any(|root| is_inside(&clean, root)) {
         let message = format!("'{}' is inside a folder Deckhand is configured to protect", clean.display());

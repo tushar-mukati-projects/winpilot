@@ -1,15 +1,17 @@
 use deckhand_core::WindowRef;
-use windows::Win32::UI::WindowsAndMessaging::{GWL_EXSTYLE, GetWindowLongPtrW, WINDOW_EX_STYLE, WS_EX_TOPMOST};
+use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST;
 
-use crate::window_identity::{hwnd_of, is_live};
+use crate::{
+    window_identity::{hwnd_of, is_live},
+    window_visibility::ex_style,
+};
 
 pub fn is_topmost(hwnd: WindowRef) -> bool {
     let handle = hwnd_of(hwnd);
     if !is_live(handle) {
         return false;
     }
-    let style = WINDOW_EX_STYLE(unsafe { GetWindowLongPtrW(handle, GWL_EXSTYLE) } as u32);
-    style.contains(WS_EX_TOPMOST)
+    ex_style(handle).contains(WS_EX_TOPMOST)
 }
 
 #[cfg(test)]

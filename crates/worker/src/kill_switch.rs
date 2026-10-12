@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 
 const SAME_PRESS: Duration = Duration::from_millis(500);
 
-pub struct KillSwitch {
+pub(crate) struct KillSwitch {
     hotkey: Option<HotkeyListener>,
     _physical: Option<PhysicalHotkey>,
 }
@@ -22,7 +22,7 @@ struct Toggle {
 }
 
 impl KillSwitch {
-    pub fn spawn(spec: &str, stop: &Arc<NamedEvent>, overlay: Option<Arc<Overlay>>) -> Self {
+    pub(crate) fn spawn(spec: &str, stop: &Arc<NamedEvent>, overlay: Option<Arc<Overlay>>) -> Self {
         let Some(chord) = parse_chord(spec).inspect_err(|error| warn("kill hotkey", error)).ok() else {
             return Self { hotkey: None, _physical: None };
         };
@@ -37,7 +37,7 @@ impl KillSwitch {
         Self { hotkey, _physical: physical }
     }
 
-    pub fn registered(&self) -> bool {
+    pub(crate) fn registered(&self) -> bool {
         self.hotkey.as_ref().is_some_and(HotkeyListener::is_registered)
     }
 }
@@ -73,7 +73,7 @@ fn announce(overlay: Option<&Overlay>, stopping: bool) {
     }
 }
 
-fn warn(what: &str, error: &Error) {
+pub(crate) fn warn(what: &str, error: &Error) {
     eprintln!("deckhand worker: {what} unavailable: {error}");
 }
 

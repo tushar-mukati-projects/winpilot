@@ -1,24 +1,24 @@
 use deckhand_core::{
     ErrorCode, Rect, TargetSpec, WindowState,
-    protocol::{ActArgs, ActReport, AfterMode, Step},
+    protocol::{ActReport, Step},
 };
 use deckhand_desktop::clipboard;
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::{mode::Mode, mouse_select, run, target::prepare};
+use super::{
+    fixture_tests::{self, step},
+    mode::Mode,
+    mouse_select,
+    target::prepare,
+};
 use crate::{
     call_scope::CallScope,
     engine::Engine,
     test_fixture::{ClosesTitled, FixtureApp, engine, fixture_exe, unique_title},
 };
 
-fn step(value: Value) -> Step {
-    serde_json::from_value(value).unwrap()
-}
-
 fn act(engine: &Engine, steps: Vec<Step>) -> ActReport {
-    let args = ActArgs { steps, after: AfterMode::None, stop_on_error: true, background: Some(false) };
-    run(engine, &args, &CallScope::relaxed()).unwrap()
+    fixture_tests::act(engine, steps, true)
 }
 
 fn target(fixture: &FixtureApp, terms: &str) -> TargetSpec {

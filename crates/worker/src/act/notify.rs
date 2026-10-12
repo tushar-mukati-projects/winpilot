@@ -8,7 +8,7 @@ use crate::engine::Engine;
 
 const BALLOON_NOTE: &str = "sent as a tray balloon; Windows may hold it back";
 
-pub fn step(engine: &Engine, title: &str, message: &str, context: &StepContext<'_>) -> Result<Done> {
+pub(crate) fn step(engine: &Engine, title: &str, message: &str, context: &StepContext<'_>) -> Result<Done> {
     engine.guard.check_running(context.call)?;
     engine.notify_limit.lock().admit(context.started, Instant::now())?;
     engine.notifier.notify(title, message).map(|outcome| Done::noting(outcome_note(outcome)))

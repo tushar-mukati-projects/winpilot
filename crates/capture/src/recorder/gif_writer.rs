@@ -10,8 +10,8 @@ use super::bitrate::gif_speed;
 use super::changed_area::changed_area;
 use super::clock::gif_delay;
 use super::layout::{Placement, Size};
+use crate::pixels::BYTES_PER_PIXEL;
 
-const BYTES_PER_PIXEL: usize = 4;
 const MAX_FRAME_DELAY: u64 = u16::MAX as u64;
 const MAX_TOTAL_DELAY: u64 = 100 * 60 * 60 * 24;
 

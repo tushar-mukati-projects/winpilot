@@ -38,9 +38,9 @@ pub struct Audit {
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
-pub struct Pruned {
-    pub removed: usize,
-    pub failures: Vec<String>,
+struct Pruned {
+    removed: usize,
+    failures: Vec<String>,
 }
 
 impl Audit {
@@ -60,7 +60,7 @@ impl Audit {
         report_pruning(dir, prune(dir, Local::now().date_naive(), retention_days));
     }
 
-    pub fn in_dir(dir: PathBuf) -> Self {
+    fn in_dir(dir: PathBuf) -> Self {
         Self { dir: Some(dir), pid: std::process::id() }
     }
 
@@ -111,7 +111,7 @@ fn file_name(date: NaiveDate) -> String {
     format!("{}.jsonl", date.format("%Y-%m-%d"))
 }
 
-pub fn log_date(name: &str) -> Option<NaiveDate> {
+fn log_date(name: &str) -> Option<NaiveDate> {
     let stem = name.strip_suffix(".jsonl")?;
     let shaped = stem.len() == 10
         && stem.bytes().enumerate().all(|(index, byte)| match index {
@@ -135,7 +135,7 @@ fn report_pruning(dir: &Path, outcome: io::Result<Pruned>) {
     }
 }
 
-pub fn prune(dir: &Path, today: NaiveDate, retention_days: u32) -> io::Result<Pruned> {
+fn prune(dir: &Path, today: NaiveDate, retention_days: u32) -> io::Result<Pruned> {
     let mut pruned = Pruned::default();
     let Some(cutoff) = today.checked_sub_days(Days::new(u64::from(retention_days))) else { return Ok(pruned) };
     for entry in fs::read_dir(dir)? {
@@ -220,12 +220,7 @@ mod tests {
         let temp = TempDir::new("audit-prune-locked");
         let names = ["2026-09-01.jsonl", "2026-09-02.jsonl", "2026-09-03.jsonl"];
         for name in names {
-            fs::write(
-                temp.path().join(name),
-                "{}
-",
-            )
-            .unwrap();
+            fs::write(temp.path().join(name), "{}\n").unwrap();
         }
         let locked = OpenOptions::new().read(true).share_mode(0).open(temp.path().join(names[1])).unwrap();
         let pruned = prune(temp.path(), date("2026-10-11"), 14).unwrap();
@@ -278,7 +273,7 @@ mod tests {
     #[test]
     fn timestamps_are_rfc3339_with_offset() {
         let audit = Audit::disabled();
-        let entry = Entry { tool: "status", summary: "", failure: None, elapsed: Duration::ZERO };
+        let entry = Entry { tool: "observe", summary: "mode=status", failure: None, elapsed: Duration::ZERO };
         let line = audit.line(&entry, Local::now()).unwrap();
         let value: serde_json::Value = serde_json::from_slice(&line).unwrap();
         let ts = value["ts"].as_str().unwrap();
@@ -288,7 +283,7 @@ mod tests {
 
     #[test]
     fn disabled_audit_writes_nothing() {
-        let entry = Entry { tool: "status", summary: "", failure: None, elapsed: Duration::ZERO };
+        let entry = Entry { tool: "observe", summary: "mode=status", failure: None, elapsed: Duration::ZERO };
         Audit::disabled().record(&entry);
     }
 }

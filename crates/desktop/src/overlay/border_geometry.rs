@@ -61,7 +61,7 @@ pub(crate) fn sides_open_within(rect: Rect, band: i32, monitor: Rect) -> OpenSid
     OpenSides { left, top, right, bottom }
 }
 
-pub(crate) fn outside_probes(rect: Rect, band: i32) -> [(i32, i32); 4] {
+fn outside_probes(rect: Rect, band: i32) -> [(i32, i32); 4] {
     let reach = (band / 2).max(1);
     let center = rect.center();
     [

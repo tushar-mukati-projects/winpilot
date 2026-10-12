@@ -30,7 +30,7 @@ impl Failure {
     }
 }
 
-pub fn delay(failures: u32) -> Duration {
+fn delay(failures: u32) -> Duration {
     let doublings = failures.saturating_sub(1).min(MAX_DOUBLINGS);
     FIRST_RETRY.saturating_mul(1 << doublings).min(LONGEST_RETRY)
 }

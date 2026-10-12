@@ -34,7 +34,7 @@ impl Fingerprint {
         role == self.role && (self.automation_id.is_empty() || automation_id == self.automation_id)
     }
 
-    pub(crate) fn could_be(&self, other: &Self) -> bool {
+    fn could_be(&self, other: &Self) -> bool {
         if other.window != self.window || other.role != self.role {
             return false;
         }

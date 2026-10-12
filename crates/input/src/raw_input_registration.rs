@@ -10,12 +10,12 @@ const GENERIC_DESKTOP_PAGE: u16 = 0x01;
 const MOUSE_USAGE: u16 = 0x02;
 const KEYBOARD_USAGE: u16 = 0x06;
 
-pub struct RawInputRegistration {
+pub(crate) struct RawInputRegistration {
     _private: (),
 }
 
 impl RawInputRegistration {
-    pub fn register(target: HWND) -> Result<Self> {
+    pub(crate) fn register(target: HWND) -> Result<Self> {
         register_devices(&devices(RIDEV_INPUTSINK, target)).context("registering for raw mouse and keyboard input")?;
         Ok(Self { _private: () })
     }

@@ -6,20 +6,20 @@ use deckhand_core::{Rect, Result, WindowInfo, WindowRef, ocr::OcrLine};
 use crate::{call_scope::CallScope, engine::Engine, frames, watch::Watch};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OcrReading {
-    pub window: WindowRef,
-    pub rect: Rect,
-    pub at: Instant,
-    pub lines: Vec<OcrLine>,
+pub(crate) struct OcrReading {
+    pub(crate) window: WindowRef,
+    pub(crate) rect: Rect,
+    pub(crate) at: Instant,
+    pub(crate) lines: Vec<OcrLine>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum Freshness {
+pub(crate) enum Freshness {
     CachedIsFine,
     TakenAfter(Instant),
 }
 
-pub fn window_lines(
+pub(crate) fn window_lines(
     engine: &Engine,
     window: &WindowInfo,
     call: Option<&CallScope>,
@@ -38,7 +38,7 @@ pub fn window_lines(
     Ok(lines)
 }
 
-pub fn reusable(
+fn reusable(
     reading: &OcrReading,
     window: &WindowInfo,
     freshness: Freshness,

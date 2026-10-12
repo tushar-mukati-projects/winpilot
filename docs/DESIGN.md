@@ -89,7 +89,7 @@ The server reads `%APPDATA%\deckhand\config.toml` once at startup and sends it t
 
 | Crate | Responsibility |
 |---|---|
-| `deckhand-core` | Pure logic and the shared protocol: tool arguments and their validation, selectors, keys, roles, refs, geometry, diff, output formatting, config and themes, the agent-name mapping, IPC framing. No Windows APIs, so it is tested exhaustively. |
+| `deckhand-core` | Pure logic and the shared protocol: tool arguments and their validation, selectors, keys, roles, refs, geometry, diff, output formatting, config and themes, the agent-name mapping, OCR text matching, IPC framing. No Windows APIs, so it is tested exhaustively. |
 | `deckhand-uia` | UI Automation on one dedicated thread: automation setup, cache requests, snapshots, the element registry with refs and fingerprints, re-finding stale refs, pattern actions, text. |
 | `deckhand-capture` | Screen capture (DXGI duplication, GDI, PrintWindow), resize, JPEG and PNG encoding, ref marks, OCR, and the recorder (Windows.Graphics.Capture to Media Foundation H.264 or GIF). |
 | `deckhand-input` | SendInput for mouse, keyboard and Unicode text, cursor glides, releasing stuck inputs, the Raw Input activity monitor, the kill-switch hotkey. |
@@ -156,7 +156,7 @@ other windows: w1180342 chrome.exe "Inbox", w66320 explorer.exe "Downloads" desk
 
 ### Targets
 
-Every step accepts four target forms: an element ref (`e12`), a window ref (`w2032546`), a screenshot point (`{"x":640,"y":360,"img":"i3"}`), or a selector. Selectors borrow Terminator's syntax: `role:`, `name:`, `name~:`, `id:`, `class:`, `text:`, `window:`, `process:`, `nth:`, `focused`, and `>>` to search inside earlier matches. They let the model act without observing first when it already knows the app. A selector whose window terms match several windows is resolved in all of them: a match on the current virtual desktop wins, then one in the foreground window, and anything still tied is an `ambiguous` error listing the windows, never a guess by z-order.
+Every step accepts four target forms: an element ref (`e12`), a window ref (`w2032546`), a screenshot point (`{"x":640,"y":360,"img":"i3"}`), or a selector. Selectors borrow Terminator's syntax: `role:`, `name:`, `name~:`, `id:`, `class:`, `text:`, `window:`, `process:`, `nth:`, `focused`, and `>>` to search inside earlier matches; `ocr:` adds text read by OCR for apps without UI Automation (rule 14). They let the model act without observing first when it already knows the app. A selector whose window terms match several windows is resolved in all of them: a match on the current virtual desktop wins, then one in the foreground window, and anything still tied is an `ambiguous` error listing the windows, never a guess by z-order.
 
 Element refs come from the registry in the UIA actor. Each ref is tied to the element's UIA RuntimeId while it lives, and carries a fingerprint: window, role, name, AutomationId, class and tree path. When the element is gone, a stale ref is re-found by fingerprint; if more than one element could be it, the call fails with the candidates. Entries for elements that haven't been seen for a while are evicted, and the registry has a hard size cap.
 
@@ -176,16 +176,7 @@ Element refs come from the registry in the UIA actor. Each ref is tied to the el
 | Fewer tokens | Text first and screenshots only when asked, compact element lines, diffs instead of trees, two tools with short descriptions. |
 | Reads never blocked | The user-yield guard and the actor lock apply only to steps that send input. Reads run concurrently with acts. |
 
-As built, on the author's laptop at 2560×1600:
-
-| Measure | Result |
-|---|---|
-| Window read | 70–125 ms on Chrome; 15–40 ms on small windows |
-| Snapshot of a 2,100-element page | ~140 ms |
-| Screenshot | ~30 ms warm GDI capture, plus ~13 ms JPEG encode |
-| Server start | ~60 ms |
-| Overlay CPU | under 2% of one core while animating; 0 idle |
-| MP4 encode at 1920×1200@30 | 3.4 ms/frame on the hardware encoder |
+The numbers as built, on the author's laptop at 2560×1600, are in the README's [comparison with Windows-MCP](../README.md#compared-with-windows-mcp).
 
 ## 6. Reliability rules
 
@@ -202,7 +193,7 @@ As built, on the author's laptop at 2560×1600:
 11. **Pattern actions keep the user's focus.** Some Win32 controls perform Invoke or Toggle as a simulated click that activates their window. Deckhand records the foreground window before every pattern action and, if the target took it, hands it straight back (with the same foreground unlock it uses to bring windows forward) and notes it. Pattern actions also refuse a window that has a modal dialog open, as real clicks do.
 12. **Trees that loop.** On Windows 11 build 26300, an open Win32 combobox reports its dropdown list as its only child, but the list's UIA parent is the desktop and its next siblings are every other top-level window, the combobox's own window included. WinUI 3 apps that host a WebView2 (Clipchamp) list the web content's root, a top-level `Chrome_WidgetWin_1` window of `msedgewebview2.exe`, twice: under the `WebView2` control and under the `DesktopChildSiteBridge`, which is its UIA parent; while the page loads, its siblings can run on into other apps' windows. Subtree caches through either fail with "Malformed Cacheresponse" (`E_FAIL`). When a subtree read fails with `E_FAIL`, Deckhand reads that node one level at a time, rebuilds each child's subtree, and splits further only where it fails again. Every read, one level or whole, keeps a top-level window child only when it is the combobox's own list (`GetComboBoxInfo`) or UIA places it under an element of a window already in the read (the read's own window, or one adopted that way), and lists each element (by runtime id) once, the first time it is reached. Snapshots, text reads and option searches all use this read, so they never reach other apps or list a subtree twice.
 13. **Win32 combobox picks.** A Win32 combobox only shows its items while its list is dropped, `SelectionItem.Select` there sets the list's selection without telling the app, and collapsing the list cancels it back. `Invoke` on an item is a real mouse double click, so it is never used. After picking, Deckhand puts the chosen index back with `CB_SETCURSEL` if the collapse undid it, then sends the combobox the `LBN_SELCHANGE` its list would send. That is what Microsoft's own client-side UIA proxy for list items in a combobox does. The combobox then updates and notifies its parent with `CBN_SELCHANGE`, with no input and no focus change.
-14. **Apps without UI Automation.** A window whose tree is only the window, unnamed containers and its title bar is read with OCR: `observe` elements appends the lines with their rectangles, `wait` text and plain-text `appears`/`disappears` poll OCR every 400 ms, and `ocr:"…"` selectors resolve to the rectangle of the matched words (a span of OCR word boxes, exact matches before contains matches) and act on its centre as a point. OCR runs on the same capture path as screenshots, so the overlay is hidden and denied windows are blacked out. One OCR per window is kept for the rest of an `act` call while the window keeps its handle and rectangle, raises no change events and no step sends input; a selector that is still being waited for reads again.
+14. **Apps without UI Automation.** A window whose tree is only the window, unnamed containers and its title bar is read with OCR: `observe` elements appends the lines with their rectangles, `wait` text and plain-text `appears`/`disappears` poll OCR at most every 400 ms, and `ocr:"…"` selectors resolve to the rectangle of the matched words (a span of OCR word boxes on one line, exact matches before contains matches, `nth:` to pick one) and act on its centre as a point. An `ocr:` term combines only with `window:`, `process:` and `nth:`, so the OCR'd window is chosen like any other selector's. OCR runs on the same capture path as screenshots, so the overlay is hidden and denied windows are blacked out. The latest OCR reading is kept for the rest of an `act` call and reused while its window keeps its handle and rectangle and raises no change events, until a step other than `wait` or `notify` runs; a selector that is still being waited for reads again. Separately, `observe` text with `ocr: auto` switches to OCR when a window's UI Automation text has under 40 readable characters and OCR finds more, or when an element's has none; a region is always read with OCR.
 15. **Launch matching.** A launched window is one that is new since the launch and belongs to the process Deckhand started or to a process it started (the Toolhelp parent chain, with every link created after the launch, so reused pids never match), or to the expected exe or package; an existing window that took the foreground counts too. Failing those, a new window whose process is the Start-menu entry's program or is named after the app, or whose title holds every word of the app's name, is taken. The window is then brought to the front with the usual foreground handover, unless it is on another virtual desktop.
 16. **Covers.** At a point, a window of the same process as the target window (except shared hosts such as `ApplicationFrameHost.exe` and `explorer.exe`, where only menus count), or one owned by it, is part of the target; any other window covers it, and the agent's terminal, the taskbar and the desktop always do.
 17. **Typing guard.** Before printable text is typed, the focused element is classified. Roles that never take text (buttons, list and tree items, tabs, menus, sliders, links and the like) and elements whose Value pattern is read-only are refused with an error naming them; edits and writable values pass, and anything generic or unknown passes too, since custom editors and `contenteditable` regions often look generic. `key` steps are not checked.
@@ -262,17 +253,7 @@ Without the registered identity, such as a dev build run from `target`, Deckhand
 
 ## 11. Background mode and virtual desktops
 
-Normal mode behaves like a careful person: bring the window forward, glide the mouse, type real keys. Background mode (`act { background: true }`, falling back to `[act] background`, which is off by default) uses only UI Automation patterns and never touches the real mouse, keyboard or focus:
-
-| Step | Background behaviour |
-|---|---|
-| `click` | A plain left single click only. Tries Invoke, Toggle, SelectionItem, ExpandCollapse and finally the legacy default action, in that order. |
-| `type` | Needs a target, no `enter` and `how=auto`. Patterns can't place a caret, so the text is appended to the current value with `SetValue`, and the step says so in a note. |
-| `set` | Patterns only, with no typing or mouse fallback. |
-| `mouse action=scroll` | Needs an element target and uses its scroll pattern. |
-| `window` | Only `close`; launching, minimizing, maximizing, restoring and moving change focus or the user's layout. |
-| `key`, `focus`, `pick`, mouse move/down/up/drag | Need real input, so they are refused with `needs_user` and a hint at an alternative where one exists. |
-| `wait`, `clipboard`, `notify` | Unchanged. |
+Normal mode behaves like a careful person: bring the window forward, glide the mouse, type real keys. Background mode (`act { background: true }`, falling back to `[act] background`, which is off by default) uses only UI Automation patterns and never touches the real mouse, keyboard or focus. The per-step rules are in the README's [background mode table](../README.md#background-mode-and-virtual-desktops). In short: a click is a plain left single click through Invoke, Toggle, SelectionItem, ExpandCollapse and finally the legacy default action; typing is appended to the current value with `SetValue`, since patterns can't place a caret, and the step says so in a note; `window` allows only `close`, because the other actions change focus or the user's layout; and `key`, `focus`, `pick` and mouse move/down/up/drag need real input, so they are refused with `needs_user` and a hint at an alternative where one exists.
 
 A step that needs real input is refused before it runs, rather than silently falling back to the mouse. Background steps skip the user-yield wait, since they can't collide with the user's input, but keep every other check: the actor lock, the kill switch, the deny lists and the elevation check.
 
@@ -284,16 +265,16 @@ Two limits are inherent. Web apps that ignore `SetValue` need the real keyboard.
 
 - **Unit tests** sit next to the code. `deckhand-core` is pure and tested exhaustively: selector parsing and ranking, keys, diff, formatting and token budgets, validation, config, deadlines, quality presets, glide paths and the agent-name mapping.
 - **Safe by default.** Plain `cargo test --workspace` may read the desktop (enumerate windows, snapshot, capture to memory) but must never inject input, move the mouse, change focus, write the clipboard, open or close windows, or leave files behind. It is safe to run while the user works.
-- **Opt-in desktop tests.** Anything more is `#[ignore = "<reason>"]`: moving the mouse and keyboard, opening dialogs or changing focus, opening the fixture app, recording the screen or encoding video, showing the overlay, writing the clipboard, showing a notification, launching Notepad, moving or closing real windows, registering a system-wide hotkey or raw input. These run with `-- --ignored` only when the user can leave the PC alone. Tests never print or save screen contents or window titles.
+- **Opt-in desktop tests.** Anything more is `#[ignore = "<reason>"]`: moving the mouse and keyboard, opening dialogs or changing focus, opening the fixture app, recording the screen or encoding video, showing the overlay, writing the clipboard, showing a notification, launching Calculator, moving or closing real windows, registering a system-wide hotkey or raw input. These run with `-- --ignored` only when the user can leave the PC alone. Tests never print or save screen contents or window titles.
 - **The fixture app.** `deckhand-fixture` is a small Win32 app with known controls, delayed elements, Open and Save dialogs and a configurable title and position, so input tests have a stable target and never touch the user's own windows. Its library half, `FixtureProcess`, is the one launcher every test uses: it starts the app without activating it, on or off screen, waits for its window and closes it afterwards.
 - **End to end.** `crates/deckhand/tests/e2e.rs` starts the real binary with a throwaway `APPDATA` and `LOCALAPPDATA`, speaks MCP over stdio, checks that exactly the two tools are listed, and drives the fixture through batches, waits, file dialogs, screenshots, all-window queries and window actions. It also checks that closing the server's input finalizes a running recording into a valid MP4.
-- **Golden tasks** for comparing with Windows-MCP: Notepad (type 30 lines and save), Explorer (create, rename and move files in a scratch folder), Chrome (fill `tests/fixtures/form.html` including a native upload dialog), Calculator, reading Settings, and copying a paragraph from Chrome into Notepad.
+- **Golden tasks** for comparing with Windows-MCP: Notepad (type 30 lines and save), Explorer (create, rename and move files in a scratch folder), Chrome (fill a web form including a native upload dialog), Calculator, reading Settings, and copying a paragraph from Chrome into Notepad.
 
 ## 13. Known limits
 
 - Model thinking time remains. Deckhand cuts turns and context but can't remove model latency.
 - The UAC prompt, Ctrl+Alt+Del and the lock screen live on the secure desktop and are unreachable. Elevated apps can't be driven by an unelevated process.
-- Canvas apps and games expose no accessibility tree, so they can only be driven by screenshot and coordinates. Anti-cheat software may block injected input.
+- Canvas apps and games expose no accessibility tree, so they can only be driven by OCR text (`ocr:` targets) or by screenshot and coordinates. Anti-cheat software may block injected input.
 - Background mode only works where apps implement UI Automation patterns, and some web inputs ignore `SetValue`.
 - Real input only reaches the current virtual desktop, and only one agent can hold the real mouse and keyboard at a time.
 - Title deny rules only see the title bar.
@@ -316,7 +297,6 @@ Two limits are inherent. Web apps that ignore `SetValue` need the real keyboard.
 - **A CDP fast path** for a dedicated automation Chrome profile, for pages where the accessibility tree is too coarse.
 - **Macros:** record a successful `act` batch and replay it by name.
 - **UIA Remote Operations**, to batch several pattern calls into one cross-process round trip.
-- **OCR set-of-marks** for canvas apps and games: label text regions found by OCR so they can be targeted like elements.
 
 ## 16. Sources
 

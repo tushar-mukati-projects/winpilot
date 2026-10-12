@@ -86,9 +86,9 @@ Other clients, such as Codex, take the same command and `args` in their own conf
 | `record` | Starts, stops or reports a screen recording | `action`, `target` or `region` or `monitor`, `format`, `fps`, `video_quality`, `max_width`, `max_seconds`, `cursor`, `path` |
 | `windows` | The open app windows | none |
 | `monitors` | Displays with position, scale and work area | none |
-| `apps` | Installed apps that `launch` can start | `query`, `max` |
+| `apps` | Installed apps that `window action=launch` can start | `query`, `max` |
 | `clipboard` | The clipboard text | `max_chars` |
-| `status` | Health, kill switch, user activity, restarts, recent timings | none |
+| `status` | Version, uptimes, kill switch and hotkey, user idle time, elevation, secure desktop, restarts, the last five timings | none |
 
 | Field | Meaning |
 |---|---|
@@ -101,7 +101,7 @@ Other clients, such as Codex, take the same command and `args` in their own conf
 | `max` | Cap on element lines (300), `all_windows` matches (20) or apps (30). |
 | `region` | A screen rectangle `{"x","y","width","height"}` in physical pixels. A region can only be read as text with OCR, so `ocr: "never"` with a region is an error. |
 | `monitor` | A monitor index: primary first, then by x, then by y, as `mode=monitors` lists them. |
-| `ocr` | `auto` (UI Automation text first, OCR as fallback; default), `never` or `always`. |
+| `ocr` | `auto` (default): UI Automation text, replaced by OCR when a window has under 40 readable characters and OCR finds more, or when an element has none. `never` or `always`. |
 | `max_chars` | Text and clipboard limit, default 20000, clamped to 1–200000. A cut reply ends with `(truncated)`. |
 | `preset` | Screenshot size and detail, see below. Default `medium`. |
 | `quality` | Screenshot JPEG quality 1–100; overrides the preset. PNG is lossless, so it takes no `quality`. |
@@ -280,7 +280,7 @@ Every `target`, `to` and `open_with` takes one of four forms:
 
 | Form | Example | Notes |
 |---|---|---|
-| Element ref | `e12` | From `observe`. Stays valid while the element exists. A stale ref is re-found by its fingerprint (window, role, name, AutomationId, tree path); if that's ambiguous you get the candidates, never a guess. |
+| Element ref | `e12` | From `observe`. Stays valid while the element exists. A stale ref is re-found by its fingerprint (window, role, name, AutomationId, class, tree path); if that's ambiguous you get the candidates, never a guess. |
 | Window ref | `w2032546` | From window lines. |
 | Point | `{"x":640,"y":360,"img":"i3"}` | Pixels in screenshot `i3`, mapped back through its scale and origin. Omit `img` for physical screen pixels. `set` acts on the element under the point; `type` clicks the point first. A point in a screenshot of one window may land on that app's own menus, flyouts, dropdowns or dialogs (same process, or owned by the window); any other window there, and always the agent's terminal or the taskbar, counts as covering it. |
 | Selector | `role:button name:"Save"` | Lets the agent act without observing first when it already knows the app. |
@@ -295,7 +295,7 @@ Selector terms:
 | `id:1001` | AutomationId, exactly. |
 | `class:Edit` | Class name, ignoring case. |
 | `text:report` | Name or value contains. Bare words are the same: `Sign in` means `text:"Sign in"`. |
-| `ocr:"Export"` | Text on screen, read by OCR from the window (`window:`, `process:` or the default window). Matches lines or runs of words, ignoring case and spacing; an exact match beats a contains match. The target is the matched words' rectangle, and a click lands on its centre. Combines only with `window:`, `process:` and `nth:`; several matches are an `ambiguous` error listing up to five with their positions. |
+| `ocr:"Export"` | Text on screen, read by OCR from one window (the one `window:` or `process:` picks, else the default window). Matches a run of words on one line that contains the text, ignoring case and runs of whitespace; exact matches beat contains matches. The target is the matched words' rectangle, acted on at its centre like a point. Combines only with `window:`, `process:` and `nth:` (`nth:2` takes the second match); several matches without `nth:` are an `ambiguous` error listing up to five with their positions. Only `act` step targets take it: `observe`, the `window` step and `wait`'s `window` field read `ocr:…` as window title text. |
 | `window:"Notepad"` | Window title contains. |
 | `process:chrome` | Process name, with or without `.exe`. |
 | `nth:2` | The second match, counting visible matches first. |
@@ -307,7 +307,7 @@ Selector terms:
 - A selector with `window:` or `process:` terms that matches in several windows prefers the one on the current virtual desktop, then the foreground one; if that still leaves several, the step fails with `ambiguous` and lists them, topmost first.
 - A selector that matches nothing yet is waited for briefly (`[act] auto_wait_ms`, 2 s), so a step can target a button that is still appearing.
 
-**Apps without UI Automation.** Some apps (CapCut, games, custom-drawn editors) expose only their window to UI Automation. For those, `observe` elements adds the window's OCR lines with their screen rectangles under the note `this app exposes no UI Automation; showing OCR text — target it with ocr:"…"`, and `observe` text with `coords: true` does the same for any window, element or region. Act on that text with `ocr:"…"` targets: `click`, `type`, `key`, `mouse` (`move`, `down`, `up`, `scroll`, `drag` from and to) and `wait` `appears`/`disappears` all take them. The capture hides the overlay and blacks out denied windows, as screenshots do. Within one `act` call the OCR of a window is reused until the window moves, changes, or a step sends input. `wait` `text`, and `appears`/`disappears` with plain text, fall back to OCR every 400 ms when the window has no UI Automation content.
+**Apps without UI Automation.** Some apps (CapCut, games, custom-drawn editors) expose only their window to UI Automation. For those, `observe` elements adds the window's OCR lines with their screen rectangles under the note `this app exposes no UI Automation; showing OCR text — target it with ocr:"…"`, and `observe` text with `coords: true` does the same for any window, element or region. Act on that text with `ocr:"…"` targets: `click`, `type`, `key`, `mouse` (`move`, `down`, `up`, `scroll`, `drag` from and to), `set` and `focus` (on the element under the text), `pick`'s `open_with`, and `wait` `appears`/`disappears` all take them. The capture hides the overlay and blacks out denied windows, as screenshots do. Within one `act` call the latest OCR reading is reused while its window keeps its place and raises no change events, until a step other than `wait` or `notify` runs; a target that is still being waited for is read again. `wait` `text`, and `appears`/`disappears` with plain text, fall back to OCR, at most every 400 ms, when the window has no UI Automation content; `ocr:` targets in a `wait` are read at most every 400 ms too.
 
 **The default window.** When a call names no window, Deckhand uses the foreground app window. If that's the terminal hosting the agent, it uses the frontmost other app window that isn't minimized. The default window is always on the current virtual desktop.
 
@@ -350,7 +350,7 @@ While an agent drives a window you see:
 - keycaps for named keys and shortcuts such as `Ctrl+S` or `Enter`, and a gradient outline on the field being typed into (typed text shows only as "typing…", never its characters or length);
 - a brief viewfinder over the area a screenshot captured, and a faint sweep over windows the agent reads.
 
-When you press the kill switch everything turns crimson and the pill says "Stopped", and it stays that way until you press the hotkey again to resume. While a recording runs, a crimson pill at the top right shows "Claude is recording" and the elapsed time.
+When you press the kill switch everything turns crimson and the pill says "Stopped · press Ctrl+Alt+Esc to resume", and it stays that way until you press the hotkey again to resume. While a recording runs, a crimson pill at the top right shows "Claude is recording" and the elapsed time.
 
 The agent name comes from the MCP client: Claude, Codex, Cursor, Copilot, Windsurf and Gemini are recognised, other clients are shown by their own name, and `[overlay] label` overrides it.
 
@@ -389,14 +389,14 @@ Toasts need the app identity `Deckhand.Agent` that the install script registers.
 
 - **Kill switch.** `Ctrl+Alt+Esc` (configurable) stops all input from every Deckhand session at once; press it again to resume. It works even while Deckhand is holding a key such as Shift, because Deckhand also watches the physical keyboard for the chord. A running batch stops between steps and while waiting, and every `act` call fails with `stopped_by_user` until you resume, in background mode too. The agent cannot undo it and is told to report it rather than retry. Reading the screen keeps working. It also stops and saves any recording, and no new recording starts until you resume.
 - **You keep priority.** If you used the mouse or keyboard in the last 600 ms, input steps wait until you stop, for up to 5 s, then fail with `user_active`. Reads and background steps never wait. Deckhand marks its own input so it never mistakes it for yours.
-- **One actor at a time.** A system-wide lock stops two sessions from driving the mouse at once; the second gets `busy`.
+- **One actor at a time.** A lock shared by every Deckhand session stops two of them from driving the mouse at once; the second gets `busy`.
 - **The agent's own terminal is off limits.** Deckhand finds the terminal window that hosts it and refuses to act on it; typing without a target never lands there.
 - **Deny lists.** The only built-in rules are password managers: KeePass, KeePassXC, 1Password, Bitwarden, Dashlane and Enpass. Add your own by process, window title or both; they extend the built-ins. Denied windows are never read, captured or acted on, and `observe mode=clipboard` refuses clipboard content that a denied app put there or that its app marked private, as password managers do. Process rules are reliable. Title rules are partial protection: they match only what the title bar says, and titles change.
 - **Blackout.** Screenshots and recordings paint denied windows black. Recordings check on every frame, and if the window list can't be read the whole frame is blacked out. A denied window can't be recorded, and a recorded window that becomes denied is blacked out while it stays denied.
 - **Paths.** `pick` paths, recording paths, `launch` exe paths and absolute paths in `launch` arguments are refused under any folder in `deny_paths`, after resolving junctions and symbolic links.
 - **Elevation and the secure desktop.** Windows running as administrator are refused with `elevated_target`. A UAC prompt or the lock screen returns `needs_user`.
 - **It restores what it borrows.** Pasting restores your clipboard unless you copied something new in the meantime, and pasted text is kept out of clipboard history and cloud clipboard. Held keys and buttons are released at the end of every call; if a Deckhand process dies while holding them, the next worker to start, or the next call that acts, releases them.
-- **Audit log.** `%LOCALAPPDATA%\deckhand\logs\YYYY-MM-DD.jsonl` keeps one line per call: time, tool (`observe` or `act`), a short summary (for `observe` it starts with `mode=…`; for `act` it lists the steps), result and duration. Typed text, key sequences, chosen list options, clipboard text and launch arguments are logged by length, and file and app paths by name only, unless you set `[log] log_text = true`; notification text is always logged by length, and a window, target or query that names a denied window is logged as `<denied window>`. Logs older than 14 days are deleted. No screenshots are saved.
+- **Audit log.** `%LOCALAPPDATA%\deckhand\logs\YYYY-MM-DD.jsonl` keeps one line per call: time, tool (`observe` or `act`), a short summary (for `observe` it starts with `mode=…`; for `act` it lists the steps), result and duration. Typed and set text, key sequences, chosen list options, waited-for text, clipboard text and launch arguments are logged by length, and file and app paths by name only, unless you set `[log] log_text = true`; notification text is always logged by length, and a window, target or query that names a denied window is logged as `<denied window>`. Logs older than 14 days are deleted. No screenshots are saved.
 
 **Recommended Claude Code permissions.** Allow `observe` and keep asking for `act` until you trust it, in `~/.claude/settings.json`:
 
@@ -532,7 +532,7 @@ cargo test -p deckhand --test e2e -- --ignored --test-threads=1
 
 | Crate | Role |
 |---|---|
-| `deckhand-core` | Pure logic and the shared protocol: tool arguments and validation, selectors, keys, diff, output formatting, config, themes, IPC framing. No Windows APIs. |
+| `deckhand-core` | Pure logic and the shared protocol: tool arguments and validation, selectors, keys, diff, output formatting, config, themes, agent names, OCR text matching, IPC framing. No Windows APIs. |
 | `deckhand-uia` | UI Automation on one dedicated thread: snapshots, refs and fingerprints, pattern actions, text. |
 | `deckhand-capture` | Screen and window capture (DXGI, GDI, PrintWindow), resize, JPEG/PNG encoding, marks, OCR, and recording to MP4 and GIF. |
 | `deckhand-input` | SendInput mouse, keyboard and text, cursor glide, the user-activity monitor, the kill-switch hotkey. |
@@ -559,7 +559,9 @@ Each one writes into its own `%TEMP%\deckhand-record-test-<name>-<pid>-<n>` fold
 cargo run --release --manifest-path bench/deskbench/Cargo.toml
 ```
 
-`--skip-uia`, `--skip-capture` and `--skip-startup` leave out sections, `--webview-process <exe>` adds a WebView2 app (by process name) to the UI Automation targets, and `--probe` is the child mode the start-up section times. Its privacy guard is on by default: it never prints window titles, and it skips windows whose titles match the title rules in your Deckhand config or a `--deny-title <text>` argument.
+`--skip-uia`, `--skip-capture` and `--skip-startup` leave out sections, `--webview-process <exe>` adds a WebView2 app (by process name) to the UI Automation targets, and `--probe` is the child mode the start-up section times. Its privacy guard is on by default: it never prints window titles, it skips windows that match your Deckhand deny list (the built-in rules plus your config's) or a `--deny-title <text>` argument, and it skips the capture sections while such a window is visible.
+
+**Demo video.** `demo/` scripts the promo recording. `node demo/choreography.mjs` drives `demo/demo.html`, a fictional page in Chrome or Edge, through an installed Deckhand (or the `deckhand.exe` that `DECKHAND_EXE` names) with a throwaway config and browser profile. It records a screen region with `observe mode=record`, uploads `demo/spec.pdf` through the `pick` step, and writes `demo/raw.mp4` and `demo/timeline.json`; `--check` rehearses without recording and `--keep` leaves the windows and scratch folder in place. `node demo/build.mjs` then needs `ffmpeg` on the `PATH`: it adds the title cards and captions and writes `demo/deckhand-demo.mp4`, `deckhand-demo.gif` and `poster.png` (`--raw`, `--timeline` and `--edit` pick other inputs, `--placeholder` builds from a stand-in clip, and `--skip-cards`, `--skip-gif` and `--keep-work` save time). Everything it writes is git-ignored.
 
 The code rules (no comments, small functions, no `unwrap`, RAII handles, actor threads for COM) are in [CLAUDE.md](CLAUDE.md). The design is in [docs/DESIGN.md](docs/DESIGN.md).
 

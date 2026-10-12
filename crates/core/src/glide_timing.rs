@@ -2,10 +2,10 @@ use std::time::Duration;
 
 use crate::geometry::Point;
 
-pub const GLIDE_RATE_HZ: u32 = 120;
+const GLIDE_RATE_HZ: u32 = 120;
 pub const MAX_GLIDE_MS: u64 = 3000;
 
-pub fn ease_in_out_cubic(progress: f64) -> f64 {
+fn ease_in_out_cubic(progress: f64) -> f64 {
     let t = if progress.is_finite() { progress.clamp(0.0, 1.0) } else { 1.0 };
     if t < 0.5 { 4.0 * t * t * t } else { 1.0 - (2.0 - 2.0 * t).powi(3) / 2.0 }
 }
@@ -20,7 +20,7 @@ pub fn capped_glide(duration: Duration) -> Duration {
     duration.min(Duration::from_millis(MAX_GLIDE_MS))
 }
 
-pub fn glide_steps(duration: Duration) -> u32 {
+fn glide_steps(duration: Duration) -> u32 {
     ((capped_glide(duration).as_secs_f64() * f64::from(GLIDE_RATE_HZ)).ceil() as u32).max(1)
 }
 

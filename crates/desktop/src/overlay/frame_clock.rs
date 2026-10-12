@@ -40,7 +40,7 @@ impl FrameClock {
 
 #[cfg(test)]
 impl FrameClock {
-    pub(crate) fn is_running(&self) -> bool {
+    fn is_running(&self) -> bool {
         self.timer.is_some()
     }
 }

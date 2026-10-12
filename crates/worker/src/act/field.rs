@@ -2,15 +2,15 @@ use deckhand_core::{Element, ElementRef, Result};
 
 use crate::engine::Engine;
 
-pub fn read_value(engine: &Engine, id: ElementRef) -> Result<Option<String>> {
+pub(crate) fn read_value(engine: &Engine, id: ElementRef) -> Result<Option<String>> {
     engine.uia.run(move |uia| uia.value(id))
 }
 
-pub fn is_writable(element: &Element) -> bool {
+pub(crate) fn is_writable(element: &Element) -> bool {
     element.patterns.value && !element.state.read_only
 }
 
-pub fn is_readable(element: &Element) -> bool {
+pub(crate) fn is_readable(element: &Element) -> bool {
     element.patterns.value && !element.state.password
 }
 

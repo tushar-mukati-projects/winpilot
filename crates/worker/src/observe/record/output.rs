@@ -11,7 +11,7 @@ use crate::guard::Guard;
 
 const RECORDINGS_SUBFOLDER: &str = "Deckhand";
 
-pub fn reserve(
+pub(crate) fn reserve(
     guard: &Guard,
     config: &RecordConfig,
     requested: Option<&str>,
@@ -24,7 +24,7 @@ pub fn reserve(
     reserve_in(&folder, &default_stem(Local::now().naive_local()), format)
 }
 
-pub fn reserve_exact(path: &Path) -> Result<OutputFile> {
+fn reserve_exact(path: &Path) -> Result<OutputFile> {
     if !path.parent().is_some_and(Path::is_dir) {
         return Err(Error::invalid(format!("the folder for {} does not exist", path.display())));
     }
@@ -36,7 +36,7 @@ pub fn reserve_exact(path: &Path) -> Result<OutputFile> {
     })
 }
 
-pub fn reserve_in(folder: &Path, stem: &str, format: VideoFormat) -> Result<OutputFile> {
+fn reserve_in(folder: &Path, stem: &str, format: VideoFormat) -> Result<OutputFile> {
     fs::create_dir_all(folder).context("creating the recordings folder")?;
     for name in candidates(stem, format.extension()) {
         let path = folder.join(name);

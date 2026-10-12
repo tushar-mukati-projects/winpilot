@@ -20,8 +20,6 @@ pub(crate) enum Request {
     Window(WindowRef, Reply<Frame>),
     #[cfg(test)]
     Modes(Reply<Vec<&'static str>>),
-    #[cfg(test)]
-    Served(Reply<Vec<crate::output::Served>>),
 }
 
 #[derive(Default)]
@@ -65,8 +63,6 @@ fn handle(screen: &mut Screen, request: Request) {
         Request::Window(window, reply) => answer(&reply, capture_window(window, |area| screen.capture(area))),
         #[cfg(test)]
         Request::Modes(reply) => answer(&reply, Ok(screen.displays.modes())),
-        #[cfg(test)]
-        Request::Served(reply) => answer(&reply, Ok(screen.displays.served())),
     }
 }
 

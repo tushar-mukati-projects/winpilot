@@ -3,30 +3,15 @@ use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 
 use deckhand_core::{Context, Result};
-use windows::Win32::{
-    System::Com::CoTaskMemFree,
-    UI::Shell::{FOLDERID_Videos, KF_FLAG_DEFAULT, SHGetKnownFolderPath},
-};
-use windows::core::PWSTR;
+use windows::Win32::UI::Shell::{FOLDERID_Videos, KF_FLAG_DEFAULT, SHGetKnownFolderPath};
 
-struct TaskMemoryText(PWSTR);
-
-impl TaskMemoryText {
-    fn to_path(&self) -> PathBuf {
-        PathBuf::from(OsString::from_wide(unsafe { self.0.as_wide() }))
-    }
-}
-
-impl Drop for TaskMemoryText {
-    fn drop(&mut self) {
-        unsafe { CoTaskMemFree(Some(self.0.0.cast_const().cast())) };
-    }
-}
+use crate::co_task_string::CoTaskString;
 
 pub fn videos_folder() -> Result<PathBuf> {
     let path = unsafe { SHGetKnownFolderPath(&FOLDERID_Videos, KF_FLAG_DEFAULT, None) }
         .context("finding the Videos folder")?;
-    Ok(TaskMemoryText(path).to_path())
+    let path = CoTaskString(path);
+    Ok(PathBuf::from(OsString::from_wide(unsafe { path.0.as_wide() })))
 }
 
 #[cfg(test)]

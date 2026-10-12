@@ -1,6 +1,6 @@
 use serde::{Deserialize, Deserializer};
 
-pub fn or_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+pub(crate) fn or_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de> + Default,
@@ -8,15 +8,15 @@ where
     Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
-pub fn or_true<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
+pub(crate) fn or_true<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
     Ok(Option::<bool>::deserialize(deserializer)?.unwrap_or(true))
 }
 
-pub fn or_one_u8<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
+pub(crate) fn or_one_u8<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
     Ok(Option::<u8>::deserialize(deserializer)?.unwrap_or(1))
 }
 
-pub fn or_one_u32<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
+pub(crate) fn or_one_u32<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
     Ok(Option::<u32>::deserialize(deserializer)?.unwrap_or(1))
 }
 

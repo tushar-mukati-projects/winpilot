@@ -13,7 +13,10 @@ use deckhand_desktop::{
 };
 use deckhand_input::ActivityMonitor;
 
-use crate::{call_scope::CallScope, kill_switch::KillSwitch};
+use crate::{
+    call_scope::CallScope,
+    kill_switch::{KillSwitch, warn},
+};
 
 const STOP_EVENT: &str = "Local\\deckhand-stopped";
 const ACTOR_MUTEX: &str = "Local\\deckhand-actor";
@@ -22,7 +25,7 @@ const YIELD_POLL: Duration = Duration::from_millis(50);
 const BUSY: &str = "another Deckhand call or agent session is controlling the desktop";
 const RELEASING_STUCK_INPUTS: &str = "releasing keys and buttons that a crashed Deckhand call left held down";
 
-pub struct Guard {
+pub(crate) struct Guard {
     config: GuardConfig,
     stop: Arc<NamedEvent>,
     actor: NamedMutex,
@@ -32,7 +35,7 @@ pub struct Guard {
 }
 
 impl Guard {
-    pub fn start(config: &GuardConfig, overlay: Option<Arc<Overlay>>) -> Result<Self> {
+    pub(crate) fn start(config: &GuardConfig, overlay: Option<Arc<Overlay>>) -> Result<Self> {
         let stop = Arc::new(NamedEvent::create(STOP_EVENT)?);
         let actor = NamedMutex::create(ACTOR_MUTEX)?;
         let activity = ActivityMonitor::spawn().inspect_err(|error| warn("user-activity monitor", error)).ok();
@@ -41,45 +44,45 @@ impl Guard {
         Ok(Self { config: config.clone(), stop, actor, activity, kill_switch, elevated })
     }
 
-    pub fn is_stopped(&self) -> bool {
+    pub(crate) fn is_stopped(&self) -> bool {
         self.stop.is_set()
     }
 
-    pub fn kill_switch_check(&self) -> StopCheck {
+    pub(crate) fn kill_switch_check(&self) -> StopCheck {
         let stop = Arc::clone(&self.stop);
         Box::new(move || stop.is_set())
     }
 
-    pub fn kill_hotkey(&self) -> &str {
+    pub(crate) fn kill_hotkey(&self) -> &str {
         &self.config.kill_hotkey
     }
 
-    pub fn hotkey_registered(&self) -> bool {
+    pub(crate) fn hotkey_registered(&self) -> bool {
         self.kill_switch.registered()
     }
 
-    pub fn user_idle(&self) -> Option<Duration> {
+    pub(crate) fn user_idle(&self) -> Option<Duration> {
         self.activity.as_ref().and_then(ActivityMonitor::idle_for)
     }
 
-    pub fn physical_input_since(&self, since: Instant) -> bool {
+    pub(crate) fn physical_input_since(&self, since: Instant) -> bool {
         let last = self.activity.as_ref().and_then(ActivityMonitor::last_physical_input);
         last.is_some_and(|at| at > since)
     }
 
-    pub fn own_process_elevated(&self) -> bool {
+    pub(crate) fn own_process_elevated(&self) -> bool {
         self.elevated
     }
 
-    pub fn denies(&self, window: &WindowInfo) -> bool {
+    pub(crate) fn denies(&self, window: &WindowInfo) -> bool {
         self.denies_titled(&window.process, &window.title)
     }
 
-    pub fn denies_titled(&self, process: &str, title: &str) -> bool {
+    pub(crate) fn denies_titled(&self, process: &str, title: &str) -> bool {
         self.config.denies_window(process, title)
     }
 
-    pub fn check_window(&self, window: &WindowInfo) -> Result<()> {
+    pub(crate) fn check_window(&self, window: &WindowInfo) -> Result<()> {
         if self.denies(window) {
             return Err(Error::new(
                 ErrorCode::Denied,
@@ -89,15 +92,15 @@ impl Guard {
         Ok(())
     }
 
-    pub fn checked_path(&self, path: &Path) -> Result<PathBuf> {
+    pub(crate) fn checked_path(&self, path: &Path) -> Result<PathBuf> {
         self.config.checked_path(path)
     }
 
-    pub fn protects_paths(&self) -> bool {
+    pub(crate) fn protects_paths(&self) -> bool {
         !self.config.deny_paths.is_empty()
     }
 
-    pub fn acquire_actor(&self, call: &CallScope) -> Result<NamedMutexGuard<'_>> {
+    pub(crate) fn acquire_actor(&self, call: &CallScope) -> Result<NamedMutexGuard<'_>> {
         let wait = call.bounded(ACTOR_WAIT);
         let Some(actor) = self.actor.lock(wait)? else { return Err(busy(wait < ACTOR_WAIT)) };
         call.note_acting();
@@ -107,12 +110,12 @@ impl Guard {
         Ok(actor)
     }
 
-    pub fn release_inputs_a_crash_left_held(&self) -> Result<()> {
+    pub(crate) fn release_inputs_a_crash_left_held(&self) -> Result<()> {
         let Some(_recovering) = self.actor.try_lock_abandoned()? else { return Ok(()) };
         deckhand_input::release_stuck_inputs().context(RELEASING_STUCK_INPUTS)
     }
 
-    pub fn check_running(&self, call: &CallScope) -> Result<()> {
+    pub(crate) fn check_running(&self, call: &CallScope) -> Result<()> {
         call.check()?;
         if self.is_stopped() {
             return Err(self.stopped());
@@ -120,7 +123,7 @@ impl Guard {
         Ok(())
     }
 
-    pub fn check_waiting(&self, call: &CallScope) -> Result<()> {
+    pub(crate) fn check_waiting(&self, call: &CallScope) -> Result<()> {
         call.check()?;
         if call.is_acting() && self.is_stopped() {
             return Err(self.stopped());
@@ -135,12 +138,12 @@ impl Guard {
         )
     }
 
-    pub fn before_input(&self, window: Option<&WindowInfo>, call: &CallScope) -> Result<()> {
+    pub(crate) fn before_input(&self, window: Option<&WindowInfo>, call: &CallScope) -> Result<()> {
         self.before_patterns(window, call)?;
         self.yield_to_user(call)
     }
 
-    pub fn before_patterns(&self, window: Option<&WindowInfo>, call: &CallScope) -> Result<()> {
+    pub(crate) fn before_patterns(&self, window: Option<&WindowInfo>, call: &CallScope) -> Result<()> {
         self.check_running(call)?;
         if deckhand_desktop::secure_desktop_active() {
             return Err(Error::new(
@@ -191,10 +194,6 @@ fn busy(cut_short: bool) -> Error {
         return Error::timeout(format!("{BUSY}, and this call ran out of time waiting for it"));
     }
     Error::new(ErrorCode::Busy, format!("{BUSY}; try again shortly"))
-}
-
-fn warn(what: &str, error: &Error) {
-    eprintln!("deckhand worker: {what} unavailable: {error}");
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ const ELLIPSIS: char = '\u{2026}';
 const INVISIBLE_FORMATTING: [(char, char); 4] =
     [('\u{200B}', '\u{200F}'), ('\u{202A}', '\u{202E}'), ('\u{2066}', '\u{2069}'), ('\u{FEFF}', '\u{FEFF}')];
 
-pub fn agent_label(client_name: &str) -> String {
+pub(crate) fn agent_label(client_name: &str) -> String {
     let cleaned = sanitized_label(client_name);
     let folded = cleaned.to_lowercase();
     if let Some((_, label)) = KNOWN_AGENTS.iter().find(|(needle, _)| folded.contains(needle)) {
@@ -29,7 +29,7 @@ pub fn agent_label(client_name: &str) -> String {
     if label.is_empty() { FALLBACK.to_string() } else { label }
 }
 
-pub fn sanitized_label(text: &str) -> String {
+pub(crate) fn sanitized_label(text: &str) -> String {
     let visible: String = text
         .chars()
         .map(|c| if c.is_whitespace() { ' ' } else { c })

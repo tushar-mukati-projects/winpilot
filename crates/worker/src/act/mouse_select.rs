@@ -20,7 +20,13 @@ use crate::{call_scope::CallScope, engine::Engine, until::until, watch::Watch};
 const METHOD: &str = "mouse-select";
 const LEFT_OPEN: &str = "the dropdown was left open";
 
-pub fn select(engine: &Engine, prepared: &Prepared, id: ElementRef, option: &str, call: &CallScope) -> Result<Done> {
+pub(crate) fn select(
+    engine: &Engine,
+    prepared: &Prepared,
+    id: ElementRef,
+    option: &str,
+    call: &CallScope,
+) -> Result<Done> {
     engine.guard.before_input(Some(&prepared.window), call)?;
     let target = refreshed(engine, id)?;
     if !needs_opening(&target) {
@@ -39,15 +45,15 @@ pub fn select(engine: &Engine, prepared: &Prepared, id: ElementRef, option: &str
     Ok(Done::by(METHOD).with_note(note))
 }
 
-pub fn needs_opening(element: &Element) -> bool {
+fn needs_opening(element: &Element) -> bool {
     element.role == Role::Combobox || element.patterns.expand_collapse
 }
 
-pub fn should_escape(expanded: Option<bool>, popup_showing: bool) -> bool {
+fn should_escape(expanded: Option<bool>, popup_showing: bool) -> bool {
     expanded.unwrap_or(popup_showing)
 }
 
-pub fn missing(id: ElementRef, option: &str, names: &[String]) -> Error {
+pub(crate) fn missing(id: ElementRef, option: &str, names: &[String]) -> Error {
     if names.is_empty() {
         return Error::not_found(format!("no option \"{option}\" is showing in {id}; no options are showing"));
     }
@@ -122,23 +128,12 @@ fn escape_would_land(engine: &Engine, prepared: &Prepared, call: &CallScope) -> 
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ElementState, ErrorCode, Patterns, Rect};
+    use deckhand_core::{ErrorCode, Patterns};
 
     use super::*;
 
     fn element(role: Role, patterns: Patterns) -> Element {
-        Element {
-            id: ElementRef(7),
-            depth: 1,
-            role,
-            name: "Colour".to_string(),
-            value: None,
-            automation_id: String::new(),
-            class_name: String::new(),
-            rect: Rect::new(0, 0, 10, 10),
-            state: ElementState::default(),
-            patterns,
-        }
+        Element { patterns, ..crate::test_fixture::element(7, 1, role, "Colour") }
     }
 
     #[test]

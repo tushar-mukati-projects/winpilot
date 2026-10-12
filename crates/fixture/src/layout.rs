@@ -1,13 +1,12 @@
 use crate::dpi::scale;
 use crate::ids::{
     APPEARED_BUTTON, APPEARED_STATUS, CLICK_BUTTON, CLICK_STATUS, COLOUR_COMBO, COLOUR_LABEL, COLOUR_STATUS,
-    CONFIRM_BUTTON, CONFIRM_STATUS, FEATURE_CHECKBOX, FEATURE_STATUS, ITEM_LABEL, ITEM_LIST, ITEM_STATUS, KEY_STATUS,
-    NAME_EDIT, NAME_LABEL, NOTES_EDIT, NOTES_LABEL, OPEN_BUTTON, OPEN_STATUS, SAVE_BUTTON, SAVE_STATUS,
-    SHOW_LATER_BUTTON,
+    FEATURE_CHECKBOX, FEATURE_STATUS, ITEM_LABEL, ITEM_LIST, ITEM_STATUS, KEY_STATUS, NAME_EDIT, NAME_LABEL,
+    NOTES_EDIT, NOTES_LABEL, OPEN_BUTTON, OPEN_STATUS, SAVE_BUTTON, SAVE_STATUS, SHOW_LATER_BUTTON,
 };
 
 pub const CLIENT_WIDTH: i32 = 624;
-pub const CLIENT_HEIGHT: i32 = 688;
+pub const CLIENT_HEIGHT: i32 = 644;
 
 const LABEL_X: i32 = 16;
 const LABEL_WIDTH: i32 = 72;
@@ -28,8 +27,7 @@ const ITEM_ROW: i32 = 312;
 const OPEN_ROW: i32 = 472;
 const SAVE_ROW: i32 = 516;
 const LATER_ROW: i32 = 560;
-const CONFIRM_ROW: i32 = 604;
-const KEY_ROW: i32 = 648;
+const KEY_ROW: i32 = 604;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlKind {
@@ -95,7 +93,7 @@ const fn hidden(control: ControlSpec) -> ControlSpec {
     ControlSpec { initially_visible: false, ..control }
 }
 
-pub const CONTROLS: [ControlSpec; 24] = [
+pub const CONTROLS: [ControlSpec; 22] = [
     label(NAME_LABEL, "Name", NAME_ROW),
     field(NAME_EDIT, ControlKind::SingleLineEdit, NAME_ROW, FIELD_WIDTH, 24),
     label(NOTES_LABEL, "Notes", NOTES_ROW),
@@ -117,8 +115,6 @@ pub const CONTROLS: [ControlSpec; 24] = [
     button(SHOW_LATER_BUTTON, "Show later", FIELD_X, LATER_ROW),
     hidden(button(APPEARED_BUTTON, "Appeared", STATUS_X, LATER_ROW)),
     status(APPEARED_STATUS, "", STATUS_X + BUTTON_WIDTH + 16, LATER_ROW),
-    button(CONFIRM_BUTTON, "Confirm\u{2026}", FIELD_X, CONFIRM_ROW),
-    status(CONFIRM_STATUS, "Confirm: none", STATUS_X, CONFIRM_ROW),
     status(KEY_STATUS, "Last key: none", FIELD_X, KEY_ROW),
 ];
 
@@ -145,7 +141,7 @@ mod tests {
 
     #[test]
     fn every_contract_id_exists() {
-        for id in 2001..=2020 {
+        for id in (2001..=2017).chain([KEY_STATUS]) {
             assert!(CONTROLS.iter().any(|control| control.id == id), "missing {id}");
         }
     }
@@ -173,7 +169,6 @@ mod tests {
     fn button_texts_follow_the_contract() {
         assert_eq!(find(OPEN_BUTTON).text, "Open file…");
         assert_eq!(find(SAVE_BUTTON).text, "Save file…");
-        assert_eq!(find(CONFIRM_BUTTON).text, "Confirm…");
     }
 
     #[test]

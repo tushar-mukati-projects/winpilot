@@ -2,7 +2,7 @@ use deckhand_core::{Result, protocol::WindowsReport};
 
 use crate::{app_windows::app_windows, engine::Engine};
 
-pub fn list(engine: &Engine) -> Result<WindowsReport> {
+pub(crate) fn list(engine: &Engine) -> Result<WindowsReport> {
     Ok(WindowsReport { windows: app_windows(engine)? })
 }
 

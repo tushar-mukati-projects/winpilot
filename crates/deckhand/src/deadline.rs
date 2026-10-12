@@ -49,10 +49,10 @@ mod tests {
 
     #[test]
     fn deadline_is_fixed_when_created() {
-        let deadline = Deadline::from_now("status", Duration::ZERO);
+        let deadline = Deadline::from_now("observe status", Duration::ZERO);
         assert!(deadline.has_passed());
         assert_eq!(deadline.remaining(), Duration::ZERO);
-        let later = Deadline::from_now("status", Duration::from_secs(60));
+        let later = Deadline::from_now("observe status", Duration::from_secs(60));
         assert!(!later.has_passed());
         assert!(later.remaining() > Duration::from_secs(59) && later.remaining() <= Duration::from_secs(60));
     }

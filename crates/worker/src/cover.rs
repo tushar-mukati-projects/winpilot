@@ -9,17 +9,17 @@ const MAX_OWNERS: usize = 8;
 const SHARED_HOSTS: [&str; 2] = [FRAME_HOST_PROCESS, "explorer.exe"];
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct CoverFacts {
-    pub same_window: bool,
-    pub same_process: bool,
-    pub shared_host: bool,
-    pub popup: bool,
-    pub owned_by_target: bool,
-    pub shell: bool,
-    pub agent_terminal: bool,
+struct CoverFacts {
+    same_window: bool,
+    same_process: bool,
+    shared_host: bool,
+    popup: bool,
+    owned_by_target: bool,
+    shell: bool,
+    agent_terminal: bool,
 }
 
-pub const fn covers(facts: CoverFacts) -> bool {
+const fn covers(facts: CoverFacts) -> bool {
     if facts.same_window {
         return false;
     }
@@ -33,7 +33,7 @@ pub const fn covers(facts: CoverFacts) -> bool {
     !same_app
 }
 
-pub fn cover_facts(target: &WindowInfo, hit: &WindowInfo, owned_by_target: bool, agent_terminal: bool) -> CoverFacts {
+fn cover_facts(target: &WindowInfo, hit: &WindowInfo, owned_by_target: bool, agent_terminal: bool) -> CoverFacts {
     CoverFacts {
         same_window: target.hwnd == hit.hwnd,
         same_process: target.pid == hit.pid,
@@ -45,7 +45,7 @@ pub fn cover_facts(target: &WindowInfo, hit: &WindowInfo, owned_by_target: bool,
     }
 }
 
-pub fn window_covers(engine: &Engine, target: WindowRef, hit: WindowRef) -> bool {
+pub(crate) fn window_covers(engine: &Engine, target: WindowRef, hit: WindowRef) -> bool {
     if target == hit {
         return false;
     }

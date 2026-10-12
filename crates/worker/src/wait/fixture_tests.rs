@@ -27,8 +27,8 @@ fn text_finds_the_click_counter() {
     let Some(fixture) = FixtureApp::launch() else { return };
     let shown = WaitArgs { text: Some("clicks: 0".to_string()), ..condition(Until::Text, &fixture) };
     let report = run(engine(), &shown, &CallScope::relaxed()).unwrap();
-    assert!(report.satisfied);
-    assert_eq!(report.element.map(|element| element.automation_id), Some("2004".to_string()));
+    assert!(report.satisfied, "{}", report.detail);
+    assert_eq!(report.detail, "\"clicks: 0\" is showing");
 }
 
 #[test]
@@ -52,8 +52,8 @@ fn a_visible_element_appears_at_once() {
     let Some(fixture) = FixtureApp::launch() else { return };
     let appears = WaitArgs { target: Some("id:2003".to_string()), ..condition(Until::Appears, &fixture) };
     let report = run(engine(), &appears, &CallScope::relaxed()).unwrap();
-    assert!(report.satisfied);
-    assert_eq!(report.element.map(|element| element.name), Some("Click me".to_string()));
+    assert!(report.satisfied, "{}", report.detail);
+    assert_eq!(report.detail, "id:2003 is visible");
 }
 
 #[test]

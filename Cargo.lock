@@ -185,9 +185,7 @@ dependencies = [
  "deckhand-core",
  "deckhand-fixture",
  "parking_lot",
- "png",
  "windows",
- "windows-core",
 ]
 
 [[package]]

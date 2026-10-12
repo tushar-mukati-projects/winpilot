@@ -9,8 +9,8 @@ use super::{
     scale::scaled,
 };
 
-pub(crate) const BURST_LIFE: Duration = Duration::from_millis(420);
-pub(crate) const SECOND_BURST_DELAY: Duration = Duration::from_millis(90);
+const BURST_LIFE: Duration = Duration::from_millis(420);
+const SECOND_BURST_DELAY: Duration = Duration::from_millis(90);
 pub(crate) const STILL_LIFE: Duration = Duration::from_millis(320);
 const INNER_RING_DELAY: Duration = Duration::from_millis(45);
 const DOT_LIFE: Duration = Duration::from_millis(120);
@@ -26,21 +26,21 @@ const PARTICLE_RADIUS: f32 = 2.4;
 const PEAK_ALPHA: f32 = 0.95;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Ring {
-    pub(crate) radius: f32,
-    pub(crate) stroke: f32,
-    pub(crate) alpha: f32,
+struct Ring {
+    radius: f32,
+    stroke: f32,
+    alpha: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Particle {
-    pub(crate) offset: (f32, f32),
-    pub(crate) radius: f32,
-    pub(crate) alpha: f32,
-    pub(crate) hue: f32,
+struct Particle {
+    offset: (f32, f32),
+    radius: f32,
+    alpha: f32,
+    hue: f32,
 }
 
-pub(crate) fn ring_at(elapsed: Duration, scale: f32) -> Option<Ring> {
+fn ring_at(elapsed: Duration, scale: f32) -> Option<Ring> {
     if elapsed >= BURST_LIFE {
         return None;
     }
@@ -53,7 +53,7 @@ pub(crate) fn ring_at(elapsed: Duration, scale: f32) -> Option<Ring> {
     })
 }
 
-pub(crate) fn particles_at(elapsed: Duration, burst: usize, scale: f32) -> Vec<Particle> {
+fn particles_at(elapsed: Duration, burst: usize, scale: f32) -> Vec<Particle> {
     if elapsed >= BURST_LIFE {
         return Vec::new();
     }
@@ -74,7 +74,7 @@ pub(crate) fn particles_at(elapsed: Duration, burst: usize, scale: f32) -> Vec<P
         .collect()
 }
 
-pub(crate) fn dot_alpha(elapsed: Duration) -> f32 {
+fn dot_alpha(elapsed: Duration) -> f32 {
     if elapsed >= DOT_LIFE {
         return 0.0;
     }

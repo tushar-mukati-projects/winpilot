@@ -208,7 +208,7 @@ fn recording_line(report: &RecordReport, path: &str) -> String {
 }
 
 fn frame_count(frames: u64) -> String {
-    count_noun(usize::try_from(frames).unwrap_or(usize::MAX), "frame")
+    if frames == 1 { "1 frame".to_string() } else { format!("{frames} frames") }
 }
 
 fn byte_size(bytes: u64) -> String {
@@ -541,10 +541,6 @@ fn option_change(before: Option<bool>, after: Option<bool>, words: [&'static str
         Some(false) => off,
         None => gone,
     })
-}
-
-fn count_noun(count: usize, noun: &str) -> String {
-    if count == 1 { format!("1 {noun}") } else { format!("{count} {noun}s") }
 }
 
 fn seconds(ms: u64) -> String {

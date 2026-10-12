@@ -1,8 +1,8 @@
 use crate::{geometry::Rect, observe::OcrMode, quality::Quality, recording::RecordRequest};
 
-pub const DEFAULT_ELEMENTS: usize = 300;
-pub const DEFAULT_MATCHES: usize = 20;
-pub const DEFAULT_APPS: usize = 30;
+pub(crate) const DEFAULT_ELEMENTS: usize = 300;
+pub(crate) const DEFAULT_MATCHES: usize = 20;
+pub(crate) const DEFAULT_APPS: usize = 30;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ImageFormat {

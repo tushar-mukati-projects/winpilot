@@ -9,7 +9,7 @@ use crate::{
 };
 
 const LISTED_CANDIDATES: usize = 5;
-pub const NO_UIA_NOTE: &str = "this app exposes no UI Automation; showing OCR text — target it with ocr:\"…\"";
+pub(crate) const NO_UIA_NOTE: &str = "this app exposes no UI Automation; showing OCR text — target it with ocr:\"…\"";
 const BLANK_CONTAINERS: [Role; 5] = [Role::Pane, Role::Group, Role::Custom, Role::Window, Role::Unknown];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,7 +30,7 @@ pub struct OcrLine {
 pub struct OcrMatch {
     pub text: String,
     pub rect: Rect,
-    pub exact: bool,
+    pub(crate) exact: bool,
 }
 
 pub fn find_matches(lines: &[OcrLine], query: &str) -> Vec<OcrMatch> {
@@ -120,7 +120,7 @@ fn ambiguous(query: &str, matches: &[OcrMatch]) -> Error {
     let listed = matches.iter().take(LISTED_CANDIDATES);
     lines.extend(listed.map(|candidate| format!("  \"{}\" {}", candidate.text, coords(candidate.rect))));
     if matches.len() > LISTED_CANDIDATES {
-        lines.push("  â¦".to_string());
+        lines.push("  …".to_string());
     }
     Error::new(ErrorCode::Ambiguous, lines.join("\n"))
 }
@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(lines[0], "7 places show ocr:\"Export\"; add nth: or narrow the text");
         assert_eq!(lines[1], "  \"Export\" @0,10,40x20");
         assert_eq!(lines.len(), 7);
-        assert_eq!(lines[6], "  â¦");
+        assert_eq!(lines[6], "  …");
     }
 
     #[test]

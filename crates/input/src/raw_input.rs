@@ -11,7 +11,7 @@ const READ_FAILED: u32 = u32::MAX;
 const MOUSE: u32 = RIM_TYPEMOUSE.0;
 const KEYBOARD: u32 = RIM_TYPEKEYBOARD.0;
 
-pub fn handle_raw_input(handle: HRAWINPUT) {
+pub(crate) fn handle_raw_input(handle: HRAWINPUT) {
     let Some(input) = read_raw_input(handle) else { return };
     if counts_as_user(&input) {
         record_user_input();

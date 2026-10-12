@@ -11,13 +11,13 @@ use super::{
 };
 
 pub(crate) const FRAME: Duration = Duration::from_millis(15);
-pub(crate) const FADE_IN: Duration = Duration::from_millis(180);
-pub(crate) const FADE_OUT: Duration = Duration::from_millis(250);
-pub(crate) const GLIDE: Duration = Duration::from_millis(160);
-pub(crate) const STOP_HOLD: Duration = Duration::from_millis(1600);
+const FADE_IN: Duration = Duration::from_millis(180);
+const FADE_OUT: Duration = Duration::from_millis(250);
+const GLIDE: Duration = Duration::from_millis(160);
+const STOP_HOLD: Duration = Duration::from_millis(1600);
 pub(crate) const BREATH: Duration = Duration::from_millis(1600);
-pub(crate) const IGNITE: Duration = Duration::from_millis(450);
-pub(crate) const ENTRANCE: Duration = Duration::from_millis(520);
+const IGNITE: Duration = Duration::from_millis(450);
+const ENTRANCE: Duration = Duration::from_millis(520);
 const FLOW_LAP: Duration = Duration::from_millis(3500);
 const SHIMMER_LAP: Duration = Duration::from_millis(2600);
 const SPIN_LAP: Duration = Duration::from_millis(4000);
@@ -31,7 +31,7 @@ pub(crate) enum Tone {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Anchor {
+enum Anchor {
     Window,
     PillOnly,
 }

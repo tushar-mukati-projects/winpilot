@@ -1,9 +1,9 @@
 use deckhand_core::WindowInfo;
 
-pub const DIALOG: &str = "#32770";
-pub const POPUP_MENU: &str = "#32768";
-pub const COMBO_LIST: &str = "ComboLBox";
-pub const FRAME_HOST_PROCESS: &str = "ApplicationFrameHost.exe";
+const DIALOG: &str = "#32770";
+pub(crate) const POPUP_MENU: &str = "#32768";
+const COMBO_LIST: &str = "ComboLBox";
+pub(crate) const FRAME_HOST_PROCESS: &str = "ApplicationFrameHost.exe";
 const SHELL_CLASSES: [&str; 9] = [
     "Progman",
     "WorkerW",
@@ -16,23 +16,23 @@ const SHELL_CLASSES: [&str; 9] = [
     "DV2ControlHost",
 ];
 
-pub fn is_shell(window: &WindowInfo) -> bool {
+pub(crate) fn is_shell(window: &WindowInfo) -> bool {
     SHELL_CLASSES.contains(&window.class_name.as_str())
 }
 
-pub fn is_popup_class(class_name: &str) -> bool {
+pub(crate) fn is_popup_class(class_name: &str) -> bool {
     class_name == POPUP_MENU || class_name == COMBO_LIST
 }
 
-pub fn is_popup(window: &WindowInfo) -> bool {
+pub(crate) fn is_popup(window: &WindowInfo) -> bool {
     is_popup_class(&window.class_name)
 }
 
-pub fn is_dialog(window: &WindowInfo) -> bool {
+pub(crate) fn is_dialog(window: &WindowInfo) -> bool {
     window.class_name == DIALOG
 }
 
-pub fn is_frame_host(window: &WindowInfo) -> bool {
+pub(crate) fn is_frame_host(window: &WindowInfo) -> bool {
     window.process.eq_ignore_ascii_case(FRAME_HOST_PROCESS)
 }
 

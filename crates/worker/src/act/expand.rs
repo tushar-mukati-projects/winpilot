@@ -4,17 +4,17 @@ use super::{by_pattern::by_pattern, done::Done, target::Prepared};
 use crate::{call_scope::CallScope, engine::Engine};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Expansion {
+pub(crate) enum Expansion {
     Expand,
     Collapse,
 }
 
 impl Expansion {
-    pub const fn wanted(expanded: bool) -> Self {
+    pub(crate) const fn wanted(expanded: bool) -> Self {
         if expanded { Self::Expand } else { Self::Collapse }
     }
 
-    pub const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Expand => "expand",
             Self::Collapse => "collapse",
@@ -22,7 +22,7 @@ impl Expansion {
     }
 }
 
-pub fn step(engine: &Engine, prepared: &Prepared, expansion: Expansion, call: &CallScope) -> Result<Done> {
+pub(crate) fn step(engine: &Engine, prepared: &Prepared, expansion: Expansion, call: &CallScope) -> Result<Done> {
     let id = prepared.require_element("set expanded")?.id;
     let ((), note) = by_pattern(engine, &prepared.window, call, || {
         engine.uia.run(move |uia| match expansion {

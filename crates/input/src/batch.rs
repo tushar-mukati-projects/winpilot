@@ -7,18 +7,18 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Batch {
+pub(crate) struct Batch {
     pub events: Vec<InputEvent>,
     pub release_on_failure: Vec<InputEvent>,
 }
 
 impl Batch {
-    pub fn plain(events: Vec<InputEvent>) -> Self {
+    pub(crate) fn plain(events: Vec<InputEvent>) -> Self {
         Self { events, release_on_failure: Vec::new() }
     }
 }
 
-pub fn with_modifiers_held(modifiers: Modifiers, inner: Vec<InputEvent>, layout: &impl KeyboardLayout) -> Batch {
+pub(crate) fn with_modifiers_held(modifiers: Modifiers, inner: Vec<InputEvent>, layout: &impl KeyboardLayout) -> Batch {
     let releases = modifier_releases(modifiers, layout);
     let mut events = modifier_presses(modifiers, layout);
     events.extend(inner);

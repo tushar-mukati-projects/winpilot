@@ -38,7 +38,7 @@ struct Shot {
     note: Option<&'static str>,
 }
 
-pub fn run(engine: &Engine, args: &ScreenshotRequest, call: &CallScope) -> Result<ScreenshotReport> {
+pub(crate) fn run(engine: &Engine, args: &ScreenshotRequest, call: &CallScope) -> Result<ScreenshotReport> {
     let shot = take(engine, source(args)?, call)?;
     let marks = match &shot.window {
         Some(window) if args.marks => marks(&engine.snapshot(window)?, shot.frame.rect()),
@@ -48,7 +48,7 @@ pub fn run(engine: &Engine, args: &ScreenshotRequest, call: &CallScope) -> Resul
     report(engine, &shot, &options, &marks)
 }
 
-pub fn of_window(engine: &Engine, window: &WindowInfo) -> Result<ScreenshotReport> {
+pub(crate) fn of_window(engine: &Engine, window: &WindowInfo) -> Result<ScreenshotReport> {
     let window = deckhand_desktop::window(window.hwnd)?;
     let shot = window_shot(engine, window)?;
     let quality = screenshot_quality(&ScreenshotRequest::default(), &engine.config.screenshot);
@@ -96,7 +96,7 @@ fn element_shot(engine: &Engine, target: &Target, call: &CallScope) -> Result<Sh
     Ok(Shot { frame, label, window: Some(resolved.window), note })
 }
 
-pub fn with_source(label: &str, source: FrameSource) -> String {
+fn with_source(label: &str, source: FrameSource) -> String {
     let pixels = match source {
         FrameSource::Window => "window pixels",
         FrameSource::Screen => "screen pixels",

@@ -60,8 +60,18 @@ function Install-Binary {
     }
 }
 
+function Invoke-Native([string]$Command, [string[]]$Arguments) {
+    $null = Get-Command $Command
+    $ErrorActionPreference = "Continue"
+    & $Command @Arguments 2>&1 | ForEach-Object { "$_" }
+}
+
 function Test-ClaudeCli {
     return [bool](Get-Command claude -ErrorAction SilentlyContinue)
+}
+
+function Remove-ClaudeEntry {
+    Invoke-Native "claude" @("mcp", "remove", "deckhand", "-s", "user") | Out-Null
 }
 
 function Register-AppIdentity {
@@ -76,7 +86,7 @@ function Remove-McpRegistration {
         Write-Output "the claude CLI was not found, so the MCP registration was left alone; remove it with: claude mcp remove deckhand -s user"
         return
     }
-    claude mcp remove deckhand -s user 2>$null | Out-Null
+    Remove-ClaudeEntry
     Write-Output "removed the 'deckhand' MCP registration (if it existed)"
 }
 
@@ -115,7 +125,7 @@ if ($Purge) { throw "-Purge only works together with -Uninstall" }
 if (-not $SkipBuild) {
     Push-Location $repo
     try {
-        cargo build --release -p deckhand
+        Invoke-Native "cargo" @("build", "--release", "-p", "deckhand")
         if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
     }
     finally {
@@ -132,7 +142,7 @@ $hash = Install-Binary
 Remove-RetiredCopies
 Register-AppIdentity
 
-& $installed --version
+Invoke-Native $installed @("--version")
 Write-Output "installed $installed (sha256 $hash)"
 Write-Output "registered the $appId notification identity with the icon $installedIcon"
 
@@ -140,8 +150,8 @@ if ($Register) {
     if (-not (Test-ClaudeCli)) {
         throw "the claude CLI was not found, so Deckhand is installed but not registered; install Claude Code, then run: claude mcp add -s user deckhand -- `"$installed`" mcp"
     }
-    claude mcp remove deckhand -s user 2>$null | Out-Null
-    claude mcp add -s user deckhand -- $installed mcp
+    Remove-ClaudeEntry
+    Invoke-Native "claude" @("mcp", "add", "-s", "user", "deckhand", "--", $installed, "mcp")
     if ($LASTEXITCODE -ne 0) { throw "claude mcp add failed" }
     Write-Output "registered with Claude Code as 'deckhand'; restart Claude Code sessions to load it"
 }

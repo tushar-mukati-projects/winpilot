@@ -24,17 +24,17 @@ const KEPT_CLIPBOARD: &str = "the clipboard holds more than text, so the text wa
 const UNCONFIRMABLE: &str = "the field does not expose its value to confirm a paste, so the text was typed";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Typing {
+enum Typing {
     Keys,
     Paste(Readback),
     KeysToKeepClipboard,
     KeysToConfirm,
 }
 
-pub struct TypeRequest<'a> {
-    pub text: &'a str,
-    pub enter: bool,
-    pub how: TypeHow,
+pub(crate) struct TypeRequest<'a> {
+    pub(crate) text: &'a str,
+    pub(crate) enter: bool,
+    pub(crate) how: TypeHow,
 }
 
 impl Typing {
@@ -47,7 +47,7 @@ impl Typing {
     }
 }
 
-pub fn step(
+pub(crate) fn step(
     engine: &Engine,
     target: Option<&Prepared>,
     request: &TypeRequest<'_>,
@@ -90,7 +90,7 @@ fn type_for_real(
         .with_note(value_note(engine, focused.element.as_ref())))
 }
 
-pub fn choose_typing(
+fn choose_typing(
     how: TypeHow,
     chars: usize,
     readback: impl FnOnce() -> Option<Readback>,
@@ -142,7 +142,7 @@ fn press_enter(engine: &Engine, focused: &Focused, call: &CallScope) -> Result<(
     with_held_modifiers_lifted(call, || deckhand_input::press_chord(&named(NamedKey::Enter)))
 }
 
-pub fn value_note(engine: &Engine, element: Option<&Element>) -> Option<String> {
+pub(crate) fn value_note(engine: &Engine, element: Option<&Element>) -> Option<String> {
     let element = element.filter(|element| is_readable(element))?;
     let value = read_value(engine, element.id).ok().flatten()?;
     Some(format!("value now {}", quoted(&value, NOTE_LIMIT)))

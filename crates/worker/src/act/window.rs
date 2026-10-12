@@ -9,7 +9,7 @@ use deckhand_core::{
 use super::{
     done::Done,
     launch,
-    mode::{Mode, for_window},
+    mode::{check_before, for_window},
     settle,
     steps::StepContext,
 };
@@ -20,12 +20,12 @@ use crate::{
 
 const CLOSE_WAIT: Duration = Duration::from_secs(3);
 
-pub struct WindowRequest<'a> {
-    pub action: WindowAction,
-    pub target: Option<&'a TargetSpec>,
-    pub app: Option<&'a str>,
-    pub args: Option<&'a str>,
-    pub rect: Option<Rect>,
+pub(crate) struct WindowRequest<'a> {
+    pub(crate) action: WindowAction,
+    pub(crate) target: Option<&'a TargetSpec>,
+    pub(crate) app: Option<&'a str>,
+    pub(crate) args: Option<&'a str>,
+    pub(crate) rect: Option<Rect>,
 }
 
 impl<'a> TryFrom<&'a Step> for WindowRequest<'a> {
@@ -39,7 +39,12 @@ impl<'a> TryFrom<&'a Step> for WindowRequest<'a> {
     }
 }
 
-pub fn step(engine: &Engine, request: &WindowRequest<'_>, step: &Step, context: &StepContext<'_>) -> Result<Done> {
+pub(crate) fn step(
+    engine: &Engine,
+    request: &WindowRequest<'_>,
+    step: &Step,
+    context: &StepContext<'_>,
+) -> Result<Done> {
     let call = context.call;
     if request.action == WindowAction::Launch {
         let app = request.app.ok_or_else(|| Error::invalid("window action=launch needs \"app\""))?;
@@ -48,7 +53,7 @@ pub fn step(engine: &Engine, request: &WindowRequest<'_>, step: &Step, context: 
     let target = request.target.ok_or_else(|| Error::invalid("this window action needs \"target\""))?;
     let window = target_window(engine, target, call)?;
     let mode = for_window(context.mode, &window, step)?;
-    guard(engine, &window, mode, call)?;
+    check_before(engine, Some(&window), mode, call)?;
     overlay::begin(engine, &window, call);
     let done = perform(engine, request, &window, call)?;
     let after = deckhand_desktop::window(window.hwnd).ok();
@@ -72,13 +77,6 @@ fn perform(engine: &Engine, request: &WindowRequest<'_>, window: &WindowInfo, ca
     }
 }
 
-fn guard(engine: &Engine, window: &WindowInfo, mode: Mode, call: &CallScope) -> Result<()> {
-    match mode {
-        Mode::Foreground => engine.guard.before_input(Some(window), call),
-        Mode::Background => engine.guard.before_patterns(Some(window), call),
-    }
-}
-
 fn target_window(engine: &Engine, target: &TargetSpec, call: &CallScope) -> Result<WindowInfo> {
     let window = match target {
         TargetSpec::Text(spec) => single_window(spec.trim(), resolve::windows_matching(engine, spec.trim())?)?,
@@ -90,7 +88,7 @@ fn target_window(engine: &Engine, target: &TargetSpec, call: &CallScope) -> Resu
     Ok(window)
 }
 
-pub fn require_app_window(window: &WindowInfo, listed: &[WindowInfo]) -> Result<()> {
+fn require_app_window(window: &WindowInfo, listed: &[WindowInfo]) -> Result<()> {
     if is_shell(window) {
         return Err(Error::new(
             ErrorCode::Denied,
@@ -143,7 +141,7 @@ fn move_to(engine: &Engine, window: &WindowInfo, rect: Rect, call: &CallScope) -
     Ok(Done::noting(format!("moved {}", window_line(&after))))
 }
 
-pub fn single_window(spec: &str, found: Vec<WindowInfo>) -> Result<WindowInfo> {
+fn single_window(spec: &str, found: Vec<WindowInfo>) -> Result<WindowInfo> {
     let mut found = found;
     match found.len() {
         0 => Err(Error::not_found(format!("no open window matches {spec}"))),

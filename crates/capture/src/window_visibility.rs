@@ -4,15 +4,15 @@ use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
 use windows::Win32::UI::WindowsAndMessaging::{IsChild, IsIconic, IsWindowVisible, WindowFromPoint};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Presence {
-    pub visible: bool,
-    pub cloaked: bool,
-    pub minimized: bool,
-    pub topmost_at_centre: bool,
+struct Presence {
+    visible: bool,
+    cloaked: bool,
+    minimized: bool,
+    topmost_at_centre: bool,
 }
 
 impl Presence {
-    pub(crate) const fn is_uncovered(self) -> bool {
+    const fn is_uncovered(self) -> bool {
         self.visible && !self.cloaked && !self.minimized && self.topmost_at_centre
     }
 }

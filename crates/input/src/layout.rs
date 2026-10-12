@@ -15,23 +15,23 @@ const CURRENT_THREAD: u32 = 0;
 const DEAD_KEY_BIT: u32 = 0x8000_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LayoutKey {
+pub(crate) struct LayoutKey {
     pub vk: VIRTUAL_KEY,
     pub modifiers: Modifiers,
 }
 
-pub trait KeyboardLayout {
+pub(crate) trait KeyboardLayout {
     fn char_key(&self, c: char) -> Option<LayoutKey>;
     fn scan_code(&self, vk: VIRTUAL_KEY) -> u32;
     fn is_dead_key(&self, vk: VIRTUAL_KEY) -> bool;
 }
 
-pub struct SystemLayout {
+pub(crate) struct SystemLayout {
     handle: HKL,
 }
 
 impl SystemLayout {
-    pub fn of_foreground_window() -> Self {
+    pub(crate) fn of_foreground_window() -> Self {
         let foreground = thread_layout(foreground_thread_id());
         let handle = if foreground.is_invalid() { thread_layout(CURRENT_THREAD) } else { foreground };
         Self { handle }
@@ -70,7 +70,7 @@ fn marks_dead_key(character: u32) -> bool {
     character & DEAD_KEY_BIT != 0
 }
 
-pub fn decode_vk_scan(result: i16) -> Option<LayoutKey> {
+fn decode_vk_scan(result: i16) -> Option<LayoutKey> {
     let [vk, state] = result.to_le_bytes();
     if vk == NO_KEY || state & !REPRODUCIBLE_SHIFT_STATES != 0 {
         return None;

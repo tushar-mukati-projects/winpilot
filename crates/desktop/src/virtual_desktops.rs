@@ -106,12 +106,6 @@ impl Manager {
     }
 }
 
-impl Drop for Manager {
-    fn drop(&mut self) {
-        self.manager = None;
-    }
-}
-
 fn create_manager() -> Option<IVirtualDesktopManager> {
     unsafe { CoCreateInstance(&VirtualDesktopManager, None, CLSCTX_ALL) }.ok()
 }

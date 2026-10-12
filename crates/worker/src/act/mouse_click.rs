@@ -2,13 +2,13 @@ use deckhand_core::Result;
 
 use super::{
     click_choice::ClickOptions,
-    locate::{Located, locate, locate_in_front},
+    locate::{Located, locate_in_front, locate_in_place},
     motion::Motion,
     target::Prepared,
 };
 use crate::{call_scope::CallScope, engine::Engine, overlay};
 
-pub fn click_by_mouse(
+pub(crate) fn click_by_mouse(
     engine: &Engine,
     prepared: &Prepared,
     options: ClickOptions,
@@ -18,14 +18,13 @@ pub fn click_by_mouse(
     click_located(engine, prepared, located, options, call)
 }
 
-pub fn click_in_place(
+pub(crate) fn click_in_place(
     engine: &Engine,
     prepared: &Prepared,
     options: ClickOptions,
     call: &CallScope,
 ) -> Result<Located> {
-    let window = deckhand_desktop::window(prepared.window.hwnd)?;
-    let located = locate(engine, prepared, window, call)?;
+    let located = locate_in_place(engine, prepared, call)?;
     click_located(engine, prepared, located, options, call)
 }
 

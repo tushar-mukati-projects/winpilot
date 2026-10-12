@@ -10,15 +10,15 @@ const CANCEL_ID: &str = "2";
 const CONFIRM_NAMES: [&str; 2] = ["open", "save"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileDialog {
-    pub window: WindowInfo,
-    pub kind: DialogKind,
-    pub name_box: ElementRef,
-    pub confirm: ElementRef,
-    pub cancel: Option<ElementRef>,
+pub(crate) struct FileDialog {
+    pub(crate) window: WindowInfo,
+    pub(crate) kind: DialogKind,
+    pub(crate) name_box: ElementRef,
+    pub(crate) confirm: ElementRef,
+    pub(crate) cancel: Option<ElementRef>,
 }
 
-pub fn recognise(snapshot: &Snapshot) -> Option<FileDialog> {
+pub(crate) fn recognise(snapshot: &Snapshot) -> Option<FileDialog> {
     let name_box = name_box(snapshot)?;
     let confirm = confirm_button(snapshot)?;
     let cancel = button_with_id(snapshot, CANCEL_ID);
@@ -70,7 +70,7 @@ fn kind(snapshot: &Snapshot) -> DialogKind {
     if (!has_combo && has_save_edit) || titled_save { DialogKind::Save } else { DialogKind::Open }
 }
 
-pub fn plain_name(name: &str) -> String {
+pub(crate) fn plain_name(name: &str) -> String {
     name.replace('&', "").trim().to_lowercase()
 }
 

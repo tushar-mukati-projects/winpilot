@@ -15,13 +15,18 @@ use crate::{call_scope::CallScope, engine::Engine, overlay};
 
 const HELD: &str = "held until a key up step or the end of the call";
 
-pub struct KeyRequest<'a> {
-    pub keys: &'a str,
-    pub repeat: u32,
-    pub action: KeyAction,
+pub(crate) struct KeyRequest<'a> {
+    pub(crate) keys: &'a str,
+    pub(crate) repeat: u32,
+    pub(crate) action: KeyAction,
 }
 
-pub fn step(engine: &Engine, target: Option<&Prepared>, request: &KeyRequest<'_>, call: &CallScope) -> Result<Done> {
+pub(crate) fn step(
+    engine: &Engine,
+    target: Option<&Prepared>,
+    request: &KeyRequest<'_>,
+    call: &CallScope,
+) -> Result<Done> {
     let chords = parse_keys(request.keys)?;
     match request.action {
         KeyAction::Up => release(engine, &chords, call),

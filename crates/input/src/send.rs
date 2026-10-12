@@ -11,14 +11,14 @@ use crate::{batch::Batch, call_split::split_into_calls, event::InputEvent};
 const BLOCKED_BY_WINDOWS: &str =
     "input was blocked by Windows (the target window is elevated or the secure desktop is active)";
 
-pub fn send(events: &[InputEvent]) -> Result<()> {
+pub(crate) fn send(events: &[InputEvent]) -> Result<()> {
     for call in split_into_calls(events) {
         send_call(call)?;
     }
     Ok(())
 }
 
-pub fn send_batch(batch: &Batch) -> Result<()> {
+pub(crate) fn send_batch(batch: &Batch) -> Result<()> {
     let outcome = send(&batch.events);
     if outcome.is_err() && !batch.release_on_failure.is_empty() {
         let _ = send(&batch.release_on_failure);

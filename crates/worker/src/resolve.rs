@@ -24,16 +24,16 @@ const NARROW_THE_SELECTOR: &str =
     "add window: or process: terms to say which, or observe that window and use its element ref";
 
 #[derive(Debug, Clone)]
-pub enum Reach {
+pub(crate) enum Reach {
     Element(Element),
     Point { point: Point, under: Element },
     Window,
 }
 
 #[derive(Debug, Clone)]
-pub struct Resolved {
-    pub window: WindowInfo,
-    pub reach: Reach,
+pub(crate) struct Resolved {
+    pub(crate) window: WindowInfo,
+    pub(crate) reach: Reach,
 }
 
 trait InWindow {
@@ -53,27 +53,27 @@ impl InWindow for Resolved {
 }
 
 impl Resolved {
-    pub fn element_or_point_hit(&self) -> Option<&Element> {
+    pub(crate) fn element_or_point_hit(&self) -> Option<&Element> {
         match &self.reach {
             Reach::Element(element) | Reach::Point { under: element, .. } => Some(element),
             Reach::Window => None,
         }
     }
 
-    pub fn tracked_element(&self) -> Option<&Element> {
+    pub(crate) fn tracked_element(&self) -> Option<&Element> {
         match &self.reach {
             Reach::Element(element) => Some(element),
             Reach::Point { .. } | Reach::Window => None,
         }
     }
 
-    pub fn require_element(&self, step: &str) -> Result<&Element> {
+    pub(crate) fn require_element(&self, step: &str) -> Result<&Element> {
         self.element_or_point_hit()
             .ok_or_else(|| Error::invalid(format!("{step} needs an element, not the window {}", self.window.hwnd)))
     }
 }
 
-pub fn window(engine: &Engine, spec: Option<&str>) -> Result<WindowInfo> {
+pub(crate) fn window(engine: &Engine, spec: Option<&str>) -> Result<WindowInfo> {
     let Some(spec) = spec.map(str::trim).filter(|spec| !spec.is_empty()) else { return default_window(engine) };
     let window = match window_spec::parse(spec)? {
         WindowSpec::Handle(hwnd) => deckhand_desktop::window(hwnd)?,
@@ -84,7 +84,7 @@ pub fn window(engine: &Engine, spec: Option<&str>) -> Result<WindowInfo> {
     Ok(window)
 }
 
-pub fn windows_matching(engine: &Engine, spec: &str) -> Result<Vec<WindowInfo>> {
+pub(crate) fn windows_matching(engine: &Engine, spec: &str) -> Result<Vec<WindowInfo>> {
     match window_spec::parse(spec)? {
         WindowSpec::Handle(hwnd) => Ok(vec![deckhand_desktop::window(hwnd)?]),
         WindowSpec::Element(id) => Ok(vec![element_window(engine, id)?]),
@@ -92,12 +92,12 @@ pub fn windows_matching(engine: &Engine, spec: &str) -> Result<Vec<WindowInfo>> 
     }
 }
 
-pub fn element_window(engine: &Engine, id: ElementRef) -> Result<WindowInfo> {
+pub(crate) fn element_window(engine: &Engine, id: ElementRef) -> Result<WindowInfo> {
     let hwnd = engine.uia.run(move |uia| uia.window_of(id))?;
     deckhand_desktop::window(hwnd)
 }
 
-pub fn ambiguous<'a>(spec: &str, windows: impl ExactSizeIterator<Item = &'a WindowInfo>, hint: &str) -> Error {
+pub(crate) fn ambiguous<'a>(spec: &str, windows: impl ExactSizeIterator<Item = &'a WindowInfo>, hint: &str) -> Error {
     let count = windows.len();
     let mut lines: Vec<String> = windows.take(LISTED_MATCHES).map(window_line).collect();
     if count > LISTED_MATCHES {
@@ -114,16 +114,22 @@ fn first_matching(engine: &Engine, spec: &WindowSpec) -> Result<WindowInfo> {
         .ok_or_else(|| Error::not_found(format!("no open window matches {}", window_spec::describe(spec))))
 }
 
-pub fn target(engine: &Engine, target: &Target, call: &CallScope) -> Result<Resolved> {
-    let Target::Selector(selector) = target else { return resolve_once(engine, target) };
+pub(crate) fn target(engine: &Engine, target: &Target, call: &CallScope) -> Result<Resolved> {
+    match target {
+        Target::Element(id) => resolve_element(engine, *id),
+        Target::Window(hwnd) => resolve_window(engine, deckhand_desktop::window(*hwnd)?),
+        Target::Selector(selector) => wait_for_selector(engine, selector, call),
+        Target::Point { point, image } => resolve_point(engine, *point, *image),
+    }
+}
+
+fn wait_for_selector(engine: &Engine, selector: &Selector, call: &CallScope) -> Result<Resolved> {
     let patience = Duration::from_millis(engine.config.act.auto_wait_ms);
     let mut missing = None;
     let mut freshness = Freshness::CachedIsFine;
     let found = until(engine, call, patience, &selector_watch(engine, selector), || {
-        let using = OcrUse {
-            call: Some(call),
-            freshness: std::mem::replace(&mut freshness, Freshness::TakenAfter(Instant::now())),
-        };
+        let using =
+            OcrUse { call, freshness: std::mem::replace(&mut freshness, Freshness::TakenAfter(Instant::now())) };
         match resolve_selector(engine, selector, using) {
             Ok(resolved) => Ok(Some(resolved)),
             Err(error) if error.code == ErrorCode::NotFound => {
@@ -136,22 +142,15 @@ pub fn target(engine: &Engine, target: &Target, call: &CallScope) -> Result<Reso
     found.ok_or_else(|| missing.unwrap_or_else(|| no_window(selector)))
 }
 
-fn resolve_once(engine: &Engine, target: &Target) -> Result<Resolved> {
-    match target {
-        Target::Element(id) => resolve_element(engine, *id),
-        Target::Window(hwnd) => resolve_window(engine, deckhand_desktop::window(*hwnd)?),
-        Target::Selector(selector) => resolve_selector(engine, selector, OcrUse::UNCACHED),
-        Target::Point { point, image } => resolve_point(engine, *point, *image),
-    }
+fn selector_watch(engine: &Engine, selector: &Selector) -> Watch {
+    candidate_windows(engine, selector).map(|windows| Watch::windows(&windows)).unwrap_or_default()
 }
 
-fn selector_watch(engine: &Engine, selector: &Selector) -> Watch {
-    let windows = if selector.has_window_terms() {
-        app_windows_matching(engine, selector)
-    } else {
-        default_window(engine).map(|window| vec![window])
-    };
-    windows.map(|windows| Watch::windows(&windows)).unwrap_or_default()
+fn candidate_windows(engine: &Engine, selector: &Selector) -> Result<Vec<WindowInfo>> {
+    if selector.has_window_terms() {
+        return app_windows_matching(engine, selector);
+    }
+    default_window(engine).map(|window| vec![window])
 }
 
 fn resolve_element(engine: &Engine, id: ElementRef) -> Result<Resolved> {
@@ -167,11 +166,7 @@ fn resolve_window(engine: &Engine, window: WindowInfo) -> Result<Resolved> {
 }
 
 fn resolve_selector(engine: &Engine, selector: &Selector, using: OcrUse<'_>) -> Result<Resolved> {
-    let candidates = if selector.has_window_terms() {
-        app_windows_matching(engine, selector)?
-    } else {
-        vec![default_window(engine)?]
-    };
+    let candidates = candidate_windows(engine, selector)?;
     if let Some(text) = selector.ocr_text() {
         let window = one_preferred(candidates, selector)?;
         return ocr_target::resolve(engine, window, text, selector.nth(), using);

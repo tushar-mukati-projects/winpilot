@@ -14,12 +14,12 @@ const PAUSE_PREFIX: u32 = 0xE1;
 const NO_VIRTUAL_KEY: VIRTUAL_KEY = VIRTUAL_KEY(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum KeyTransition {
+pub(crate) enum KeyTransition {
     Press,
     Release,
 }
 
-pub fn key_event(vk: VIRTUAL_KEY, transition: KeyTransition, layout: &impl KeyboardLayout) -> InputEvent {
+pub(crate) fn key_event(vk: VIRTUAL_KEY, transition: KeyTransition, layout: &impl KeyboardLayout) -> InputEvent {
     let code = layout.scan_code(vk);
     let mut flags = release_flag(transition);
     if is_extended_key(vk) || code >> 8 == EXTENDED_PREFIX {
@@ -28,11 +28,11 @@ pub fn key_event(vk: VIRTUAL_KEY, transition: KeyTransition, layout: &impl Keybo
     InputEvent::Key(KeyStroke { vk, scan: scan_byte(code), flags })
 }
 
-pub fn key_tap(vk: VIRTUAL_KEY, layout: &impl KeyboardLayout) -> [InputEvent; 2] {
+pub(crate) fn key_tap(vk: VIRTUAL_KEY, layout: &impl KeyboardLayout) -> [InputEvent; 2] {
     [key_event(vk, KeyTransition::Press, layout), key_event(vk, KeyTransition::Release, layout)]
 }
 
-pub fn push_unicode_tap(events: &mut Vec<InputEvent>, c: char) {
+pub(crate) fn push_unicode_tap(events: &mut Vec<InputEvent>, c: char) {
     let mut units = [0u16; 2];
     for &unit in c.encode_utf16(&mut units).iter() {
         events.push(unicode_event(unit, KeyTransition::Press));
@@ -40,11 +40,11 @@ pub fn push_unicode_tap(events: &mut Vec<InputEvent>, c: char) {
     }
 }
 
-pub fn modifier_presses(modifiers: Modifiers, layout: &impl KeyboardLayout) -> Vec<InputEvent> {
+pub(crate) fn modifier_presses(modifiers: Modifiers, layout: &impl KeyboardLayout) -> Vec<InputEvent> {
     modifier_keys(modifiers).into_iter().map(|vk| key_event(vk, KeyTransition::Press, layout)).collect()
 }
 
-pub fn modifier_releases(modifiers: Modifiers, layout: &impl KeyboardLayout) -> Vec<InputEvent> {
+pub(crate) fn modifier_releases(modifiers: Modifiers, layout: &impl KeyboardLayout) -> Vec<InputEvent> {
     modifier_keys(modifiers).into_iter().rev().map(|vk| key_event(vk, KeyTransition::Release, layout)).collect()
 }
 

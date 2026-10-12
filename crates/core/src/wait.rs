@@ -10,11 +10,11 @@ use crate::{
     target::{Target, parse_text_target},
 };
 
-pub const DEFAULT_WAIT: Duration = Duration::from_secs(5);
-pub const MAX_WAIT: Duration = Duration::from_secs(60);
-pub const DEFAULT_IDLE: Duration = Duration::from_millis(300);
+const DEFAULT_WAIT: Duration = Duration::from_secs(5);
+pub(crate) const MAX_WAIT: Duration = Duration::from_secs(60);
+const DEFAULT_IDLE: Duration = Duration::from_millis(300);
 const MAX_PLAIN_WAIT_MS: u64 = 5_000;
-pub const MAX_PLAIN_WAIT: Duration = Duration::from_millis(MAX_PLAIN_WAIT_MS);
+pub(crate) const MAX_PLAIN_WAIT: Duration = Duration::from_millis(MAX_PLAIN_WAIT_MS);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

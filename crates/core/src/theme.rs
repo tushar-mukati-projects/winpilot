@@ -2,10 +2,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
-    #[default]
     Aurora,
     Sunset,
     Ocean,
@@ -13,7 +12,7 @@ pub enum Theme {
 }
 
 impl Theme {
-    pub fn colors(self) -> Vec<HexColor> {
+    pub(crate) fn colors(self) -> Vec<HexColor> {
         let colors: &[[u8; 3]] = match self {
             Self::Aurora => {
                 &[[0x7C, 0x3A, 0xED], [0x4F, 0x46, 0xE5], [0x0E, 0xA5, 0xE9], [0x22, 0xD3, 0xEE], [0xF4, 0x72, 0xB6]]
@@ -85,7 +84,6 @@ mod tests {
             assert!(theme.colors().len() >= 4, "{theme:?}");
         }
         assert_eq!(Theme::Aurora.colors()[0], HexColor([0x7C, 0x3A, 0xED]));
-        assert_eq!(Theme::default(), Theme::Aurora);
     }
 
     #[test]

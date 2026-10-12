@@ -3,13 +3,13 @@ use deckhand_core::{Error, Result, WindowInfo, WindowRef, WindowState};
 use crate::{app_windows::app_windows, engine::Engine};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Candidate {
-    pub window: WindowInfo,
-    pub topmost: bool,
-    pub host: bool,
+struct Candidate {
+    window: WindowInfo,
+    topmost: bool,
+    host: bool,
 }
 
-pub fn default_window(engine: &Engine) -> Result<WindowInfo> {
+pub(crate) fn default_window(engine: &Engine) -> Result<WindowInfo> {
     let candidates = app_windows(engine)?
         .into_iter()
         .map(|window| Candidate {
@@ -22,7 +22,7 @@ pub fn default_window(engine: &Engine) -> Result<WindowInfo> {
         .ok_or_else(|| Error::not_found("no app window is open besides the agent's own terminal"))
 }
 
-pub fn choose(candidates: Vec<Candidate>, foreground: Option<WindowRef>) -> Option<WindowInfo> {
+fn choose(candidates: Vec<Candidate>, foreground: Option<WindowRef>) -> Option<WindowInfo> {
     let mut usable: Vec<Candidate> = candidates.into_iter().filter(is_usable).collect();
     let pick = usable
         .iter()

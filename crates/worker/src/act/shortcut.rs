@@ -4,7 +4,7 @@ use deckhand_core::{Error, Result};
 
 const SHORTCUT_EXTENSIONS: [&str; 3] = ["lnk", "url", "library-ms"];
 
-pub fn refuse_shortcut(path: &Path, instead: &str) -> Result<()> {
+pub(crate) fn refuse_shortcut(path: &Path, instead: &str) -> Result<()> {
     if is_shortcut(path) {
         return Err(Error::invalid(format!("{} is a shortcut; {instead}", path.display())));
     }

@@ -14,7 +14,7 @@ enum Level {
 
 const LEVELS: [Level; 3] = [Level::Exact, Level::Prefix, Level::Contains];
 
-pub fn find<'a>(apps: &'a [AppEntry], wanted: &str) -> Result<&'a AppEntry> {
+pub(crate) fn find<'a>(apps: &'a [AppEntry], wanted: &str) -> Result<&'a AppEntry> {
     let folded = wanted.trim().to_lowercase();
     for level in LEVELS {
         let found: Vec<&AppEntry> = apps.iter().filter(|app| matches(app, &folded, level)).collect();
@@ -28,7 +28,7 @@ pub fn find<'a>(apps: &'a [AppEntry], wanted: &str) -> Result<&'a AppEntry> {
     Err(not_found(apps, wanted.trim()))
 }
 
-pub fn without_launch_extension(app: &str) -> &str {
+pub(crate) fn without_launch_extension(app: &str) -> &str {
     let lower = app.to_ascii_lowercase();
     LAUNCH_EXTENSIONS
         .iter()
@@ -36,7 +36,7 @@ pub fn without_launch_extension(app: &str) -> &str {
         .map_or(app, |extension| &app[..app.len() - extension.len()])
 }
 
-pub fn ranked<'a>(apps: &'a [AppEntry], wanted: &str) -> Vec<&'a AppEntry> {
+pub(crate) fn ranked<'a>(apps: &'a [AppEntry], wanted: &str) -> Vec<&'a AppEntry> {
     let folded = wanted.trim().to_lowercase();
     let mut found: Vec<(Level, &AppEntry)> =
         apps.iter().filter_map(|app| best_level(app, &folded).map(|level| (level, app))).collect();

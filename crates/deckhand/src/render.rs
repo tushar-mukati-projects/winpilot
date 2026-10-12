@@ -25,7 +25,7 @@ pub fn outcome(result: Result<Reply>, extras: &Extras) -> CallToolResult {
     }
 }
 
-pub fn failure(error: &Error) -> CallToolResult {
+fn failure(error: &Error) -> CallToolResult {
     CallToolResult::error(vec![ContentBlock::text(format::error(error))])
 }
 

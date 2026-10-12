@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-pub const COORD_LIMIT: i32 = 100_000;
+pub(crate) const COORD_LIMIT: i32 = 100_000;
 
 const SIZE_LIMIT: i32 = 2 * COORD_LIMIT;
 
@@ -16,7 +16,7 @@ impl Point {
         Self { x, y }
     }
 
-    pub const fn is_plausible(self) -> bool {
+    pub(crate) const fn is_plausible(self) -> bool {
         within_coord_limit(self.x) && within_coord_limit(self.y)
     }
 }
@@ -85,7 +85,7 @@ impl Rect {
         if self.is_empty() { 0 } else { i64::from(self.width).saturating_mul(i64::from(self.height)) }
     }
 
-    pub const fn is_plausible(self) -> bool {
+    pub(crate) const fn is_plausible(self) -> bool {
         Point::new(self.x, self.y).is_plausible() && within_size_limit(self.width) && within_size_limit(self.height)
     }
 }

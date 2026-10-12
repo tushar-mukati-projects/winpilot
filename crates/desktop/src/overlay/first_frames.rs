@@ -7,7 +7,6 @@ use super::{
     border_paint::BorderPainter,
     canvas::Bitmap,
     chip_text::ChipText,
-    color::WHITE,
     cursor_badge::{BadgeMetrics, layout_badge, paint_badge},
     edge_strips::border_strips,
     focus_outline::{FocusLook, FocusMetrics, paint_focus},
@@ -17,7 +16,6 @@ use super::{
     palette::Palette,
     perimeter::Perimeter,
     pill_kind::PillKind,
-    pill_label::Speaker,
     pill_layout::{Align, PillMetrics, layout_pill},
     pill_paint::{PillArt, paint_dot, paint_pill, paint_rim, paint_sparkle, pill_rim, rest_rim_on},
     presence::Tone,
@@ -83,7 +81,7 @@ fn pills_start_clean_with_rounded_corners() {
         let mut canvas = bitmap.canvas().unwrap();
         paint_rim(&mut canvas, &rim, &Palette::aurora(), 0.0);
         paint_sparkle(&mut canvas, &layout, &Palette::aurora(), 0.0, 0.0);
-        paint_dot(&mut canvas, &layout, WHITE, 0.0);
+        paint_dot(&mut canvas, &layout, 0.0);
         assert_clean("pill", &bitmap);
         let corner_of_body = bitmap.pixel(layout.body.x as usize, layout.body.y as usize);
         assert!(corner_of_body >> 24 < 120, "the pill's corner should be rounded, not a square box");
@@ -163,10 +161,4 @@ fn chips_focus_scan_and_viewfinder_start_clean() {
     let mut band = Bitmap::new(200, flash as usize);
     paint_flash_band(&mut band.canvas().unwrap(), Point::new(50, 50), rect, flash);
     assert!(band.pixels.iter().all(|pixel| (0..3).all(|channel| (pixel >> (channel * 8)) & 0xFF <= pixel >> 24)));
-}
-
-#[test]
-fn the_speaker_label_is_used_verbatim() {
-    let speaker = Speaker { label: "Codex", hotkey: None };
-    assert_eq!(speaker.label, "Codex");
 }

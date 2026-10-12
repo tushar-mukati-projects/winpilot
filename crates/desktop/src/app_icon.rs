@@ -1,13 +1,15 @@
 use deckhand_core::{Context, Result};
 use windows::Win32::{
     Foundation::{FreeLibrary, HINSTANCE, HMODULE},
-    System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW},
+    System::LibraryLoader::{GetProcAddress, LoadLibraryW},
     UI::{
         Controls::{_LI_METRIC, LIM_SMALL},
         WindowsAndMessaging::{CopyIcon, DestroyIcon, HICON, IDI_INFORMATION, LoadIconW},
     },
 };
 use windows::core::{HRESULT, PCWSTR, s, w};
+
+use crate::module_instance::module_instance;
 
 const EXE_ICON_RESOURCE_ID: usize = 1;
 
@@ -60,7 +62,7 @@ impl Drop for Library {
 fn small_exe_icon() -> Option<HICON> {
     let common_controls = Library::load(w!("comctl32.dll"))?;
     let load_icon_metric = common_controls.load_icon_metric()?;
-    let module: HINSTANCE = unsafe { GetModuleHandleW(PCWSTR::null()) }.ok()?.into();
+    let module = module_instance().ok()?;
     let resource = PCWSTR(std::ptr::without_provenance(EXE_ICON_RESOURCE_ID));
     let mut icon = HICON::default();
     unsafe { load_icon_metric(module, resource, LIM_SMALL, &raw mut icon) }.ok().ok()?;

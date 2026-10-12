@@ -1,13 +1,13 @@
 use deckhand_core::{Element, Point, Rect, WindowInfo};
 
-pub fn visible_part(element: &Element, window: &WindowInfo) -> Option<Rect> {
+pub(crate) fn visible_part(element: &Element, window: &WindowInfo) -> Option<Rect> {
     if !element.is_visible() {
         return None;
     }
     element.rect.intersection(window.rect)
 }
 
-pub fn clickable_point(element: &Element, window: &WindowInfo) -> Option<Point> {
+pub(crate) fn clickable_point(element: &Element, window: &WindowInfo) -> Option<Point> {
     visible_part(element, window).map(Rect::center)
 }
 

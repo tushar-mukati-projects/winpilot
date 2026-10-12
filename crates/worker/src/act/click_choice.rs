@@ -5,22 +5,22 @@ use deckhand_core::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ClickOptions {
-    pub button: MouseButton,
-    pub count: u8,
-    pub modifiers: Modifiers,
-    pub how: ClickHow,
-    pub glide_ms: Option<u64>,
+pub(crate) struct ClickOptions {
+    pub(crate) button: MouseButton,
+    pub(crate) count: u8,
+    pub(crate) modifiers: Modifiers,
+    pub(crate) how: ClickHow,
+    pub(crate) glide_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClickPath {
+pub(crate) enum ClickPath {
     Pattern,
     Mouse,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PatternAction {
+pub(crate) enum PatternAction {
     Invoke,
     Toggle,
     Select,
@@ -36,14 +36,14 @@ impl Default for ClickOptions {
 }
 
 impl ClickOptions {
-    pub fn new(button: MouseButton, count: u8, modifiers: Option<&str>, how: ClickHow) -> Result<Self> {
+    pub(crate) fn new(button: MouseButton, count: u8, modifiers: Option<&str>, how: ClickHow) -> Result<Self> {
         let modifiers = modifiers.map(parse_modifiers).transpose()?.unwrap_or(Modifiers::NONE);
         Ok(Self { button, count, modifiers, how, glide_ms: None })
     }
 }
 
 impl PatternAction {
-    pub const fn name(self) -> &'static str {
+    pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Invoke => "invoke",
             Self::Toggle => "toggle",
@@ -55,7 +55,7 @@ impl PatternAction {
     }
 }
 
-pub fn parse_modifiers(spec: &str) -> Result<Modifiers> {
+pub(crate) fn parse_modifiers(spec: &str) -> Result<Modifiers> {
     let chord = parse_chord(spec)?;
     if chord.key.is_some() {
         return Err(Error::invalid(format!(
@@ -65,7 +65,7 @@ pub fn parse_modifiers(spec: &str) -> Result<Modifiers> {
     Ok(chord.modifiers)
 }
 
-pub fn choose_path(options: ClickOptions, foreground: bool, patterns: Option<Patterns>) -> ClickPath {
+pub(crate) fn choose_path(options: ClickOptions, foreground: bool, patterns: Option<Patterns>) -> ClickPath {
     match options.how {
         ClickHow::Invoke => ClickPath::Pattern,
         ClickHow::Mouse => ClickPath::Mouse,
@@ -73,7 +73,7 @@ pub fn choose_path(options: ClickOptions, foreground: bool, patterns: Option<Pat
     }
 }
 
-pub fn auto_path(
+fn auto_path(
     button: MouseButton,
     count: u8,
     modifiers: Modifiers,
@@ -86,7 +86,7 @@ pub fn auto_path(
     if plain && !foreground && operable { ClickPath::Pattern } else { ClickPath::Mouse }
 }
 
-pub fn pattern_actions(patterns: Patterns, expanded: Option<bool>) -> Vec<PatternAction> {
+pub(crate) fn pattern_actions(patterns: Patterns, expanded: Option<bool>) -> Vec<PatternAction> {
     let flip = if expanded == Some(true) { PatternAction::Collapse } else { PatternAction::Expand };
     [
         (patterns.invoke, PatternAction::Invoke),

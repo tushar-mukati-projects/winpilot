@@ -15,8 +15,6 @@ pub const SAVE_STATUS: i32 = 2014;
 pub const SHOW_LATER_BUTTON: i32 = 2015;
 pub const APPEARED_BUTTON: i32 = 2016;
 pub const APPEARED_STATUS: i32 = 2017;
-pub const CONFIRM_BUTTON: i32 = 2018;
-pub const CONFIRM_STATUS: i32 = 2019;
 pub const KEY_STATUS: i32 = 2020;
 
 pub const NAME_LABEL: i32 = 2101;

@@ -5,7 +5,7 @@ use crate::call_scope::{CallScope, HeldButton};
 
 const AT_PRESS_POINT: &str = ", back where it was pressed because the call ended early";
 
-pub fn release_held(call: &CallScope, outcomes: &mut [StepOutcome]) {
+pub(crate) fn release_held(call: &CallScope, outcomes: &mut [StepOutcome]) {
     let ended_early = outcomes.last().is_some_and(|outcome| outcome.error.is_some());
     let buttons = release_buttons(&call.take_held(), ended_early);
     let keys = release_keys(&call.take_held_keys());
@@ -15,7 +15,7 @@ pub fn release_held(call: &CallScope, outcomes: &mut [StepOutcome]) {
     }
 }
 
-pub fn release_point(held: &HeldButton, ended_early: bool, here: Option<Point>) -> Option<Point> {
+pub(crate) fn release_point(held: &HeldButton, ended_early: bool, here: Option<Point>) -> Option<Point> {
     if ended_early { Some(held.pressed_at) } else { here }
 }
 

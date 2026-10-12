@@ -1,6 +1,5 @@
 use super::layout::{Placement, Size};
-
-const BYTES_PER_PIXEL: usize = 4;
+use crate::pixels::BYTES_PER_PIXEL;
 
 pub(crate) fn changed_area(before: &[u8], after: &[u8], size: Size) -> Option<Placement> {
     let stride = size.width as usize * BYTES_PER_PIXEL;

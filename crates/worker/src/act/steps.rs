@@ -13,14 +13,14 @@ use super::{
 };
 use crate::{call_scope::CallScope, engine::Engine, wait::WindowsBefore};
 
-pub struct StepContext<'a> {
-    pub call: &'a CallScope,
-    pub before: &'a WindowsBefore,
-    pub mode: Mode,
-    pub started: Instant,
+pub(crate) struct StepContext<'a> {
+    pub(crate) call: &'a CallScope,
+    pub(crate) before: &'a WindowsBefore,
+    pub(crate) mode: Mode,
+    pub(crate) started: Instant,
 }
 
-pub fn run_all(engine: &Engine, args: &ActArgs, context: &StepContext<'_>) -> Vec<StepOutcome> {
+pub(crate) fn run_all(engine: &Engine, args: &ActArgs, context: &StepContext<'_>) -> Vec<StepOutcome> {
     let mut outcomes = Vec::with_capacity(args.steps.len());
     for (index, step) in args.steps.iter().enumerate() {
         let result = engine.guard.check_running(context.call).and_then(|()| perform(engine, step, context));
@@ -38,22 +38,22 @@ pub fn run_all(engine: &Engine, args: &ActArgs, context: &StepContext<'_>) -> Ve
     outcomes
 }
 
-pub fn outcome(index: usize, step: String, result: Result<Done>) -> StepOutcome {
+pub(crate) fn outcome(index: usize, step: String, result: Result<Done>) -> StepOutcome {
     match result {
         Ok(done) => StepOutcome { index, step, method: done.method, note: done.note, error: None },
         Err(error) => StepOutcome { index, step, method: None, note: None, error: Some(error) },
     }
 }
 
-pub fn halts(error: &Error) -> bool {
+fn halts(error: &Error) -> bool {
     matches!(error.code, ErrorCode::StoppedByUser | ErrorCode::Cancelled)
 }
 
-pub fn needs_actor(steps: &[Step]) -> bool {
+pub(crate) fn needs_actor(steps: &[Step]) -> bool {
     steps.iter().any(Step::uses_input)
 }
 
-pub fn append_note(outcome: &mut StepOutcome, note: String) {
+pub(crate) fn append_note(outcome: &mut StepOutcome, note: String) {
     outcome.note = Some(joined(outcome.note.take(), note));
 }
 

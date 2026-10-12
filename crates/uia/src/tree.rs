@@ -4,7 +4,7 @@ pub(crate) fn cached_children(element: &IUIAutomationElement) -> Vec<IUIAutomati
     unsafe { element.GetCachedChildren() }.map(|children| array_elements(&children)).unwrap_or_default()
 }
 
-pub(crate) fn array_elements(array: &IUIAutomationElementArray) -> Vec<IUIAutomationElement> {
+fn array_elements(array: &IUIAutomationElementArray) -> Vec<IUIAutomationElement> {
     let count = unsafe { array.Length() }.unwrap_or(0);
     (0..count).filter_map(|index| unsafe { array.GetElement(index) }.ok()).collect()
 }

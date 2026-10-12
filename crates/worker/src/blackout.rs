@@ -5,7 +5,7 @@ use deckhand_desktop::VisibleWindow;
 const BLACK: [u8; 4] = [0, 0, 0, 255];
 const BYTES_PER_PIXEL: usize = 4;
 
-pub fn covering_rects(
+pub(crate) fn covering_rects(
     windows: &[VisibleWindow],
     denies: impl Fn(&VisibleWindow) -> bool,
     above: Option<WindowRef>,
@@ -18,7 +18,7 @@ pub fn covering_rects(
         .collect()
 }
 
-pub fn fill_black(frame: &mut Frame, rects: &[Rect]) {
+pub(crate) fn fill_black(frame: &mut Frame, rects: &[Rect]) {
     let bounds = frame.rect();
     for rect in rects {
         if let Some(area) = bounds.intersection(*rect) {

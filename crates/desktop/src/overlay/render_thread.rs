@@ -15,26 +15,19 @@ use super::{
     frame_clock::FrameClock,
     monitor_at::{monitor_around, primary_work_area, scale_at},
     motion::system_animations_enabled,
+    options::OverlayOptions,
     palette::Palette,
     pill_words::hotkey_label,
-    scene::{Look, Scene},
+    scene::Scene,
+    scene_items::Look,
     stage::{Cast, Stage},
     wake_flag::WakeFlag,
-    window::{Capture, ensure_classes_registered, module_instance},
+    window::{Capture, ensure_classes_registered},
 };
-use crate::{message_thread::ThreadMessages, monitors::virtual_screen};
+use crate::{message_thread::ThreadMessages, module_instance::module_instance, monitors::virtual_screen};
 
 pub(crate) const WAKE_OVERLAY: u32 = WM_APP + 0x0D;
 const COMPOSITIONS_TO_WAIT: usize = 2;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct OverlaySettings {
-    pub(crate) animations: bool,
-    pub(crate) capturable: bool,
-    pub(crate) kill_hotkey: Option<String>,
-    pub(crate) label: String,
-    pub(crate) palette: Vec<[u8; 3]>,
-}
 
 pub(crate) struct OverlayThread {
     clock: FrameClock,
@@ -51,7 +44,7 @@ impl OverlayThread {
     pub(crate) fn create(
         commands: Receiver<OverlayCommand>,
         wake: WakeFlag,
-        settings: OverlaySettings,
+        settings: OverlayOptions,
     ) -> Result<(Self, bool)> {
         let _previous_awareness = unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
         let instance = module_instance()?;

@@ -1,11 +1,11 @@
 use std::time::{Duration, Instant};
 
-pub(crate) const FIRST_FRAME_DEADLINE: Duration = Duration::from_secs(2);
-pub(crate) const FRESHNESS_WINDOW: Duration = Duration::from_secs(2);
+const FIRST_FRAME_DEADLINE: Duration = Duration::from_secs(2);
+const FRESHNESS_WINDOW: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Decision {
-    UseStaging { frame_age: Duration },
+    UseStaging,
     UseGdi,
     Demote,
 }
@@ -15,7 +15,7 @@ pub(crate) fn decide(opened_at: Instant, last_frame_at: Option<Instant>, now: In
         return before_the_first_frame(now.saturating_duration_since(opened_at));
     };
     let frame_age = now.saturating_duration_since(last_frame_at);
-    if frame_age < FRESHNESS_WINDOW { Decision::UseStaging { frame_age } } else { Decision::UseGdi }
+    if frame_age < FRESHNESS_WINDOW { Decision::UseStaging } else { Decision::UseGdi }
 }
 
 fn before_the_first_frame(open_for: Duration) -> Decision {
@@ -32,7 +32,7 @@ mod tests {
 
     fn served(staging: &'static str, live: &'static str, decision: Decision) -> &'static str {
         match decision {
-            Decision::UseStaging { .. } => staging,
+            Decision::UseStaging => staging,
             Decision::UseGdi | Decision::Demote => live,
         }
     }
@@ -55,8 +55,8 @@ mod tests {
     fn staging_is_reused_only_while_the_last_frame_is_recent() {
         let opened = Instant::now();
         let frame = Some(opened + ms(100));
-        assert_eq!(decide(opened, frame, opened + ms(100)), Decision::UseStaging { frame_age: ms(0) });
-        assert_eq!(decide(opened, frame, opened + ms(2099)), Decision::UseStaging { frame_age: ms(1999) });
+        assert_eq!(decide(opened, frame, opened + ms(100)), Decision::UseStaging);
+        assert_eq!(decide(opened, frame, opened + ms(2099)), Decision::UseStaging);
         assert_eq!(decide(opened, frame, opened + ms(2100)), Decision::UseGdi);
         assert_eq!(decide(opened, frame, opened + ms(60_000)), Decision::UseGdi);
     }
@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn clocks_running_backwards_do_not_panic() {
         let now = Instant::now();
-        assert_eq!(decide(now + ms(50), Some(now + ms(60)), now), Decision::UseStaging { frame_age: ms(0) });
+        assert_eq!(decide(now + ms(50), Some(now + ms(60)), now), Decision::UseStaging);
         assert_eq!(decide(now + ms(50), None, now), Decision::UseGdi);
     }
 }

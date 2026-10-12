@@ -1,8 +1,7 @@
 use deckhand_core::{Error, Result};
 
 use super::layout::Size;
-
-const BYTES_PER_PIXEL: usize = 4;
+use crate::pixels::BYTES_PER_PIXEL;
 
 pub(crate) const fn nv12_len(size: Size) -> usize {
     size.pixels() + size.pixels() / 2

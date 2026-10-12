@@ -2,7 +2,7 @@ use deckhand_core::{Result, keys::Chord};
 
 use crate::call_scope::CallScope;
 
-pub fn with_held_modifiers_lifted<T>(call: &CallScope, press: impl FnOnce() -> Result<T>) -> Result<T> {
+pub(crate) fn with_held_modifiers_lifted<T>(call: &CallScope, press: impl FnOnce() -> Result<T>) -> Result<T> {
     let lifted = held_modifiers(&call.held_keys());
     lifted.iter().rev().try_for_each(deckhand_input::release_chord)?;
     let pressed = press();
@@ -11,7 +11,7 @@ pub fn with_held_modifiers_lifted<T>(call: &CallScope, press: impl FnOnce() -> R
     pressed_again.map(|()| value)
 }
 
-pub fn held_modifiers(held: &[Chord]) -> Vec<Chord> {
+fn held_modifiers(held: &[Chord]) -> Vec<Chord> {
     held.iter()
         .filter(|chord| !chord.modifiers.is_empty())
         .map(|chord| Chord { modifiers: chord.modifiers, key: None })

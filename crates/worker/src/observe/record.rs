@@ -17,13 +17,13 @@ use deckhand_core::{
     protocol::{RecordAction, RecordReport, RecordRequest},
 };
 
-pub use slot::RecordingSlot;
+pub(crate) use slot::RecordingSlot;
 
 use crate::{call_scope::CallScope, engine::Engine};
 
 const SHUTDOWN_START_WAIT: Duration = Duration::from_secs(1);
 
-pub fn run(engine: &Engine, args: &RecordRequest, call: &CallScope) -> Result<RecordReport> {
+pub(crate) fn run(engine: &Engine, args: &RecordRequest, call: &CallScope) -> Result<RecordReport> {
     let report = match args.action {
         RecordAction::Start => start::start(engine, args, call),
         RecordAction::Stop => Ok(stop::stop(engine, call.remaining())),
@@ -33,8 +33,7 @@ pub fn run(engine: &Engine, args: &RecordRequest, call: &CallScope) -> Result<Re
     report
 }
 
-pub fn shut_down(engine: &Engine) -> RecordReport {
-    let report = stop::stop(engine, SHUTDOWN_START_WAIT);
+pub(crate) fn shut_down(engine: &Engine) {
+    stop::stop(engine, SHUTDOWN_START_WAIT);
     indicator::show_recording_indicator(engine.overlay.as_deref(), None);
-    report
 }

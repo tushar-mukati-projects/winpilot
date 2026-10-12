@@ -26,8 +26,12 @@ pub(crate) fn cloak_flags(hwnd: HWND) -> u32 {
     if read.is_ok() { cloaked } else { 0 }
 }
 
+pub(crate) fn ex_style(hwnd: HWND) -> WINDOW_EX_STYLE {
+    WINDOW_EX_STYLE(unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32)
+}
+
 pub(crate) fn is_tool_window(hwnd: HWND) -> bool {
-    let style = WINDOW_EX_STYLE(unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32);
+    let style = ex_style(hwnd);
     style.contains(WS_EX_TOOLWINDOW) && !style.contains(WS_EX_APPWINDOW)
 }
 
@@ -35,7 +39,7 @@ pub(crate) fn is_minimized(hwnd: HWND) -> bool {
     unsafe { IsIconic(hwnd) }.as_bool()
 }
 
-pub(crate) fn is_maximized(hwnd: HWND) -> bool {
+fn is_maximized(hwnd: HWND) -> bool {
     unsafe { IsZoomed(hwnd) }.as_bool()
 }
 

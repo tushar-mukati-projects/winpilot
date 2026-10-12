@@ -1,7 +1,7 @@
 const SLOTS: u32 = 40;
 const SPAN: u32 = 100_000_000;
 
-pub fn first_ref(epoch: u32) -> u32 {
+pub(crate) fn first_ref(epoch: u32) -> u32 {
     1 + (epoch % SLOTS) * SPAN
 }
 

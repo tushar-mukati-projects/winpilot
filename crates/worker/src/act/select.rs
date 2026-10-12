@@ -11,7 +11,7 @@ use super::{
 };
 use crate::{call_scope::CallScope, engine::Engine};
 
-pub fn option(engine: &Engine, prepared: &Prepared, option: &str, mode: Mode, call: &CallScope) -> Result<Done> {
+pub(crate) fn option(engine: &Engine, prepared: &Prepared, option: &str, mode: Mode, call: &CallScope) -> Result<Done> {
     let id = prepared.require_element("set option")?.id;
     match (select_by_pattern(engine, prepared, id, option, call), mode) {
         (Err(error), Mode::Foreground) if error.code == ErrorCode::Unsupported => {
@@ -24,7 +24,7 @@ pub fn option(engine: &Engine, prepared: &Prepared, option: &str, mode: Mode, ca
     }
 }
 
-pub fn item(engine: &Engine, prepared: &Prepared, selected: bool, call: &CallScope) -> Result<Done> {
+pub(crate) fn item(engine: &Engine, prepared: &Prepared, selected: bool, call: &CallScope) -> Result<Done> {
     let id = prepared.require_element("set selected")?.id;
     let (method, handed_back) = by_pattern(engine, &prepared.window, call, || {
         if selected { select_or_invoke(engine, id) } else { deselect(engine, id) }
@@ -34,7 +34,7 @@ pub fn item(engine: &Engine, prepared: &Prepared, selected: bool, call: &CallSco
     Ok(Done::by(method).with_note(note).with_note(handed_back))
 }
 
-pub fn select_by_pattern(
+pub(crate) fn select_by_pattern(
     engine: &Engine,
     prepared: &Prepared,
     id: ElementRef,

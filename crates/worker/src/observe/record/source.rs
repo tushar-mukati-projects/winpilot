@@ -12,19 +12,19 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Redaction {
+pub(crate) enum Redaction {
     DeniedWindows,
     WholeWindowWhileDenied(WindowRef),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Source {
-    pub capture: RecordingSource,
-    pub area: Rect,
-    pub redaction: Redaction,
+pub(crate) struct Source {
+    pub(crate) capture: RecordingSource,
+    pub(crate) area: Rect,
+    pub(crate) redaction: Redaction,
 }
 
-pub fn resolve(engine: &Engine, args: &RecordRequest, call: &CallScope) -> Result<Source> {
+pub(crate) fn resolve(engine: &Engine, args: &RecordRequest, call: &CallScope) -> Result<Source> {
     if let Some(region) = args.region {
         return Ok(screen(region));
     }

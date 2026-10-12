@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{call_scope::CallScope, engine::Engine};
 
-pub fn step(engine: &Engine, prepared: &Prepared, wanted: bool, mode: Mode, call: &CallScope) -> Result<Done> {
+pub(crate) fn step(engine: &Engine, prepared: &Prepared, wanted: bool, mode: Mode, call: &CallScope) -> Result<Done> {
     let element = prepared.require_element("set checked")?;
     require_readable(element.id, element.state.toggled)?;
     if element.state.toggled == Some(wanted) {
@@ -18,14 +18,14 @@ pub fn step(engine: &Engine, prepared: &Prepared, wanted: bool, mode: Mode, call
     Ok(Done::by(method).with_note(Some(format!("now {}", state_word(state)))).with_note(handed_back))
 }
 
-pub fn require_readable(id: ElementRef, state: Option<bool>) -> Result<()> {
+fn require_readable(id: ElementRef, state: Option<bool>) -> Result<()> {
     match state {
         Some(_) => Ok(()),
         None => Err(Error::unsupported(format!("{id}'s checked state can't be read; use click instead"))),
     }
 }
 
-pub fn check_state(id: ElementRef, wanted: Option<bool>, state: Option<bool>) -> Result<()> {
+fn check_state(id: ElementRef, wanted: Option<bool>, state: Option<bool>) -> Result<()> {
     match wanted {
         Some(wanted) if state != Some(wanted) => Err(Error::unsupported(format!(
             "{id} should be {} but is {} after toggling; it may have a third state or be controlled by the app",
@@ -36,7 +36,7 @@ pub fn check_state(id: ElementRef, wanted: Option<bool>, state: Option<bool>) ->
     }
 }
 
-pub const fn state_word(state: Option<bool>) -> &'static str {
+pub(crate) const fn state_word(state: Option<bool>) -> &'static str {
     match state {
         Some(true) => "on",
         Some(false) => "off",

@@ -6,8 +6,7 @@ use windows::Win32::Graphics::Direct3D11::{
 use windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC;
 
 use super::layout::Size;
-
-const BYTES_PER_PIXEL: usize = 4;
+use crate::pixels::BYTES_PER_PIXEL;
 
 #[derive(Default)]
 pub(crate) struct Staging {

@@ -24,7 +24,7 @@ pub(crate) struct BorderLook<'a> {
 const SMALL_FRAME: i64 = 80_000;
 const LARGE_FRAME: i64 = 200_000;
 
-pub(crate) fn steady_cadence(pixels: i64) -> u64 {
+fn steady_cadence(pixels: i64) -> u64 {
     if pixels <= SMALL_FRAME {
         2
     } else if pixels <= LARGE_FRAME {

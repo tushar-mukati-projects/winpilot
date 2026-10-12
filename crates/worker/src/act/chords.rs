@@ -1,10 +1,10 @@
 use deckhand_core::keys::{Chord, Key, Modifiers, NamedKey};
 
-pub fn with_ctrl(key: char) -> Chord {
+pub(crate) fn with_ctrl(key: char) -> Chord {
     Chord { modifiers: Modifiers { ctrl: true, ..Modifiers::NONE }, key: Some(Key::Char(key)) }
 }
 
-pub fn named(key: NamedKey) -> Chord {
+pub(crate) fn named(key: NamedKey) -> Chord {
     Chord { modifiers: Modifiers::NONE, key: Some(Key::Named(key)) }
 }
 

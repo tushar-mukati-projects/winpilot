@@ -12,20 +12,20 @@ const FOREGROUND_POLL: Duration = Duration::from_millis(10);
 const MAX_OWNERS: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Seen {
-    pub foreground: Option<WindowRef>,
-    pub owners_of_foreground: Vec<WindowRef>,
-    pub target_enabled: bool,
+struct Seen {
+    foreground: Option<WindowRef>,
+    owners_of_foreground: Vec<WindowRef>,
+    target_enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Front {
+enum Front {
     Target,
     DialogOnTop,
     Elsewhere(Option<WindowRef>),
 }
 
-pub fn bring_forward(window: &WindowInfo) -> Result<WindowInfo> {
+pub(crate) fn bring_forward(window: &WindowInfo) -> Result<WindowInfo> {
     let current = deckhand_desktop::window(window.hwnd)?;
     refuse_other_desktop(&current)?;
     if is_popup(&current) {
@@ -40,11 +40,11 @@ pub fn bring_forward(window: &WindowInfo) -> Result<WindowInfo> {
     deckhand_desktop::window(window.hwnd)
 }
 
-pub fn require_in_front(window: &WindowInfo) -> Result<()> {
+pub(crate) fn require_in_front(window: &WindowInfo) -> Result<()> {
     if is_popup(window) { require_popup_in_front(window) } else { require_foreground(window.hwnd) }
 }
 
-pub fn require_foreground(target: WindowRef) -> Result<()> {
+pub(crate) fn require_foreground(target: WindowRef) -> Result<()> {
     match front(target, &seen(target, settled_foreground(target))) {
         Front::Target => Ok(()),
         Front::DialogOnTop => Err(dialog_on_top(target)),
@@ -52,7 +52,7 @@ pub fn require_foreground(target: WindowRef) -> Result<()> {
     }
 }
 
-pub fn require_no_dialog_on_top(target: WindowRef) -> Result<()> {
+pub(crate) fn require_no_dialog_on_top(target: WindowRef) -> Result<()> {
     if !deckhand_desktop::is_window(target) {
         return Ok(());
     }
@@ -62,7 +62,7 @@ pub fn require_no_dialog_on_top(target: WindowRef) -> Result<()> {
     }
 }
 
-pub fn front(target: WindowRef, seen: &Seen) -> Front {
+fn front(target: WindowRef, seen: &Seen) -> Front {
     if !seen.target_enabled {
         return Front::DialogOnTop;
     }
@@ -73,15 +73,15 @@ pub fn front(target: WindowRef, seen: &Seen) -> Front {
     }
 }
 
-pub fn popup_belongs_to(popup: &WindowInfo, owners: &[WindowRef], foreground: Option<&WindowInfo>) -> bool {
+fn popup_belongs_to(popup: &WindowInfo, owners: &[WindowRef], foreground: Option<&WindowInfo>) -> bool {
     foreground.is_some_and(|front| front.pid == popup.pid || owners.contains(&front.hwnd))
 }
 
-pub fn popup_showing(hwnd: WindowRef) -> bool {
+pub(crate) fn popup_showing(hwnd: WindowRef) -> bool {
     deckhand_desktop::all_visible_windows().is_ok_and(|windows| windows.iter().any(|window| window.hwnd == hwnd))
 }
 
-pub fn owner_chain(window: Option<WindowRef>) -> Vec<WindowRef> {
+pub(crate) fn owner_chain(window: Option<WindowRef>) -> Vec<WindowRef> {
     let mut chain = Vec::new();
     let mut current = window;
     while let Some(owner) = current.and_then(deckhand_desktop::owner_of) {

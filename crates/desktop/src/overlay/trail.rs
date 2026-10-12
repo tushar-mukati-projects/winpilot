@@ -10,7 +10,7 @@ use super::{
     scale::scaled,
 };
 
-pub(crate) const TRAIL_LIFE: Duration = Duration::from_millis(260);
+const TRAIL_LIFE: Duration = Duration::from_millis(260);
 pub(crate) const MAX_TRAIL_DOTS: usize = 10;
 const MIN_TRAIL_DOTS: usize = 6;
 const MIN_DISTANCE: f64 = 24.0;
@@ -23,7 +23,7 @@ pub(crate) struct TrailDot {
     pub(crate) center: Point,
     pub(crate) radius: f32,
     pub(crate) peak: f32,
-    pub(crate) delay: Duration,
+    delay: Duration,
     pub(crate) life: Duration,
 }
 
@@ -33,7 +33,7 @@ impl TrailDot {
         self.peak * (1.0 - progress(age, self.life))
     }
 
-    pub(crate) fn ends(&self) -> Duration {
+    fn ends(&self) -> Duration {
         self.delay + self.life
     }
 

@@ -23,10 +23,10 @@ const SHELL_AND_SYSTEM: [&str; 12] = [
 ];
 
 #[derive(Debug, Clone, Default)]
-pub struct HostProcesses(HashSet<u32>);
+pub(crate) struct HostProcesses(HashSet<u32>);
 
 impl HostProcesses {
-    pub fn detect() -> Self {
+    pub(crate) fn detect() -> Self {
         let Ok(table) = ProcessTable::read() else { return Self::default() };
         let windowed: HashSet<u32> = deckhand_desktop::windows()
             .map(|windows| windows.iter().map(|window| window.pid).collect())
@@ -34,11 +34,11 @@ impl HostProcesses {
         Self(host_set(&table.ancestors(std::process::id()), &windowed))
     }
 
-    pub fn contains(&self, pid: u32) -> bool {
+    pub(crate) fn contains(&self, pid: u32) -> bool {
         self.0.contains(&pid)
     }
 
-    pub fn refuse(&self, window: &WindowInfo) -> Result<()> {
+    pub(crate) fn refuse(&self, window: &WindowInfo) -> Result<()> {
         if !self.contains(window.pid) {
             return Ok(());
         }
@@ -49,7 +49,7 @@ impl HostProcesses {
     }
 }
 
-pub fn host_set(ancestors: &[Ancestor], windowed: &HashSet<u32>) -> HashSet<u32> {
+fn host_set(ancestors: &[Ancestor], windowed: &HashSet<u32>) -> HashSet<u32> {
     let mut host = HashSet::new();
     for ancestor in ancestors {
         if is_shell_or_system(&ancestor.name) {
@@ -69,9 +69,10 @@ fn is_shell_or_system(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Rect, WindowRef, WindowState};
+    use deckhand_core::Rect;
 
     use super::*;
+    use crate::test_fixture::window;
 
     fn chain(entries: &[(u32, &str)]) -> Vec<Ancestor> {
         entries.iter().map(|&(pid, name)| Ancestor { pid, name: name.to_string() }).collect()
@@ -105,19 +106,7 @@ mod tests {
     #[test]
     fn host_windows_are_refused() {
         let host = HostProcesses(set(&[7]));
-        let mut window = WindowInfo {
-            hwnd: WindowRef(42),
-            title: "Claude".to_string(),
-            process: "notes.exe".to_string(),
-            pid: 7,
-            class_name: "Notes".to_string(),
-            rect: Rect::new(0, 0, 10, 10),
-            state: WindowState::Normal,
-            foreground: true,
-            elevated: false,
-            desktop: None,
-            on_current_desktop: true,
-        };
+        let mut window = WindowInfo { pid: 7, ..window(42, "notes.exe", "Claude", Rect::new(0, 0, 10, 10)) };
         let error = host.refuse(&window).unwrap_err();
         assert_eq!(error.code, ErrorCode::Denied);
         assert_eq!(error.message, "w42 is the agent's own terminal; Deckhand won't act on it");

@@ -6,12 +6,12 @@ use deckhand_desktop::overlay::{CaptureHideGuard, Overlay};
 use crate::{call_scope::CallScope, engine::Engine};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum KeyChips {
+pub(crate) enum KeyChips {
     Typing,
     Keys(Vec<Vec<String>>),
 }
 
-pub fn begin(engine: &Engine, window: &WindowInfo, call: &CallScope) {
+pub(crate) fn begin(engine: &Engine, window: &WindowInfo, call: &CallScope) {
     if !frames_window(window) || engine.guard.is_stopped() {
         return;
     }
@@ -21,31 +21,31 @@ pub fn begin(engine: &Engine, window: &WindowInfo, call: &CallScope) {
     }
 }
 
-pub fn end(engine: &Engine) {
+pub(crate) fn end(engine: &Engine) {
     if let Some(overlay) = &engine.overlay {
         overlay.end();
     }
 }
 
-pub fn click(engine: &Engine, point: Point, count: u8) {
+pub(crate) fn click(engine: &Engine, point: Point, count: u8) {
     if let Some(overlay) = &engine.overlay {
         overlay.click(point, count);
     }
 }
 
-pub fn glide(engine: &Engine, from: Point, to: Point, duration: Duration) {
+pub(crate) fn glide(engine: &Engine, from: Point, to: Point, duration: Duration) {
     if let Some(overlay) = &engine.overlay {
         overlay.glide(from, to, duration);
     }
 }
 
-pub fn focus_field(engine: &Engine, rect: Rect) {
+pub(crate) fn focus_field(engine: &Engine, rect: Rect) {
     if let Some(overlay) = engine.overlay.as_ref().filter(|_| !rect.is_empty()) {
         overlay.focus_field(rect);
     }
 }
 
-pub fn key_chips(engine: &Engine, window: &WindowInfo, chips: KeyChips) {
+pub(crate) fn key_chips(engine: &Engine, window: &WindowInfo, chips: KeyChips) {
     let Some(overlay) = &engine.overlay else { return };
     match chips {
         KeyChips::Typing => overlay.typing(window.rect),
@@ -53,13 +53,13 @@ pub fn key_chips(engine: &Engine, window: &WindowInfo, chips: KeyChips) {
     }
 }
 
-pub fn typing(engine: &Engine, window: &WindowInfo) {
+pub(crate) fn typing(engine: &Engine, window: &WindowInfo) {
     if let Some(overlay) = &engine.overlay {
         overlay.typing(window.rect);
     }
 }
 
-pub fn screenshot(engine: &Engine, rect: Rect, window: Option<&WindowInfo>) {
+pub(crate) fn screenshot(engine: &Engine, rect: Rect, window: Option<&WindowInfo>) {
     if window.is_some_and(|window| !window.on_current_desktop) {
         return;
     }
@@ -68,14 +68,14 @@ pub fn screenshot(engine: &Engine, rect: Rect, window: Option<&WindowInfo>) {
     }
 }
 
-pub fn scan(engine: &Engine, window: &WindowInfo) {
+pub(crate) fn scan(engine: &Engine, window: &WindowInfo) {
     let showing = engine.config.overlay.show_reads && frames_window(window);
     if let Some(overlay) = engine.overlay.as_ref().filter(|_| showing) {
         overlay.scan(window.rect);
     }
 }
 
-pub fn hidden_for_capture(engine: &Engine) -> Option<CaptureHideGuard<'_>> {
+pub(crate) fn hidden_for_capture(engine: &Engine) -> Option<CaptureHideGuard<'_>> {
     engine.overlay.as_deref().map(Overlay::hidden_for_capture)
 }
 

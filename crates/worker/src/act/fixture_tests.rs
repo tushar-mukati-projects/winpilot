@@ -12,7 +12,7 @@ use crate::{
     test_fixture::{FixtureApp, engine},
 };
 
-fn step(value: Value) -> Step {
+pub(crate) fn step(value: Value) -> Step {
     serde_json::from_value(value).unwrap()
 }
 
@@ -21,7 +21,7 @@ fn act_with(engine: &Engine, steps: Vec<Step>, stop_on_error: bool, background: 
     run(engine, &args, &CallScope::relaxed()).unwrap()
 }
 
-fn act(engine: &Engine, steps: Vec<Step>, stop_on_error: bool) -> ActReport {
+pub(crate) fn act(engine: &Engine, steps: Vec<Step>, stop_on_error: bool) -> ActReport {
     act_with(engine, steps, stop_on_error, false)
 }
 

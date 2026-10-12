@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use deckhand_core::{Error, ErrorCode, Result};
 
-pub fn check_launch_args(args: &str, check: impl Fn(&Path) -> Result<PathBuf>) -> Result<()> {
+pub(crate) fn check_launch_args(args: &str, check: impl Fn(&Path) -> Result<PathBuf>) -> Result<()> {
     let words = split_args(args);
     for (index, word) in words.iter().enumerate() {
         let Some(path) = path_in(word) else { continue };
@@ -12,7 +12,7 @@ pub fn check_launch_args(args: &str, check: impl Fn(&Path) -> Result<PathBuf>) -
     Ok(())
 }
 
-pub fn split_args(args: &str) -> Vec<String> {
+fn split_args(args: &str) -> Vec<String> {
     let mut words = Vec::new();
     let mut word = String::new();
     let mut quoted = false;
@@ -27,7 +27,7 @@ pub fn split_args(args: &str) -> Vec<String> {
     words
 }
 
-pub fn path_in(word: &str) -> Option<&str> {
+fn path_in(word: &str) -> Option<&str> {
     let bytes = word.as_bytes();
     (0..bytes.len()).find(|&index| starts_a_path(bytes, index)).map(|index| &word[index..])
 }

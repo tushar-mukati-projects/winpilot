@@ -9,14 +9,12 @@ use windows::core::{BOOL, PWSTR};
 
 use crate::util::wide_to_string;
 
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct WinInfo {
     pub hwnd: isize,
     pub z: usize,
     pub title: String,
     pub class: String,
-    pub pid: u32,
     pub process: String,
     pub rect: RECT,
     pub minimized: bool,
@@ -25,11 +23,6 @@ pub struct WinInfo {
 }
 
 impl WinInfo {
-    #[allow(dead_code)]
-    pub fn hwnd(&self) -> HWND {
-        HWND(self.hwnd as *mut c_void)
-    }
-
     pub fn area(&self) -> i64 {
         (self.rect.right - self.rect.left).max(0) as i64 * (self.rect.bottom - self.rect.top).max(0) as i64
     }
@@ -92,7 +85,6 @@ pub fn enumerate(pid_cache: &mut HashMap<u32, String>) -> Vec<WinInfo> {
                 z,
                 title,
                 class,
-                pid,
                 process,
                 rect,
                 minimized: IsIconic(hwnd).as_bool(),

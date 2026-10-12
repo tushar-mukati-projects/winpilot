@@ -45,7 +45,7 @@ pub(crate) struct BadgeLayout {
     pub(crate) width: i32,
     pub(crate) height: i32,
     pub(crate) tip: Point,
-    pub(crate) chip: Rect,
+    chip: Rect,
     pub(crate) text: Point,
 }
 

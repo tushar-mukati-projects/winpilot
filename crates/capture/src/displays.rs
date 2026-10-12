@@ -35,11 +35,6 @@ impl Displays {
         self.outputs.iter().map(Output::mode).collect()
     }
 
-    #[cfg(test)]
-    pub(crate) fn served(&self) -> Vec<crate::output::Served> {
-        self.outputs.iter().map(Output::served).collect()
-    }
-
     fn is_current(&self, monitors: &[Monitor]) -> bool {
         let factory_current = self.factory.as_ref().is_none_or(|factory| unsafe { factory.IsCurrent() }.as_bool());
         self.built && factory_current && self.monitors == monitors && !self.outputs.iter().any(Output::needs_rebuild)

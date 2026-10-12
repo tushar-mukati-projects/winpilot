@@ -65,11 +65,15 @@ impl FromStr for ImageRef {
 }
 
 pub fn looks_like_element_ref(text: &str) -> bool {
-    text.strip_prefix('e').is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
+    looks_like_ref(text, 'e')
 }
 
 pub fn looks_like_window_ref(text: &str) -> bool {
-    text.strip_prefix('w').is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
+    looks_like_ref(text, 'w')
+}
+
+fn looks_like_ref(text: &str, prefix: char) -> bool {
+    text.strip_prefix(prefix).is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
 }
 
 #[cfg(test)]

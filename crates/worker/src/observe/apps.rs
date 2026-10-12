@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use deckhand_core::{
     Result,
     protocol::{AppInfo, AppKind, AppsReport, AppsRequest},
@@ -7,14 +5,12 @@ use deckhand_core::{
 use deckhand_desktop::apps::{self, AppEntry};
 
 use crate::{
+    app_catalog::{FRESH_LISTING, RECENT_LISTING},
     app_match::{self, without_launch_extension},
     engine::Engine,
 };
 
-const FRESH_LISTING: Duration = Duration::from_secs(300);
-const RECENT_LISTING: Duration = Duration::from_secs(10);
-
-pub fn list(engine: &Engine, request: &AppsRequest) -> Result<AppsReport> {
+pub(crate) fn list(engine: &Engine, request: &AppsRequest) -> Result<AppsReport> {
     let Some(query) = request.query.as_deref() else {
         return Ok(every_app(&engine.apps.apps(FRESH_LISTING)?, request.max));
     };

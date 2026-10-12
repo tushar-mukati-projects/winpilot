@@ -5,14 +5,14 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct KeyStroke {
+pub(crate) struct KeyStroke {
     pub vk: VIRTUAL_KEY,
     pub scan: u16,
     pub flags: KEYBD_EVENT_FLAGS,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MouseAction {
+pub(crate) struct MouseAction {
     pub dx: i32,
     pub dy: i32,
     pub data: u32,
@@ -20,13 +20,13 @@ pub struct MouseAction {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InputEvent {
+pub(crate) enum InputEvent {
     Key(KeyStroke),
     Mouse(MouseAction),
 }
 
 impl InputEvent {
-    pub fn to_win32(self) -> INPUT {
+    pub(crate) fn to_win32(self) -> INPUT {
         match self {
             Self::Key(stroke) => keyboard_input(stroke),
             Self::Mouse(action) => mouse_input(action),

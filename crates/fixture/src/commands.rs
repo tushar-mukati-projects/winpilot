@@ -9,9 +9,8 @@ use crate::appearance;
 use crate::child::{index_from, item, send, set_text};
 use crate::dialogs;
 use crate::ids::{
-    APPEARED_BUTTON, CLICK_BUTTON, CLICK_STATUS, COLOUR_COMBO, COLOUR_STATUS, CONFIRM_BUTTON, CONFIRM_STATUS,
-    FEATURE_CHECKBOX, FEATURE_STATUS, ITEM_LIST, ITEM_STATUS, KEY_STATUS, OPEN_BUTTON, OPEN_STATUS, SAVE_BUTTON,
-    SAVE_STATUS, SHOW_LATER_BUTTON,
+    APPEARED_BUTTON, CLICK_BUTTON, CLICK_STATUS, COLOUR_COMBO, COLOUR_STATUS, FEATURE_CHECKBOX, FEATURE_STATUS,
+    ITEM_LIST, ITEM_STATUS, KEY_STATUS, OPEN_BUTTON, OPEN_STATUS, SAVE_BUTTON, SAVE_STATUS, SHOW_LATER_BUTTON,
 };
 use crate::params::{high_word, low_word};
 use crate::shortcuts::Shortcut;
@@ -43,7 +42,6 @@ fn on_control(window: HWND, id: i32, notification: u32) -> Result<()> {
         (SAVE_BUTTON, BN_CLICKED) => save_file(window),
         (SHOW_LATER_BUTTON, BN_CLICKED) => appearance::schedule(window),
         (APPEARED_BUTTON, BN_CLICKED) => appearance::acknowledge(window),
-        (CONFIRM_BUTTON, BN_CLICKED) => confirm(window),
         _ => Ok(()),
     }
 }
@@ -75,9 +73,4 @@ fn open_files(window: HWND) -> Result<()> {
 fn save_file(window: HWND) -> Result<()> {
     let outcome = dialogs::pick_save_path(window);
     set_text(window, SAVE_STATUS, &text::saved(&outcome))
-}
-
-fn confirm(window: HWND) -> Result<()> {
-    let outcome = dialogs::ask_confirmation(window);
-    set_text(window, CONFIRM_STATUS, &text::confirmation(&outcome))
 }

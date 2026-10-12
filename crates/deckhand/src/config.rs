@@ -46,7 +46,7 @@ fn config_path() -> Option<PathBuf> {
     app_data::dir_from_env("APPDATA").map(|dir| dir.join("deckhand").join("config.toml"))
 }
 
-pub fn load_from(path: &Path) -> LoadedConfig {
+fn load_from(path: &Path) -> LoadedConfig {
     match fs::read_to_string(path) {
         Ok(text) => parse(&text, path),
         Err(error) if error.kind() == io::ErrorKind::NotFound => LoadedConfig::defaults(),
@@ -54,7 +54,7 @@ pub fn load_from(path: &Path) -> LoadedConfig {
     }
 }
 
-pub fn parse(text: &str, path: &Path) -> LoadedConfig {
+fn parse(text: &str, path: &Path) -> LoadedConfig {
     match toml::from_str::<Config>(text) {
         Ok(config) => LoadedConfig { config, problem: None },
         Err(error) => LoadedConfig::invalid(describe(&error, text, path)),

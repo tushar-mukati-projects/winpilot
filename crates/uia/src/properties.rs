@@ -13,8 +13,8 @@ use windows::Win32::{
         UIA_IsScrollPatternAvailablePropertyId, UIA_IsSelectionItemPatternAvailablePropertyId,
         UIA_IsTextPatternAvailablePropertyId, UIA_IsTogglePatternAvailablePropertyId,
         UIA_IsValuePatternAvailablePropertyId, UIA_NamePropertyId, UIA_NativeWindowHandlePropertyId, UIA_PROPERTY_ID,
-        UIA_ProcessIdPropertyId, UIA_RuntimeIdPropertyId, UIA_SelectionItemIsSelectedPropertyId,
-        UIA_ToggleToggleStatePropertyId, UIA_ValueIsReadOnlyPropertyId, UIA_ValueValuePropertyId,
+        UIA_RuntimeIdPropertyId, UIA_SelectionItemIsSelectedPropertyId, UIA_ToggleToggleStatePropertyId,
+        UIA_ValueIsReadOnlyPropertyId, UIA_ValueValuePropertyId,
     },
 };
 use windows_core::{BOOL, BSTR};
@@ -26,7 +26,7 @@ use crate::{
 
 const VALUE_LIMIT: usize = 4096;
 
-pub(crate) const ELEMENT_PROPERTIES: [UIA_PROPERTY_ID; 28] = [
+pub(crate) const ELEMENT_PROPERTIES: [UIA_PROPERTY_ID; 27] = [
     UIA_NamePropertyId,
     UIA_ControlTypePropertyId,
     UIA_AutomationIdPropertyId,
@@ -38,7 +38,6 @@ pub(crate) const ELEMENT_PROPERTIES: [UIA_PROPERTY_ID; 28] = [
     UIA_HasKeyboardFocusPropertyId,
     UIA_RuntimeIdPropertyId,
     UIA_IsPasswordPropertyId,
-    UIA_ProcessIdPropertyId,
     UIA_NativeWindowHandlePropertyId,
     UIA_ValueValuePropertyId,
     UIA_ValueIsReadOnlyPropertyId,

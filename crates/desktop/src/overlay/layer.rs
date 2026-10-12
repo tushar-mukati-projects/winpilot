@@ -120,7 +120,7 @@ impl Layer {
     }
 }
 
-pub(crate) fn should_show(wanted: bool, presented: bool, concealed: bool, capture: Capture) -> bool {
+fn should_show(wanted: bool, presented: bool, concealed: bool, capture: Capture) -> bool {
     wanted && presented && !(concealed && capture == Capture::Allowed)
 }
 

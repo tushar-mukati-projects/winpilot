@@ -5,13 +5,13 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 
 use crate::event::{InputEvent, KeyStroke, MouseAction};
 
-pub const MAX_INPUTS_PER_CALL: usize = 512;
+const MAX_INPUTS_PER_CALL: usize = 512;
 
 const LOW_SURROGATES: std::ops::RangeInclusive<u16> = 0xDC00..=0xDFFF;
 const BUTTON_RELEASES: MOUSE_EVENT_FLAGS =
     MOUSE_EVENT_FLAGS(MOUSEEVENTF_LEFTUP.0 | MOUSEEVENTF_RIGHTUP.0 | MOUSEEVENTF_MIDDLEUP.0 | MOUSEEVENTF_XUP.0);
 
-pub fn split_into_calls(events: &[InputEvent]) -> Vec<&[InputEvent]> {
+pub(crate) fn split_into_calls(events: &[InputEvent]) -> Vec<&[InputEvent]> {
     let mut calls = Vec::with_capacity(events.len() / MAX_INPUTS_PER_CALL + 1);
     let mut rest = events;
     while !rest.is_empty() {

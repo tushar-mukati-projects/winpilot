@@ -13,7 +13,7 @@ use super::{
 };
 use crate::frame::inflate;
 
-pub(crate) const FOCUS_BREATH: Duration = Duration::from_millis(1600);
+const FOCUS_BREATH: Duration = Duration::from_millis(1600);
 pub(crate) const FOCUS_FLOW: Duration = Duration::from_millis(4200);
 pub(crate) const FOCUS_SHIMMER: Duration = Duration::from_millis(2200);
 const LOW_ALPHA: f32 = 0.75;
@@ -52,7 +52,7 @@ impl FocusMetrics {
         }
     }
 
-    pub(crate) fn outline(&self, element: Rect) -> Rect {
+    fn outline(&self, element: Rect) -> Rect {
         inflate(element, self.gap.saturating_add(self.stroke as i32))
     }
 

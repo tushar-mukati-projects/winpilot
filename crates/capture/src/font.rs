@@ -4,7 +4,7 @@ const GLYPH_COLUMNS: i64 = 5;
 const GLYPH_ROWS: i64 = 7;
 const SCALE: i64 = 2;
 const SPACING: i64 = SCALE;
-pub(crate) const GLYPH_WIDTH: i64 = GLYPH_COLUMNS * SCALE;
+const GLYPH_WIDTH: i64 = GLYPH_COLUMNS * SCALE;
 pub(crate) const GLYPH_HEIGHT: i64 = GLYPH_ROWS * SCALE;
 const ADVANCE: i64 = GLYPH_WIDTH + SPACING;
 

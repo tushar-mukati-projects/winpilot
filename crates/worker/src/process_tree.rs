@@ -15,7 +15,7 @@ use windows::Win32::{
 const MAX_DEPTH: usize = 32;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ProcessTable(HashMap<u32, ProcessEntry>);
+pub(crate) struct ProcessTable(HashMap<u32, ProcessEntry>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProcessEntry {
@@ -25,13 +25,13 @@ struct ProcessEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ancestor {
-    pub pid: u32,
-    pub name: String,
+pub(crate) struct Ancestor {
+    pub(crate) pid: u32,
+    pub(crate) name: String,
 }
 
 impl ProcessTable {
-    pub fn read() -> Result<Self> {
+    pub(crate) fn read() -> Result<Self> {
         let snapshot =
             Snapshot(unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }.context("listing processes")?);
         let mut entry = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
@@ -46,7 +46,7 @@ impl ProcessTable {
         Ok(Self(table))
     }
 
-    pub fn ancestors(&self, start: u32) -> Vec<Ancestor> {
+    pub(crate) fn ancestors(&self, start: u32) -> Vec<Ancestor> {
         let mut chain: Vec<Ancestor> = Vec::new();
         let mut current = start;
         while chain.len() < MAX_DEPTH {
@@ -63,7 +63,7 @@ impl ProcessTable {
         chain
     }
 
-    pub fn descends_from(&self, pid: u32, root: u32, started_since: u64) -> bool {
+    pub(crate) fn descends_from(&self, pid: u32, root: u32, started_since: u64) -> bool {
         let mut current = pid;
         for _ in 0..MAX_DEPTH {
             let Some(entry) = self.0.get(&current) else { return false };
@@ -82,7 +82,7 @@ impl ProcessTable {
     }
 }
 
-pub fn system_time_now() -> u64 {
+pub(crate) fn system_time_now() -> u64 {
     filetime_value(unsafe { GetSystemTimeAsFileTime() })
 }
 

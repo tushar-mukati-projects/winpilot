@@ -23,28 +23,18 @@ enum State {
     GdiOnly,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Served {
-    Nothing,
-    LiveGdi,
-    Staging(Duration),
-}
-
 pub(crate) struct Output {
     monitor_id: isize,
     rect: Rect,
     sources: Vec<DxgiSource>,
     state: State,
     needs_rebuild: bool,
-    #[cfg_attr(not(test), allow(dead_code))]
-    served: Served,
 }
 
 impl Output {
     pub(crate) fn new(monitor_id: isize, rect: Rect, sources: Vec<DxgiSource>) -> Self {
         let state = if sources.is_empty() { State::GdiOnly } else { State::Closed };
-        Self { monitor_id, rect, sources, state, needs_rebuild: false, served: Served::Nothing }
+        Self { monitor_id, rect, sources, state, needs_rebuild: false }
     }
 
     pub(crate) const fn monitor_id(&self) -> isize {
@@ -64,17 +54,12 @@ impl Output {
     }
 
     #[cfg(test)]
-    pub(crate) const fn served(&self) -> Served {
-        self.served
-    }
-
-    #[cfg(test)]
     pub(crate) fn mode(&self) -> &'static str {
         match &self.state {
             State::Closed => "closed",
             State::Open(duplication) => {
                 match decide(duplication.opened_at(), duplication.last_frame_at(), Instant::now()) {
-                    Decision::UseStaging { .. } => "dxgi",
+                    Decision::UseStaging => "dxgi",
                     Decision::UseGdi | Decision::Demote => "gdi (dxgi open without a fresh frame)",
                 }
             }
@@ -84,23 +69,21 @@ impl Output {
     }
 
     pub(crate) fn capture_into(&mut self, part: Rect, frame: &mut Frame, grabber: &mut ScreenGrabber) -> Result<()> {
-        if let Some(frame_age) = self.copy_fresh_staging(part, frame) {
-            self.served = Served::Staging(frame_age);
+        if self.copy_fresh_staging(part, frame) {
             return Ok(());
         }
-        self.served = Served::LiveGdi;
         grabber.grab_into(part, frame)
     }
 
-    fn copy_fresh_staging(&mut self, part: Rect, frame: &mut Frame) -> Option<Duration> {
-        let Decision::UseStaging { frame_age } = self.choose_source(Instant::now()) else {
-            return None;
-        };
+    fn copy_fresh_staging(&mut self, part: Rect, frame: &mut Frame) -> bool {
+        if self.choose_source(Instant::now()) != Decision::UseStaging {
+            return false;
+        }
         match self.read_staging(part, frame) {
-            Ok(()) => Some(frame_age),
+            Ok(()) => true,
             Err(failure) => {
                 self.after_failed_read(failure);
-                None
+                false
             }
         }
     }
@@ -222,7 +205,6 @@ mod tests {
     fn outputs_without_adapters_use_gdi() {
         let output = Output::new(1, Rect::new(0, 0, 10, 10), Vec::new());
         assert_eq!(output.mode(), "gdi");
-        assert_eq!(output.served(), Served::Nothing);
     }
 
     #[test]
@@ -232,7 +214,7 @@ mod tests {
         let mut frame = Frame::black(Point::new(-4, -4), 8, 8);
         output.capture_into(Rect::new(0, 0, 4, 4), &mut frame, &mut ScreenGrabber::default()).unwrap();
         assert_eq!(frame.bgra.len(), 8 * 8 * 4);
-        assert_eq!((output.mode(), output.served()), ("gdi", Served::LiveGdi));
+        assert_eq!(output.mode(), "gdi");
     }
 
     #[test]

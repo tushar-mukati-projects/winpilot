@@ -6,15 +6,15 @@ const CAPACITY: usize = 32;
 const COVERED: &str = "that point is covered by another window now; take a new screenshot";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ImageRecord {
-    pub mapping: ImageMapping,
-    pub width: u32,
-    pub height: u32,
-    pub window: Option<WindowRef>,
+pub(crate) struct ImageRecord {
+    pub(crate) mapping: ImageMapping,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) window: Option<WindowRef>,
 }
 
 #[derive(Debug)]
-pub struct ImageStore {
+pub(crate) struct ImageStore {
     first: u32,
     next: u32,
     entries: VecDeque<(ImageRef, ImageRecord)>,
@@ -27,11 +27,11 @@ impl Default for ImageStore {
 }
 
 impl ImageStore {
-    pub fn starting_at(first: u32) -> Self {
+    pub(crate) fn starting_at(first: u32) -> Self {
         Self { first, next: first.saturating_sub(1), entries: VecDeque::with_capacity(CAPACITY) }
     }
 
-    pub fn insert(&mut self, record: ImageRecord) -> ImageRef {
+    pub(crate) fn insert(&mut self, record: ImageRecord) -> ImageRef {
         self.next = self.next.saturating_add(1);
         let image = ImageRef(self.next);
         if self.entries.len() == CAPACITY {
@@ -41,7 +41,7 @@ impl ImageStore {
         image
     }
 
-    pub fn record(&self, image: ImageRef) -> Result<ImageRecord> {
+    pub(crate) fn record(&self, image: ImageRef) -> Result<ImageRecord> {
         if image.0 < self.first {
             return Err(Error::not_found(format!(
                 "{image} came from a previous worker (it restarted); take a new screenshot"
@@ -56,7 +56,7 @@ impl ImageStore {
 }
 
 impl ImageRecord {
-    pub fn screen_point(&self, image: ImageRef, point: Point) -> Result<Point> {
+    pub(crate) fn screen_point(&self, image: ImageRef, point: Point) -> Result<Point> {
         if !self.holds(point) {
             return Err(Error::invalid(format!(
                 "point {},{} is outside {image} ({}x{})",
@@ -66,7 +66,7 @@ impl ImageRecord {
         Ok(self.mapping.to_screen(point))
     }
 
-    pub fn check_hit_window(&self, hit: WindowRef, covers: impl FnOnce(WindowRef) -> bool) -> Result<()> {
+    pub(crate) fn check_hit_window(&self, hit: WindowRef, covers: impl FnOnce(WindowRef) -> bool) -> Result<()> {
         match self.window {
             Some(source) if source != hit && covers(source) => Err(Error::new(ErrorCode::Obscured, COVERED)),
             _ => Ok(()),

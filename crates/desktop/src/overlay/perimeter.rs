@@ -8,13 +8,6 @@ pub(crate) struct Perimeter {
     bottom: f32,
 }
 
-#[cfg(test)]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct BorderPoint {
-    pub(crate) along: f32,
-    pub(crate) outside: f32,
-}
-
 impl Perimeter {
     pub(crate) fn of(rect: Rect) -> Self {
         Self { left: rect.x as f32, top: rect.y as f32, right: rect.right() as f32, bottom: rect.bottom() as f32 }
@@ -55,19 +48,6 @@ impl Perimeter {
     pub(crate) fn vertical_gap(&self, y: f32) -> f32 {
         (self.top - y).max(y - self.bottom).max(0.0)
     }
-
-    #[cfg(test)]
-    pub(crate) fn locate(&self, x: f32, y: f32) -> Option<BorderPoint> {
-        let (dx, dy) = (self.horizontal_gap(x), self.vertical_gap(y));
-        let along = match (dx > 0.0, dy > 0.0) {
-            (false, false) => return None,
-            (_, true) if y < self.top => self.along_top(x),
-            (_, true) => self.along_bottom(x),
-            (true, false) if x < self.left => self.along_left(y),
-            (true, false) => self.along_right(y),
-        };
-        Some(BorderPoint { along: along % self.length().max(1.0), outside: dx.hypot(dy) })
-    }
 }
 
 pub(crate) fn wrapped_distance(from: f32, to: f32, length: f32) -> f32 {
@@ -90,23 +70,19 @@ mod tests {
     fn perimeter_runs_clockwise_from_the_top_left() {
         let frame = frame();
         assert!(crate::overlay::easing::close(frame.length(), 600.0));
-        assert_eq!(frame.locate(150.5, 49.5).map(|p| p.along), Some(50.5));
-        assert_eq!(frame.locate(300.5, 100.5).map(|p| p.along), Some(250.5));
-        assert_eq!(frame.locate(250.5, 150.5).map(|p| p.along), Some(349.5));
-        assert_eq!(frame.locate(99.5, 100.5).map(|p| p.along), Some(549.5));
+        assert!(crate::overlay::easing::close(frame.along_top(150.5), 50.5));
+        assert!(crate::overlay::easing::close(frame.along_right(100.5), 250.5));
+        assert!(crate::overlay::easing::close(frame.along_bottom(250.5), 349.5));
+        assert!(crate::overlay::easing::close(frame.along_left(100.5), 549.5));
     }
 
     #[test]
-    fn inside_points_are_not_on_the_border() {
-        assert_eq!(frame().locate(150.5, 100.5), None);
-        assert_eq!(frame().locate(100.5, 50.5), None);
-    }
-
-    #[test]
-    fn corners_measure_euclidean_distance() {
-        let corner = frame().locate(97.0, 46.0).unwrap();
-        assert!(crate::overlay::easing::close(corner.outside, 5.0));
-        assert!(crate::overlay::easing::close(corner.along, 0.0));
+    fn gaps_are_zero_inside_and_grow_outside() {
+        let frame = frame();
+        assert!(crate::overlay::easing::close(frame.horizontal_gap(150.5), 0.0));
+        assert!(crate::overlay::easing::close(frame.vertical_gap(100.5), 0.0));
+        assert!(crate::overlay::easing::close(frame.horizontal_gap(97.0), 3.0));
+        assert!(crate::overlay::easing::close(frame.vertical_gap(46.0), 4.0));
     }
 
     #[test]

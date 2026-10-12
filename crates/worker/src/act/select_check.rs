@@ -3,13 +3,13 @@ use deckhand_core::{Element, Error, Result};
 use super::clip::{NOTE_LIMIT, quoted};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ValueCheck<'a> {
+enum ValueCheck<'a> {
     Shows(&'a str),
     Differs(&'a str),
     Unreadable,
 }
 
-pub fn value_check<'a>(element: &'a Element, option: &str) -> ValueCheck<'a> {
+fn value_check<'a>(element: &'a Element, option: &str) -> ValueCheck<'a> {
     match element.value.as_deref() {
         None => ValueCheck::Unreadable,
         Some(value) if shows_option(value, option) => ValueCheck::Shows(value),
@@ -17,7 +17,7 @@ pub fn value_check<'a>(element: &'a Element, option: &str) -> ValueCheck<'a> {
     }
 }
 
-pub fn pattern_outcome(element: &Element, option: &str) -> Result<Option<String>> {
+pub(crate) fn pattern_outcome(element: &Element, option: &str) -> Result<Option<String>> {
     match value_check(element, option) {
         ValueCheck::Shows(value) => Ok(Some(value_note(value))),
         ValueCheck::Differs(value) => Err(Error::unsupported(format!(
@@ -29,7 +29,7 @@ pub fn pattern_outcome(element: &Element, option: &str) -> Result<Option<String>
     }
 }
 
-pub fn mouse_outcome(element: &Element, option: &str) -> Result<Option<String>> {
+pub(crate) fn mouse_outcome(element: &Element, option: &str) -> Result<Option<String>> {
     match value_check(element, option) {
         ValueCheck::Shows(value) => Ok(Some(value_note(value))),
         ValueCheck::Differs(value) => Err(Error::unsupported(format!(
@@ -46,7 +46,7 @@ pub fn mouse_outcome(element: &Element, option: &str) -> Result<Option<String>> 
     }
 }
 
-pub fn item_outcome(element: &Element) -> Result<Option<String>> {
+pub(crate) fn item_outcome(element: &Element) -> Result<Option<String>> {
     if element.state.selected == Some(false) {
         return Err(Error::unsupported(format!("{} is still not selected", element.id)));
     }
@@ -54,7 +54,7 @@ pub fn item_outcome(element: &Element) -> Result<Option<String>> {
     Ok((!name.is_empty()).then(|| format!("selected {}", quoted(name, NOTE_LIMIT))))
 }
 
-pub fn deselected_outcome(element: &Element) -> Result<Option<String>> {
+pub(crate) fn deselected_outcome(element: &Element) -> Result<Option<String>> {
     if element.state.selected == Some(true) {
         return Err(Error::unsupported(format!("{} is still selected", element.id)));
     }
@@ -74,23 +74,15 @@ fn value_note(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ElementRef, ElementState, ErrorCode, Patterns, Rect, Role};
+    use deckhand_core::{ErrorCode, Role};
 
     use super::*;
 
     fn element(name: &str, value: Option<&str>, selected: Option<bool>) -> Element {
-        Element {
-            id: ElementRef(7),
-            depth: 1,
-            role: Role::Combobox,
-            name: name.to_string(),
-            value: value.map(str::to_string),
-            automation_id: String::new(),
-            class_name: String::new(),
-            rect: Rect::new(0, 0, 10, 10),
-            state: ElementState { selected, ..ElementState::default() },
-            patterns: Patterns::default(),
-        }
+        let mut element = crate::test_fixture::element(7, 1, Role::Combobox, name);
+        element.value = value.map(str::to_string);
+        element.state.selected = selected;
+        element
     }
 
     #[test]

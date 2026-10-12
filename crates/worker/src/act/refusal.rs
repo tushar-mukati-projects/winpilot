@@ -9,13 +9,13 @@ const KEYBOARD: &str = "the real keyboard";
 const FOCUS: &str = "the user's focus";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Refusal {
-    pub step: String,
-    pub needs: &'static str,
-    pub instead: Option<&'static str>,
+pub(crate) struct Refusal {
+    pub(crate) step: String,
+    pub(crate) needs: &'static str,
+    pub(crate) instead: Option<&'static str>,
 }
 
-pub fn background_refusal(step: &Step) -> Option<Refusal> {
+pub(crate) fn background_refusal(step: &Step) -> Option<Refusal> {
     match step {
         Step::Click { button, count, modifiers, how, .. } => click_refusal(*button, *count, modifiers.is_some(), *how),
         Step::Type { target, enter, how, .. } => type_refusal(target.is_some(), *enter, *how),
@@ -29,14 +29,14 @@ pub fn background_refusal(step: &Step) -> Option<Refusal> {
 }
 
 impl Refusal {
-    pub fn in_background(&self) -> Error {
+    pub(crate) fn in_background(&self) -> Error {
         let instead = self.instead.map(|instead| format!(" or {instead}")).unwrap_or_default();
         let message =
             format!("{} needs {}; background mode never touches it (drop background{instead})", self.step, self.needs);
         Error::new(ErrorCode::NeedsUser, message)
     }
 
-    pub fn on_other_desktop(&self, window: &WindowInfo) -> Error {
+    pub(crate) fn on_other_desktop(&self, window: &WindowInfo) -> Error {
         let desktop = other_desktop(window).unwrap_or_else(|| "another desktop".to_string());
         let instead = self.instead.map(|instead| format!("{instead}, or ")).unwrap_or_default();
         let message = format!(

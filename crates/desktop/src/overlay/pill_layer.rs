@@ -2,7 +2,7 @@ use deckhand_core::{Error, Point, Rect, Result};
 
 use super::{
     canvas::Bitmap,
-    color::{WHITE, alpha_byte},
+    color::alpha_byte,
     easing::{ease_out_cubic, progress_of},
     font_cache::FontCache,
     layer::Layer,
@@ -38,19 +38,19 @@ pub(crate) struct PillVoice {
     pub(crate) label: String,
     pub(crate) hotkey: Option<String>,
     pub(crate) palette: Palette,
-    pub(crate) alarm: Palette,
 }
 
 pub(crate) struct PillLayer {
     layer: Layer,
     voice: PillVoice,
+    alarm: Palette,
     fonts: FontCache,
     art: Option<Art>,
 }
 
 impl PillLayer {
     pub(crate) fn new(layer: Layer, voice: PillVoice) -> Self {
-        Self { layer, voice, fonts: FontCache::default(), art: None }
+        Self { layer, voice, alarm: Palette::crimson(), fonts: FontCache::default(), art: None }
     }
 
     pub(crate) fn show(&mut self, request: &PillShow, bounds: Rect) {
@@ -71,7 +71,7 @@ impl PillLayer {
             self.layer.place(Point::new(layout.window.x, layout.window.y), alpha);
             return;
         }
-        let palette = if request.kind.alarming() { &self.voice.alarm } else { &self.voice.palette };
+        let palette = if request.kind.alarming() { &self.alarm } else { &self.voice.palette };
         let whole = Rect::new(0, 0, layout.window.width, layout.window.height);
         let restore = if fresh || resized { whole } else { layout.glyph_region() };
         self.layer.paint(layout.window, alpha, |canvas| {
@@ -79,7 +79,7 @@ impl PillLayer {
             paint_rim(canvas, &art.rim, palette, request.spin);
             match request.kind.glyph() {
                 Glyph::Sparkle => paint_sparkle(canvas, &layout, palette, request.spin, request.pulse),
-                Glyph::Dot => paint_dot(canvas, &layout, WHITE, request.pulse),
+                Glyph::Dot => paint_dot(canvas, &layout, request.pulse),
             }
         });
     }

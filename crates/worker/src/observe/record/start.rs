@@ -23,7 +23,7 @@ const START_PATIENCE: Duration = Duration::from_secs(12);
 const ABANDON_ALLOWANCE: Duration = Duration::from_secs(1);
 const CLIPPED_NOTE: &str = "the region was clipped to the monitor it is on";
 
-pub fn start(engine: &Engine, args: &RecordRequest, call: &CallScope) -> Result<RecordReport> {
+pub(crate) fn start(engine: &Engine, args: &RecordRequest, call: &CallScope) -> Result<RecordReport> {
     let plan = record_plan(args, &engine.config.record)?;
     engine.guard.check_running(call)?;
     let claim = engine.recording.lock().claim()?;

@@ -12,7 +12,7 @@ struct KeptForeground<'a> {
     since: Instant,
 }
 
-pub fn by_pattern<T>(
+pub(crate) fn by_pattern<T>(
     engine: &Engine,
     window: &WindowInfo,
     call: &CallScope,

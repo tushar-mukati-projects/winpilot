@@ -1,20 +1,20 @@
-use std::mem::size_of;
-
 use deckhand_core::{Context, Result};
 use windows::{
     Win32::{
-        Foundation::{ERROR_CLASS_ALREADY_EXISTS, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
-        System::LibraryLoader::GetModuleHandleW,
+        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+        Graphics::Gdi::HBRUSH,
         UI::{
             Shell::{NIN_BALLOONHIDE, NIN_BALLOONTIMEOUT, NIN_BALLOONUSERCLICK},
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, DestroyWindow, HWND_MESSAGE, PostQuitMessage, RegisterClassExW,
-                WINDOW_EX_STYLE, WINDOW_STYLE, WM_APP, WM_TIMER, WNDCLASSEXW,
+                CreateWindowExW, DefWindowProcW, DestroyWindow, HWND_MESSAGE, PostQuitMessage, WINDOW_EX_STYLE,
+                WINDOW_STYLE, WM_APP, WM_TIMER,
             },
         },
     },
     core::{PCWSTR, w},
 };
+
+use crate::{module_instance::module_instance, window_class::register_window_class};
 
 const BALLOON_CLASS: PCWSTR = w!("DeckhandNotification");
 const EVENT_MASK: isize = 0xFFFF;
@@ -59,7 +59,7 @@ impl Drop for BalloonWindow {
     }
 }
 
-pub(crate) fn ends_balloon(message: u32, lparam: LPARAM) -> bool {
+fn ends_balloon(message: u32, lparam: LPARAM) -> bool {
     match message {
         WM_TIMER => true,
         BALLOON_CALLBACK => {
@@ -73,27 +73,9 @@ fn callback_event(lparam: LPARAM) -> u32 {
     (lparam.0 & EVENT_MASK) as u32
 }
 
-fn module_instance() -> Result<HINSTANCE> {
-    let module = unsafe { GetModuleHandleW(PCWSTR::null()) }.context("finding this module")?;
-    Ok(module.into())
-}
-
 fn register_balloon_class(instance: HINSTANCE) -> Result<()> {
-    let class = WNDCLASSEXW {
-        cbSize: size_of::<WNDCLASSEXW>() as u32,
-        lpfnWndProc: Some(balloon_window_proc),
-        hInstance: instance,
-        lpszClassName: BALLOON_CLASS,
-        ..WNDCLASSEXW::default()
-    };
-    if unsafe { RegisterClassExW(&raw const class) } != 0 {
-        return Ok(());
-    }
-    let error = windows::core::Error::from_thread();
-    if error.code() == ERROR_CLASS_ALREADY_EXISTS.to_hresult() {
-        return Ok(());
-    }
-    Err(error).context("registering the notification window class")
+    register_window_class(instance, BALLOON_CLASS, Some(balloon_window_proc), HBRUSH::default())
+        .context("registering the notification window class")
 }
 
 unsafe extern "system" fn balloon_window_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {

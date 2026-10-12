@@ -1,34 +1,34 @@
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Done {
-    pub method: Option<String>,
-    pub note: Option<String>,
+pub(crate) struct Done {
+    pub(crate) method: Option<String>,
+    pub(crate) note: Option<String>,
 }
 
 impl Done {
-    pub fn by(method: impl Into<String>) -> Self {
+    pub(crate) fn by(method: impl Into<String>) -> Self {
         Self { method: Some(method.into()), note: None }
     }
 
-    pub fn noting(note: impl Into<String>) -> Self {
+    pub(crate) fn noting(note: impl Into<String>) -> Self {
         Self { method: None, note: Some(note.into()) }
     }
 
     #[must_use]
-    pub fn with_note(mut self, note: Option<String>) -> Self {
+    pub(crate) fn with_note(mut self, note: Option<String>) -> Self {
         let Some(note) = note else { return self };
         self.note = Some(joined(self.note.take(), note));
         self
     }
 }
 
-pub fn joined(earlier: Option<String>, note: String) -> String {
+pub(crate) fn joined(earlier: Option<String>, note: String) -> String {
     match earlier {
         Some(earlier) => format!("{earlier}; {note}"),
         None => note,
     }
 }
 
-pub fn via_focus_click(method: &str, clicked: bool) -> String {
+pub(crate) fn via_focus_click(method: &str, clicked: bool) -> String {
     if clicked { format!("click-focus+{method}") } else { method.to_string() }
 }
 

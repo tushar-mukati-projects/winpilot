@@ -3,17 +3,17 @@ use std::path::Path;
 use deckhand_core::{Element, ElementRef, Role, Snapshot};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Destination {
-    pub folder: String,
-    pub names: Vec<String>,
-    pub listed_before: Vec<String>,
+pub(crate) struct Destination {
+    pub(crate) folder: String,
+    pub(crate) names: Vec<String>,
+    pub(crate) listed_before: Vec<String>,
 }
 
-pub fn folder_ready(snapshot: &Snapshot, name_box: ElementRef, destination: &Destination) -> bool {
+pub(crate) fn folder_ready(snapshot: &Snapshot, name_box: ElementRef, destination: &Destination) -> bool {
     address_shows(snapshot, name_box, &destination.folder) || lists_a_new_file(&snapshot.elements, destination)
 }
 
-pub fn listed_files(elements: &[Element]) -> Vec<String> {
+pub(crate) fn listed_files(elements: &[Element]) -> Vec<String> {
     let mut names: Vec<String> = elements
         .iter()
         .filter(|element| is_listed_file(element))

@@ -24,12 +24,12 @@ impl TickClock {
     }
 }
 
-pub(crate) fn tick_offset(tick: u64, fps: u32) -> Duration {
+fn tick_offset(tick: u64, fps: u32) -> Duration {
     let nanos = (u128::from(tick) * u128::from(NANOS_PER_SECOND)).div_ceil(u128::from(fps.max(1)));
     Duration::from_nanos(u64::try_from(nanos).unwrap_or(u64::MAX))
 }
 
-pub(crate) fn ticks_elapsed(elapsed: Duration, fps: u32) -> u64 {
+fn ticks_elapsed(elapsed: Duration, fps: u32) -> u64 {
     let ticks = elapsed.as_nanos() * u128::from(fps.max(1)) / u128::from(NANOS_PER_SECOND);
     u64::try_from(ticks).unwrap_or(u64::MAX)
 }

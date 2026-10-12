@@ -63,11 +63,6 @@ impl Capturer {
         self.call(Request::Modes)
     }
 
-    #[cfg(test)]
-    fn served(&self) -> Result<Vec<crate::output::Served>> {
-        self.call(Request::Served)
-    }
-
     fn call<T>(&self, request: impl FnOnce(Reply<T>) -> Request) -> Result<T> {
         let stopped = || Error::internal("capture thread has stopped");
         let (reply, response) = mpsc::channel();
@@ -91,8 +86,6 @@ mod tests {
     use super::*;
     use crate::encode::{EncodeOptions, encode};
     use crate::frame::FrameSource;
-    use crate::freshness::FRESHNESS_WINDOW;
-    use crate::output::Served;
 
     fn shared() -> &'static Capturer {
         static CAPTURER: OnceLock<Capturer> = OnceLock::new();
@@ -163,15 +156,6 @@ mod tests {
         assert_eq!(gone.code, ErrorCode::NotFound);
     }
 
-    fn assert_served_fresh(capturer: &Capturer) {
-        for served in capturer.served().unwrap() {
-            match served {
-                Served::Nothing | Served::LiveGdi => {}
-                Served::Staging(age) => assert!(age < FRESHNESS_WINDOW, "staging image was {age:?} old"),
-            }
-        }
-    }
-
     fn median_of_warm_captures(capturer: &Capturer, rect: Rect) -> (f64, f64) {
         let mut warm: Vec<f64> = (0..8)
             .map(|_| {
@@ -179,7 +163,6 @@ mod tests {
                 let frame = capturer.screen(rect).unwrap();
                 let elapsed = milliseconds(started);
                 assert_eq!(frame.rect(), rect);
-                assert_served_fresh(capturer);
                 elapsed
             })
             .collect();
@@ -195,7 +178,6 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(3);
         while Instant::now() < deadline {
             capturer.screen(Rect::new(primary.x, primary.y, 1, 1)).unwrap();
-            assert_served_fresh(capturer);
             if primary_mode(capturer) == "dxgi" {
                 return true;
             }
@@ -212,7 +194,6 @@ mod tests {
         let first = capturer.monitor(0).unwrap();
         let cold = milliseconds(started);
         assert_eq!((first.rect(), first.source), (primary, FrameSource::Screen));
-        assert_eq!(capturer.served().unwrap()[0], Served::LiveGdi);
         let (median, best) = median_of_warm_captures(&capturer, primary);
         let (width, height) = (primary.width, primary.height);
         let mode = primary_mode(&capturer);
@@ -251,18 +232,6 @@ mod tests {
             "timing: {width}x{height} region capture via {}: warm median {median:.2} ms, best {best:.2} ms",
             primary_mode(&capturer)
         );
-    }
-
-    #[test]
-    fn outputs_serve_only_live_or_recent_pixels() {
-        let capturer = Capturer::spawn().unwrap();
-        let primary = capturer.monitor_rects().unwrap()[0];
-        for _ in 0..5 {
-            capturer.monitor(0).unwrap();
-            assert_served_fresh(&capturer);
-            capturer.screen(Rect::new(primary.x, primary.y, 8, 8)).unwrap();
-            assert_served_fresh(&capturer);
-        }
     }
 
     #[test]

@@ -33,7 +33,7 @@ impl Reading {
     }
 }
 
-pub fn run(engine: &Engine, request: &TextRequest, call: &CallScope) -> Result<TextReport> {
+pub(crate) fn run(engine: &Engine, request: &TextRequest, call: &CallScope) -> Result<TextReport> {
     let max = char_limit(request.max_chars);
     let reading = read(engine, request, max, call)?;
     let (text, truncated) = truncated(readable_lines(&reading.text).into_owned(), max);

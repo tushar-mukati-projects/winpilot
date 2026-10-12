@@ -17,7 +17,7 @@ pub fn press_chord(chord: &Chord) -> Result<()> {
     send_batch(&chord_batch(chord, &layout)?)
 }
 
-pub fn chord_batch(chord: &Chord, layout: &impl KeyboardLayout) -> Result<Batch> {
+pub(crate) fn chord_batch(chord: &Chord, layout: &impl KeyboardLayout) -> Result<Batch> {
     let Some(key) = chord.key else {
         return modifier_only_batch(chord.modifiers, layout);
     };

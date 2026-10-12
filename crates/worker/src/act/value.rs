@@ -6,8 +6,7 @@ use super::{
     clip::{NOTE_LIMIT, quoted},
     done::{Done, via_focus_click},
     field::{is_writable, read_value},
-    focus::focus_prepared,
-    landing::ensure_keys_land,
+    focus::keyboard_target,
     lift::with_held_modifiers_lifted,
     mode::Mode,
     settle,
@@ -17,7 +16,7 @@ use crate::{call_scope::CallScope, engine::Engine, overlay};
 
 const UNREADABLE: &str = "the field does not expose its value, so it was not read back";
 
-pub fn step(engine: &Engine, prepared: &Prepared, value: &str, mode: Mode, call: &CallScope) -> Result<Done> {
+pub(crate) fn step(engine: &Engine, prepared: &Prepared, value: &str, mode: Mode, call: &CallScope) -> Result<Done> {
     let element = prepared.require_element("set value")?;
     if prepared.window.on_current_desktop {
         overlay::focus_field(engine, element.rect);
@@ -53,11 +52,11 @@ fn set_in_background(
     Ok(Done::by("value").with_note(mismatch_note(read_value(engine, id)?, value)).with_note(handed_back))
 }
 
-pub fn value_matches(now: &str, wanted: &str) -> bool {
+fn value_matches(now: &str, wanted: &str) -> bool {
     now.trim() == wanted.trim()
 }
 
-pub fn left_unchanged(before: Option<&str>, now: Option<&str>, wanted: &str) -> bool {
+fn left_unchanged(before: Option<&str>, now: Option<&str>, wanted: &str) -> bool {
     now.is_some_and(|now| !value_matches(now, wanted) && before == Some(now))
 }
 
@@ -83,11 +82,7 @@ fn set_by_pattern(
 }
 
 fn set_by_keys(engine: &Engine, prepared: &Prepared, id: ElementRef, value: &str, call: &CallScope) -> Result<Done> {
-    let focused = focus_prepared(engine, prepared, call)?;
-    if let Some(element) = &focused.element {
-        overlay::focus_field(engine, element.rect);
-    }
-    ensure_keys_land(engine, &focused)?;
+    let focused = keyboard_target(engine, Some(prepared), call)?;
     with_held_modifiers_lifted(call, || replace_text(value))?;
     settle(engine, &focused.window, call);
     let done = Done::by(via_focus_click("keys", focused.clicked));
@@ -102,7 +97,7 @@ fn replace_text(value: &str) -> Result<()> {
     deckhand_input::type_text(value)
 }
 
-pub fn mismatch_note(now: Option<String>, wanted: &str) -> Option<String> {
+pub(crate) fn mismatch_note(now: Option<String>, wanted: &str) -> Option<String> {
     match now {
         None => Some(UNREADABLE.to_string()),
         Some(now) if value_matches(&now, wanted) => None,

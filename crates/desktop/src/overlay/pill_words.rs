@@ -42,7 +42,7 @@ pub(crate) fn recording_words(label: &str, seconds: u64) -> PillWords {
     PillWords { lead: label.to_string(), hint: Some(format!(" is recording{SEPARATOR}{}", elapsed_label(seconds))) }
 }
 
-pub(crate) fn elapsed_label(seconds: u64) -> String {
+fn elapsed_label(seconds: u64) -> String {
     let (hours, minutes, seconds) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
     if hours > 0 { format!("{hours}:{minutes:02}:{seconds:02}") } else { format!("{minutes:02}:{seconds:02}") }
 }

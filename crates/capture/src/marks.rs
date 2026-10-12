@@ -27,7 +27,7 @@ pub(crate) fn draw_marks(canvas: &mut Canvas, marks: &[Mark], mapping: ImageMapp
     }
 }
 
-pub(crate) fn map_to_image(rect: Rect, mapping: ImageMapping) -> Bounds {
+fn map_to_image(rect: Rect, mapping: ImageMapping) -> Bounds {
     let image = mapping.rect_to_image(rect);
     let (left, top) = (i64::from(image.x), i64::from(image.y));
     let right = i64::from(image.right()).max(left + 1);

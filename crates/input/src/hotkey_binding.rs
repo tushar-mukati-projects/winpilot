@@ -12,12 +12,12 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HotkeyBinding {
+pub(crate) struct HotkeyBinding {
     pub modifiers: HOT_KEY_MODIFIERS,
     pub vk: VIRTUAL_KEY,
 }
 
-pub fn hotkey_binding(chord: &Chord, layout: &impl KeyboardLayout) -> Result<HotkeyBinding> {
+pub(crate) fn hotkey_binding(chord: &Chord, layout: &impl KeyboardLayout) -> Result<HotkeyBinding> {
     let Some(key) = chord.key else {
         return Err(Error::invalid("a hotkey needs a key, not just modifiers"));
     };

@@ -2,8 +2,8 @@ use deckhand_core::{Error, Rect, Result};
 
 use crate::frame::overlap;
 
-pub(crate) const MAX_SIDE: i32 = 32_768;
-pub(crate) const MAX_PIXELS: i64 = 64 * 1024 * 1024;
+const MAX_SIDE: i32 = 32_768;
+const MAX_PIXELS: i64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CaptureArea(Rect);

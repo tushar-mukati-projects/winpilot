@@ -1,23 +1,21 @@
-use std::{
-    mem::size_of,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use deckhand_core::{Context, Result};
 use windows::{
     Win32::{
-        Foundation::{ERROR_CLASS_ALREADY_EXISTS, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
         Graphics::Gdi::{GetStockObject, HBRUSH, WHITE_BRUSH},
-        System::LibraryLoader::GetModuleHandleW,
         UI::WindowsAndMessaging::{
-            CreateWindowExW, DefWindowProcW, DestroyWindow, HTTRANSPARENT, HWND_TOPMOST, MA_NOACTIVATE,
-            RegisterClassExW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
-            SetWindowDisplayAffinity, SetWindowPos, ShowWindow, WDA_EXCLUDEFROMCAPTURE, WM_MOUSEACTIVATE, WM_NCHITTEST,
-            WNDCLASSEXW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+            CreateWindowExW, DefWindowProcW, DestroyWindow, HTTRANSPARENT, HWND_TOPMOST, MA_NOACTIVATE, SW_HIDE,
+            SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SetWindowDisplayAffinity,
+            SetWindowPos, ShowWindow, WDA_EXCLUDEFROMCAPTURE, WM_MOUSEACTIVATE, WM_NCHITTEST, WS_EX_LAYERED,
+            WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
         },
     },
     core::{PCWSTR, w},
 };
+
+use crate::window_class::register_window_class;
 
 const OVERLAY_CLASS: PCWSTR = w!("DeckhandOverlay");
 const TINT_CLASS: PCWSTR = w!("DeckhandOverlayTint");
@@ -85,13 +83,8 @@ impl Drop for OverlayWindow {
     }
 }
 
-pub(crate) fn capture_in_effect(wanted: Capture, applied: bool) -> Capture {
+fn capture_in_effect(wanted: Capture, applied: bool) -> Capture {
     if applied { wanted } else { Capture::Allowed }
-}
-
-pub(crate) fn module_instance() -> Result<HINSTANCE> {
-    let module = unsafe { GetModuleHandleW(PCWSTR::null()) }.context("finding this module")?;
-    Ok(HINSTANCE(module.0))
 }
 
 pub(crate) fn ensure_classes_registered(instance: HINSTANCE) -> Result<()> {
@@ -104,21 +97,8 @@ fn register_once(registered: &AtomicBool, instance: HINSTANCE, name: PCWSTR, bac
     if registered.load(Ordering::Acquire) {
         return Ok(());
     }
-    let class = WNDCLASSEXW {
-        cbSize: size_of::<WNDCLASSEXW>() as u32,
-        lpfnWndProc: Some(overlay_window_proc),
-        hInstance: instance,
-        hbrBackground: background,
-        lpszClassName: name,
-        ..WNDCLASSEXW::default()
-    };
-    let atom = unsafe { RegisterClassExW(&raw const class) };
-    if atom == 0 {
-        let error = windows::core::Error::from_thread();
-        if error.code() != ERROR_CLASS_ALREADY_EXISTS.to_hresult() {
-            return Err(error).context("registering an overlay window class");
-        }
-    }
+    register_window_class(instance, name, Some(overlay_window_proc), background)
+        .context("registering an overlay window class")?;
     registered.store(true, Ordering::Release);
     Ok(())
 }

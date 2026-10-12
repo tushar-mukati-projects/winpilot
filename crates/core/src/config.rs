@@ -238,7 +238,7 @@ impl DenyRule {
         process_matches && title_matches
     }
 
-    pub fn mentioned_in(&self, text: &str) -> bool {
+    fn mentioned_in(&self, text: &str) -> bool {
         let title = self.title.as_deref().filter(|title| !fold(title).is_empty());
         let process = self.process.as_deref().map(process_stem).filter(|stem| !stem.is_empty());
         title.is_some_and(|title| contains_folded(text, title))

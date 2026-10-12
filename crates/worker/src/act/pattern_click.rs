@@ -3,7 +3,7 @@ use deckhand_core::{Element, ElementRef, ErrorCode, Result};
 use super::click_choice::{PatternAction, pattern_actions};
 use crate::engine::Engine;
 
-pub fn click_by_pattern(engine: &Engine, element: &Element) -> Result<Option<&'static str>> {
+pub(crate) fn click_by_pattern(engine: &Engine, element: &Element) -> Result<Option<&'static str>> {
     for action in pattern_actions(element.patterns, element.state.expanded) {
         match perform(engine, element.id, action) {
             Ok(()) => return Ok(Some(action.name())),

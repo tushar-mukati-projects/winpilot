@@ -10,7 +10,7 @@ use crate::{call_scope::CallScope, engine::Engine, watch::Watch};
 const RECHECK: Duration = Duration::from_millis(250);
 const MIN_INTERVAL: Duration = Duration::from_millis(50);
 
-pub fn until<T>(
+pub(crate) fn until<T>(
     engine: &Engine,
     call: &CallScope,
     limit: Duration,
@@ -34,11 +34,11 @@ pub fn until<T>(
     }
 }
 
-pub fn next_slice(left: Duration, call_remaining: Duration) -> Duration {
+fn next_slice(left: Duration, call_remaining: Duration) -> Duration {
     left.min(call_remaining).min(RECHECK)
 }
 
-pub fn rest_before_recheck(since_check: Duration, left: Duration) -> Duration {
+fn rest_before_recheck(since_check: Duration, left: Duration) -> Duration {
     MIN_INTERVAL.saturating_sub(since_check).min(left)
 }
 

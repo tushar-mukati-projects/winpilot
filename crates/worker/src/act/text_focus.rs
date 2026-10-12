@@ -1,5 +1,7 @@
 use deckhand_core::{Element, Error, Role};
 
+use super::clip::clipped;
+
 const LABEL_NAME_CHARS: usize = 60;
 const WAY_OUT: &str = "click the field first or give type a target";
 const NOT_TEXT: [Role; 23] = [
@@ -29,14 +31,14 @@ const NOT_TEXT: [Role; 23] = [
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextFocus {
+enum TextFocus {
     Accepts,
     Unknown,
     NotText,
     ReadOnly,
 }
 
-pub fn text_focus(element: &Element) -> TextFocus {
+fn text_focus(element: &Element) -> TextFocus {
     if NOT_TEXT.contains(&element.role) {
         return TextFocus::NotText;
     }
@@ -49,11 +51,11 @@ pub fn text_focus(element: &Element) -> TextFocus {
     TextFocus::Unknown
 }
 
-pub fn has_printable(text: &str) -> bool {
+pub(crate) fn has_printable(text: &str) -> bool {
     text.chars().any(|ch| !ch.is_control())
 }
 
-pub fn refusal(focused: &Element) -> Option<Error> {
+pub(crate) fn refusal(focused: &Element) -> Option<Error> {
     let what = match text_focus(focused) {
         TextFocus::Accepts | TextFocus::Unknown => return None,
         TextFocus::NotText => label(focused),
@@ -67,11 +69,7 @@ fn label(element: &Element) -> String {
     if name.is_empty() {
         return element.role.to_string();
     }
-    let mut clipped: String = name.chars().take(LABEL_NAME_CHARS).collect();
-    if clipped.len() < name.len() {
-        clipped.push('…');
-    }
-    format!("{} \"{clipped}\"", element.role)
+    format!("{} \"{}\"", element.role, clipped(name, LABEL_NAME_CHARS))
 }
 
 #[cfg(test)]

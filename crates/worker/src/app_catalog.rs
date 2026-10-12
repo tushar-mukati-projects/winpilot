@@ -7,8 +7,11 @@ use deckhand_core::Result;
 use deckhand_desktop::apps::{AppEntry, installed_apps};
 use parking_lot::Mutex;
 
+pub(crate) const FRESH_LISTING: Duration = Duration::from_secs(300);
+pub(crate) const RECENT_LISTING: Duration = Duration::from_secs(10);
+
 #[derive(Default)]
-pub struct AppCatalog {
+pub(crate) struct AppCatalog {
     cached: Mutex<Option<Listing>>,
 }
 
@@ -18,7 +21,7 @@ struct Listing {
 }
 
 impl AppCatalog {
-    pub fn apps(&self, max_age: Duration) -> Result<Arc<Vec<AppEntry>>> {
+    pub(crate) fn apps(&self, max_age: Duration) -> Result<Arc<Vec<AppEntry>>> {
         let mut cached = self.cached.lock();
         if let Some(listing) = cached.as_ref().filter(|listing| listing.loaded.elapsed() < max_age) {
             return Ok(Arc::clone(&listing.apps));

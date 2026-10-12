@@ -14,13 +14,13 @@ use super::{
 };
 use crate::{call_scope::CallScope, engine::Engine};
 
-pub struct MouseRequest<'a> {
-    pub action: MouseAction,
-    pub to: Option<&'a TargetSpec>,
-    pub button: Option<MouseButton>,
-    pub direction: Option<Direction>,
-    pub amount: Option<u32>,
-    pub glide_ms: Option<u64>,
+pub(crate) struct MouseRequest<'a> {
+    pub(crate) action: MouseAction,
+    pub(crate) to: Option<&'a TargetSpec>,
+    pub(crate) button: Option<MouseButton>,
+    pub(crate) direction: Option<Direction>,
+    pub(crate) amount: Option<u32>,
+    pub(crate) glide_ms: Option<u64>,
 }
 
 impl<'a> TryFrom<&'a Step> for MouseRequest<'a> {
@@ -41,7 +41,7 @@ impl<'a> TryFrom<&'a Step> for MouseRequest<'a> {
     }
 }
 
-pub fn step(
+pub(crate) fn step(
     engine: &Engine,
     request: &MouseRequest<'_>,
     target: Option<&Prepared>,

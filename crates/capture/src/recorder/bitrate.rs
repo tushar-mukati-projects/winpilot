@@ -3,7 +3,7 @@ use deckhand_core::protocol::Quality;
 const MIN_BITRATE: f64 = 1_000_000.0;
 const MAX_BITRATE: f64 = 60_000_000.0;
 
-pub(crate) const fn bits_per_pixel(quality: Quality) -> f64 {
+const fn bits_per_pixel(quality: Quality) -> f64 {
     match quality {
         Quality::Low => 0.05,
         Quality::Medium => 0.08,

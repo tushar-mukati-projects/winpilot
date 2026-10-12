@@ -1,13 +1,13 @@
-pub fn fold(text: &str) -> String {
+pub(crate) fn fold(text: &str) -> String {
     let words: Vec<&str> = text.split(is_gap).filter(|word| !word.is_empty()).collect();
     words.join(" ").to_lowercase()
 }
 
-pub fn contains_folded(haystack: &str, needle: &str) -> bool {
+pub(crate) fn contains_folded(haystack: &str, needle: &str) -> bool {
     fold(haystack).contains(&fold(needle))
 }
 
-pub fn process_stem(process: &str) -> String {
+pub(crate) fn process_stem(process: &str) -> String {
     let folded = fold(process);
     match folded.strip_suffix(".exe") {
         Some(stem) => stem.to_string(),
@@ -15,11 +15,11 @@ pub fn process_stem(process: &str) -> String {
     }
 }
 
-pub fn same_process(left: &str, right: &str) -> bool {
+pub(crate) fn same_process(left: &str, right: &str) -> bool {
     process_stem(left) == process_stem(right)
 }
 
-pub fn is_gap(ch: char) -> bool {
+pub(crate) fn is_gap(ch: char) -> bool {
     ch.is_whitespace() || ch.is_control()
 }
 

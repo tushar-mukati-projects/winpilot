@@ -28,7 +28,7 @@ const CLICK_COUNTS: std::ops::RangeInclusive<u8> = 1..=3;
 const MAX_SCROLL_NOTCHES: u32 = 50;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ButtonTransition {
+pub(crate) enum ButtonTransition {
     Press,
     Release,
 }
@@ -55,7 +55,7 @@ pub fn button_up(point: Point, button: MouseButton) -> Result<()> {
     send(&button_events(desktop, point, PhysicalButton::current(button), ButtonTransition::Release))
 }
 
-pub fn button_events(
+pub(crate) fn button_events(
     desktop: VirtualDesktop,
     point: Point,
     button: PhysicalButton,
@@ -75,17 +75,17 @@ pub fn cursor_position() -> Result<Point> {
     Ok(Point::new(position.x, position.y))
 }
 
-pub fn move_event(desktop: VirtualDesktop, point: Point) -> InputEvent {
+pub(crate) fn move_event(desktop: VirtualDesktop, point: Point) -> InputEvent {
     let (dx, dy) = desktop.absolute(point);
     let flags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
     InputEvent::Mouse(MouseAction { dx, dy, data: 0, flags })
 }
 
-pub fn button_event(button: PhysicalButton, transition: ButtonTransition) -> InputEvent {
+pub(crate) fn button_event(button: PhysicalButton, transition: ButtonTransition) -> InputEvent {
     InputEvent::Mouse(MouseAction { dx: 0, dy: 0, data: 0, flags: button_flags(button, transition) })
 }
 
-pub fn click_batch(
+pub(crate) fn click_batch(
     desktop: VirtualDesktop,
     point: Point,
     button: PhysicalButton,
@@ -104,7 +104,7 @@ pub fn click_batch(
     Ok(batch)
 }
 
-pub fn scroll_events(
+pub(crate) fn scroll_events(
     desktop: VirtualDesktop,
     point: Point,
     direction: Direction,

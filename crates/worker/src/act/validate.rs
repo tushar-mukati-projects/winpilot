@@ -12,7 +12,7 @@ use super::{
 };
 use crate::{guard::Guard, window_spec};
 
-pub fn validate(args: &ActArgs, guard: &Guard, mode: Mode) -> Result<()> {
+pub(crate) fn validate(args: &ActArgs, guard: &Guard, mode: Mode) -> Result<()> {
     for (index, step) in args.steps.iter().enumerate() {
         check_step(step, guard, mode)
             .map_err(|error| Error::new(error.code, format!("step {}: {}", index + 1, error.message)))?;
@@ -33,10 +33,7 @@ fn check_step(step: &Step, guard: &Guard, mode: Mode) -> Result<()> {
         Step::Type { target: None, .. } if mode == Mode::Background => {
             Err(Error::invalid("type in background mode needs a target"))
         }
-        Step::Pick { paths, open_with, .. } => {
-            check_paths(paths, guard)?;
-            parse_optional(open_with.as_ref())
-        }
+        Step::Pick { paths, .. } => check_paths(paths, guard).and_then(|()| check_targets(step)),
         Step::Wait(wait) => wait.window.as_deref().map(window_spec::parse).transpose().map(drop),
         _ => check_targets(step),
     }

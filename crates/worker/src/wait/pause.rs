@@ -13,7 +13,7 @@ use crate::{
 
 const SLICE: Duration = Duration::from_millis(50);
 
-pub fn pause(engine: &Engine, wanted: Duration, call: &CallScope) -> Result<WaitReport> {
+pub(crate) fn pause(engine: &Engine, wanted: Duration, call: &CallScope) -> Result<WaitReport> {
     let started = Instant::now();
     loop {
         engine.guard.check_running(call)?;
@@ -23,7 +23,7 @@ pub fn pause(engine: &Engine, wanted: Duration, call: &CallScope) -> Result<Wait
         }
         thread::sleep(call.bounded(left.min(SLICE)));
     }
-    Ok(WaitReport { satisfied: true, elapsed_ms: duration_ms(started.elapsed()), detail: String::new(), element: None })
+    Ok(WaitReport { satisfied: true, elapsed_ms: duration_ms(started.elapsed()), detail: String::new() })
 }
 
 #[cfg(test)]

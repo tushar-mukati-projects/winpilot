@@ -21,7 +21,7 @@ use super::{
 };
 use crate::engine::Engine;
 
-pub fn perform(engine: &Engine, step: &Step, context: &StepContext<'_>) -> Result<Done> {
+pub(crate) fn perform(engine: &Engine, step: &Step, context: &StepContext<'_>) -> Result<Done> {
     if context.mode == Mode::Background
         && let Some(refusal) = background_refusal(step)
     {
@@ -35,7 +35,7 @@ pub fn perform(engine: &Engine, step: &Step, context: &StepContext<'_>) -> Resul
     dispatch(engine, step, prepared.as_ref(), mode, context)
 }
 
-pub fn primary_target(step: &Step) -> Option<&TargetSpec> {
+fn primary_target(step: &Step) -> Option<&TargetSpec> {
     match step {
         Step::Click { target, .. } | Step::Set { target, .. } | Step::Focus { target } => Some(target),
         Step::Type { target, .. } | Step::Key { target, .. } | Step::Mouse { target, .. } => target.as_ref(),
@@ -74,7 +74,7 @@ fn dispatch(
     }
 }
 
-pub fn required<'a>(prepared: Option<&'a Prepared>, step: &Step) -> Result<&'a Prepared> {
+pub(crate) fn required<'a>(prepared: Option<&'a Prepared>, step: &Step) -> Result<&'a Prepared> {
     prepared.ok_or_else(|| Error::invalid(format!("{} needs \"target\"", step.kind())))
 }
 

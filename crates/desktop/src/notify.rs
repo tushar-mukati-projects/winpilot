@@ -44,10 +44,6 @@ impl Notifier {
         Ok(NotifyOutcome::SentAsBalloon { quiet })
     }
 
-    pub fn showing(&self) -> usize {
-        self.showing.lock().iter().filter(|balloon| !balloon.is_finished()).count()
-    }
-
     pub fn dismiss_all(&self) {
         let dismissed = std::mem::take(&mut *self.showing.lock());
         drop(dismissed);
@@ -103,14 +99,14 @@ mod tests {
         let error = notifier.notify(&"t".repeat(64), "Export finished").unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidArgument);
         assert_eq!(notifier.notify("Export", "").unwrap_err().code, ErrorCode::InvalidArgument);
-        assert_eq!(notifier.showing(), 0);
+        assert!(notifier.showing.lock().is_empty());
     }
 
     #[test]
     fn dismissing_with_nothing_shown_is_harmless() {
         let notifier = Notifier::new();
         notifier.dismiss_all();
-        assert_eq!(notifier.showing(), 0);
+        assert!(notifier.showing.lock().is_empty());
     }
 
     #[test]
@@ -120,6 +116,6 @@ mod tests {
         let outcome = notifier.notify("Deckhand test", "This is a test notification from cargo test.").unwrap();
         assert!(!matches!(outcome, NotifyOutcome::Blocked(_)), "{outcome:?}");
         notifier.dismiss_all();
-        assert_eq!(notifier.showing(), 0);
+        assert!(notifier.showing.lock().is_empty());
     }
 }

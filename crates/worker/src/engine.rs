@@ -26,6 +26,7 @@ use crate::{
     guard::Guard,
     host::HostProcesses,
     images::ImageStore,
+    kill_switch::warn,
     observe::{
         self,
         record::{self, RecordingSlot},
@@ -34,25 +35,25 @@ use crate::{
 
 const RECENT_TIMINGS: usize = 8;
 
-pub struct Engine {
-    pub config: Config,
-    pub uia: UiaHandle,
-    pub capturer: Capturer,
-    pub changes: ChangeMonitor,
-    pub guard: Guard,
-    pub overlay: Option<Arc<Overlay>>,
-    pub notifier: Notifier,
-    pub notify_limit: Mutex<NotifyLimit>,
-    pub images: Mutex<ImageStore>,
-    pub host: HostProcesses,
-    pub apps: AppCatalog,
-    pub recording: Mutex<RecordingSlot>,
+pub(crate) struct Engine {
+    pub(crate) config: Config,
+    pub(crate) uia: UiaHandle,
+    pub(crate) capturer: Capturer,
+    pub(crate) changes: ChangeMonitor,
+    pub(crate) guard: Guard,
+    pub(crate) overlay: Option<Arc<Overlay>>,
+    pub(crate) notifier: Notifier,
+    pub(crate) notify_limit: Mutex<NotifyLimit>,
+    pub(crate) images: Mutex<ImageStore>,
+    pub(crate) host: HostProcesses,
+    pub(crate) apps: AppCatalog,
+    pub(crate) recording: Mutex<RecordingSlot>,
     timings: Mutex<VecDeque<Timing>>,
     started: Instant,
 }
 
 impl Engine {
-    pub fn start(config: Config, epoch: u32, agent: &str) -> Result<Self> {
+    pub(crate) fn start(config: Config, epoch: u32, agent: &str) -> Result<Self> {
         let first_ref = epoch::first_ref(epoch);
         let uia = UiaHandle::spawn(UiaOptions { first_ref, ..UiaOptions::default() })?;
         let capturer = Capturer::spawn()?;
@@ -77,7 +78,7 @@ impl Engine {
         })
     }
 
-    pub fn handle(&self, call: &Call, cancel: &Cancel, budget: Duration) -> Result<Reply> {
+    pub(crate) fn handle(&self, call: &Call, cancel: &Cancel, budget: Duration) -> Result<Reply> {
         let started = Instant::now();
         let label = call.label();
         let scope = CallScope::new(cancel.clone(), working_deadline(started, budget));
@@ -93,14 +94,14 @@ impl Engine {
         }
     }
 
-    pub fn snapshot(&self, window: &WindowInfo) -> Result<Snapshot> {
+    pub(crate) fn snapshot(&self, window: &WindowInfo) -> Result<Snapshot> {
         self.guard.check_window(window)?;
         let window = window.clone();
         let options = self.snapshot_options();
         self.uia.run(move |uia| uia.snapshot(&window, &options))
     }
 
-    pub fn snapshot_budget(&self) -> Duration {
+    pub(crate) fn snapshot_budget(&self) -> Duration {
         Duration::from_millis(self.config.act.snapshot_budget_ms)
     }
 
@@ -112,26 +113,26 @@ impl Engine {
         }
     }
 
-    pub fn rename_agent(&self, agent: &str) {
+    pub(crate) fn rename_agent(&self, agent: &str) {
         if let Some(overlay) = &self.overlay {
             overlay.relabel(self.config.overlay.display_label(agent));
         }
     }
 
-    pub fn begin_shut_down(&self) {
+    pub(crate) fn begin_shut_down(&self) {
         self.recording.lock().close();
     }
 
-    pub fn shut_down(&self) {
+    pub(crate) fn shut_down(&self) {
         record::shut_down(self);
         self.notifier.dismiss_all();
     }
 
-    pub fn uptime(&self) -> Duration {
+    pub(crate) fn uptime(&self) -> Duration {
         self.started.elapsed()
     }
 
-    pub fn recent_timings(&self) -> Vec<Timing> {
+    pub(crate) fn recent_timings(&self) -> Vec<Timing> {
         self.timings.lock().iter().cloned().collect()
     }
 
@@ -144,7 +145,7 @@ impl Engine {
     }
 }
 
-pub fn duration_ms(duration: Duration) -> u64 {
+pub(crate) fn duration_ms(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
@@ -157,7 +158,5 @@ fn spawn_overlay(config: &Config, agent: &str) -> Option<Arc<Overlay>> {
         label: config.overlay.display_label(agent),
         palette: config.overlay.palette(),
     };
-    let spawned =
-        Overlay::spawn(options).inspect_err(|error| eprintln!("deckhand worker: overlay unavailable: {error}"));
-    spawned.ok().map(Arc::new)
+    Overlay::spawn(options).inspect_err(|error| warn("overlay", error)).ok().map(Arc::new)
 }

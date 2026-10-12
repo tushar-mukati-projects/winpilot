@@ -6,13 +6,13 @@ use windows::Win32::{
     System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize},
 };
 
-pub struct ComApartment {
+pub(crate) struct ComApartment {
     owns_initialization: bool,
     _bound_to_thread: PhantomData<*const ()>,
 }
 
 impl ComApartment {
-    pub fn enter_any() -> Result<Self> {
+    pub(crate) fn enter_any() -> Result<Self> {
         let status = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         if status == RPC_E_CHANGED_MODE {
             return Ok(Self { owns_initialization: false, _bound_to_thread: PhantomData });

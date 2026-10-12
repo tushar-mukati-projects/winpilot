@@ -6,39 +6,39 @@ use super::check::{Check, unless_gone};
 use crate::{app_windows::app_windows, engine::Engine, resolve};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct WindowsBefore(HashSet<WindowRef>);
+pub(crate) struct WindowsBefore(HashSet<WindowRef>);
 
 impl WindowsBefore {
-    pub fn now(engine: &Engine) -> Self {
+    pub(crate) fn now(engine: &Engine) -> Self {
         let windows = app_windows(engine).unwrap_or_default();
         Self(windows.iter().map(|window| window.hwnd).collect())
     }
 
-    pub fn contains(&self, hwnd: WindowRef) -> bool {
+    pub(crate) fn contains(&self, hwnd: WindowRef) -> bool {
         self.0.contains(&hwnd)
     }
 }
 
-pub fn open(engine: &Engine, title: &str) -> Result<Check> {
+pub(crate) fn open(engine: &Engine, title: &str) -> Result<Check> {
     matching(engine, title).map(|found| window_open(title, &found))
 }
 
-pub fn opens(engine: &Engine, title: &str, before: &WindowsBefore) -> Result<Check> {
+pub(crate) fn opens(engine: &Engine, title: &str, before: &WindowsBefore) -> Result<Check> {
     matching(engine, title).map(|found| window_opens(title, &found, before))
 }
 
-pub fn closes(engine: &Engine, title: &str) -> Result<Check> {
+pub(crate) fn closes(engine: &Engine, title: &str) -> Result<Check> {
     matching(engine, title).map(|found| window_closes(title, &found))
 }
 
-pub fn window_open(title: &str, found: &[WindowInfo]) -> Check {
+fn window_open(title: &str, found: &[WindowInfo]) -> Check {
     match found.first() {
         Some(window) => Check::met(format!("{} is open", window_line(window))),
         None => Check::unmet(format!("no window matches \"{title}\"")),
     }
 }
 
-pub fn window_opens(title: &str, found: &[WindowInfo], before: &WindowsBefore) -> Check {
+fn window_opens(title: &str, found: &[WindowInfo], before: &WindowsBefore) -> Check {
     let (fresh, already): (Vec<&WindowInfo>, Vec<&WindowInfo>) =
         found.iter().partition(|window| !before.contains(window.hwnd));
     match (fresh.first(), already.len()) {
@@ -50,7 +50,7 @@ pub fn window_opens(title: &str, found: &[WindowInfo], before: &WindowsBefore) -
     }
 }
 
-pub fn window_closes(title: &str, found: &[WindowInfo]) -> Check {
+fn window_closes(title: &str, found: &[WindowInfo]) -> Check {
     match found.first() {
         Some(window) => Check::unmet(format!("{} is still open", window_line(window))),
         None => Check::met(format!("no window matches \"{title}\"")),
@@ -63,24 +63,13 @@ fn matching(engine: &Engine, title: &str) -> Result<Vec<WindowInfo>> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Rect, WindowState};
+    use deckhand_core::Rect;
 
     use super::*;
 
     fn dialog(hwnd: i64) -> WindowInfo {
-        WindowInfo {
-            hwnd: WindowRef(hwnd),
-            title: "Save As".to_string(),
-            process: "notepad.exe".to_string(),
-            pid: 7,
-            class_name: "#32770".to_string(),
-            rect: Rect::new(0, 0, 300, 200),
-            state: WindowState::Normal,
-            foreground: true,
-            elevated: false,
-            desktop: None,
-            on_current_desktop: true,
-        }
+        let window = crate::test_fixture::window(hwnd, "notepad.exe", "Save As", Rect::new(0, 0, 300, 200));
+        WindowInfo { pid: 7, foreground: true, ..window }
     }
 
     fn before(hwnds: &[i64]) -> WindowsBefore {

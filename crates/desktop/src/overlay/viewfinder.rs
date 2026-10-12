@@ -11,8 +11,8 @@ use super::{
     scale::scaled,
 };
 
-pub(crate) const CLOSE_IN: Duration = Duration::from_millis(160);
-pub(crate) const FLASH_END: Duration = Duration::from_millis(340);
+const CLOSE_IN: Duration = Duration::from_millis(160);
+const FLASH_END: Duration = Duration::from_millis(340);
 pub(crate) const VIEWFINDER_LIFE: Duration = Duration::from_millis(420);
 pub(crate) const STILL_VIEWFINDER_LIFE: Duration = Duration::from_millis(200);
 const BRACKET_FADE_START: Duration = Duration::from_millis(250);

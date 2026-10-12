@@ -12,7 +12,7 @@ use crate::{call_scope::CallScope, engine::Engine, overlay};
 const APPENDED: &str = "appended to the existing text; background mode can't place a caret";
 const REPLACED: &str = "the field hides its value, so it now holds only the typed text";
 
-pub fn step(engine: &Engine, prepared: &Prepared, text: &str, call: &CallScope) -> Result<Done> {
+pub(crate) fn step(engine: &Engine, prepared: &Prepared, text: &str, call: &CallScope) -> Result<Done> {
     let element = prepared.require_element("type in background mode")?;
     if !is_writable(element) {
         return Err(Error::unsupported(format!(
@@ -33,7 +33,7 @@ pub fn step(engine: &Engine, prepared: &Prepared, text: &str, call: &CallScope) 
     Ok(Done::by("value").with_note(note.map(str::to_string)).with_note(check).with_note(handed_back))
 }
 
-pub fn appended(current: Option<&str>, text: &str) -> (String, Option<&'static str>) {
+pub(crate) fn appended(current: Option<&str>, text: &str) -> (String, Option<&'static str>) {
     match current {
         None => (text.to_string(), Some(REPLACED)),
         Some("") => (text.to_string(), None),

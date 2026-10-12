@@ -14,13 +14,13 @@ use crate::{
 
 const LONGEST_WAIT_WHILE_HELD: Duration = Duration::from_secs(1);
 
-pub fn step(engine: &Engine, args: &WaitArgs, call: &CallScope, before: &WindowsBefore) -> Result<Done> {
+pub(crate) fn step(engine: &Engine, args: &WaitArgs, call: &CallScope, before: &WindowsBefore) -> Result<Done> {
     let condition = args.validate()?;
     refuse_long_hold(longest_wait(&condition, args.timeout()), &held_input(call))?;
     outcome(wait::until(engine, &condition, args.timeout(), before, call)?)
 }
 
-pub fn outcome(report: WaitReport) -> Result<Done> {
+pub(crate) fn outcome(report: WaitReport) -> Result<Done> {
     if !report.satisfied {
         return Err(Error::timeout(format!("timed out after {} ms: {}", report.elapsed_ms, report.detail)));
     }
@@ -30,14 +30,14 @@ pub fn outcome(report: WaitReport) -> Result<Done> {
     Ok(Done::noting(report.detail))
 }
 
-pub fn longest_wait(condition: &WaitCondition, timeout: Duration) -> Duration {
+fn longest_wait(condition: &WaitCondition, timeout: Duration) -> Duration {
     match condition {
         WaitCondition::Time { wanted } => *wanted,
         _ => timeout,
     }
 }
 
-pub fn refuse_long_hold(longest: Duration, held: &[String]) -> Result<()> {
+fn refuse_long_hold(longest: Duration, held: &[String]) -> Result<()> {
     if held.is_empty() || longest <= LONGEST_WAIT_WHILE_HELD {
         return Ok(());
     }
@@ -63,7 +63,7 @@ mod tests {
     use super::*;
 
     fn report(satisfied: bool, detail: &str) -> WaitReport {
-        WaitReport { satisfied, elapsed_ms: 250, detail: detail.to_string(), element: None }
+        WaitReport { satisfied, elapsed_ms: 250, detail: detail.to_string() }
     }
 
     fn condition(json: &str) -> WaitCondition {

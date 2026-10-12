@@ -2,7 +2,7 @@ mod apps;
 mod clipboard;
 mod elements;
 mod monitors;
-pub mod record;
+pub(crate) mod record;
 mod screenshot;
 mod search;
 mod status;
@@ -14,10 +14,10 @@ use deckhand_core::{
     protocol::{ObserveArgs, ObserveRequest, Reply},
 };
 
-pub use self::{elements::observe_window, screenshot::of_window};
+pub(crate) use self::{elements::observe_window, screenshot::of_window};
 use crate::{call_scope::CallScope, engine::Engine};
 
-pub fn run(engine: &Engine, args: &ObserveArgs, call: &CallScope) -> Result<Reply> {
+pub(crate) fn run(engine: &Engine, args: &ObserveArgs, call: &CallScope) -> Result<Reply> {
     match args.request()? {
         ObserveRequest::Elements(request) => elements::run(engine, &request).map(Reply::Observation),
         ObserveRequest::Search(request) => search::run(engine, &request, call).map(Reply::Search),

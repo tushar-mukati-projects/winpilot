@@ -7,7 +7,7 @@ const SPACE: &str = "Space";
 const ARROWS: [char; 4] = ['\u{2190}', '\u{2191}', '\u{2192}', '\u{2193}'];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum KeyChip {
+enum KeyChip {
     Chord(Vec<String>),
     Typing,
 }

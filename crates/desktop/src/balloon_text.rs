@@ -1,7 +1,7 @@
 use deckhand_core::{Error, Result};
 
-pub(crate) const TITLE_UNITS: usize = 64;
-pub(crate) const MESSAGE_UNITS: usize = 256;
+const TITLE_UNITS: usize = 64;
+const MESSAGE_UNITS: usize = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BalloonText {

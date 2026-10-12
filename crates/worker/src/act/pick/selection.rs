@@ -8,19 +8,19 @@ use crate::act::shortcut::refuse_shortcut;
 const PICK_INSTEAD: &str = "pick the target file itself, not a shortcut";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Selection {
-    pub files: Vec<String>,
+pub(crate) struct Selection {
+    pub(crate) files: Vec<String>,
     folder: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Requested {
-    pub name: String,
-    pub existed: bool,
+pub(crate) struct Requested {
+    pub(crate) name: String,
+    pub(crate) existed: bool,
 }
 
 impl Selection {
-    pub fn parse(paths: &[String], check: impl Fn(&Path) -> Result<PathBuf>) -> Result<Self> {
+    pub(crate) fn parse(paths: &[String], check: impl Fn(&Path) -> Result<PathBuf>) -> Result<Self> {
         if paths.is_empty() {
             return Err(Error::invalid("pick needs at least one path in \"paths\""));
         }
@@ -30,11 +30,11 @@ impl Selection {
         Ok(Self { files, folder })
     }
 
-    pub fn folder_text(&self) -> String {
+    pub(crate) fn folder_text(&self) -> String {
         self.folder.to_string_lossy().into_owned()
     }
 
-    pub fn file_names(&self) -> Vec<String> {
+    pub(crate) fn file_names(&self) -> Vec<String> {
         self.files
             .iter()
             .filter_map(|file| Path::new(file).file_name())
@@ -42,17 +42,17 @@ impl Selection {
             .collect()
     }
 
-    pub fn quoted_names(&self) -> String {
+    pub(crate) fn quoted_names(&self) -> String {
         self.file_names().iter().map(|name| format!("\"{name}\"")).collect::<Vec<_>>().join(" ")
     }
 
-    pub fn requested(&self) -> Requested {
+    pub(crate) fn requested(&self) -> Requested {
         let name = self.file_names().into_iter().next().unwrap_or_default();
         let existed = self.files.first().is_some_and(|file| Path::new(file).is_file());
         Requested { name, existed }
     }
 
-    pub fn check_folder(&self) -> Result<()> {
+    pub(crate) fn check_folder(&self) -> Result<()> {
         if !self.folder.is_dir() {
             return Err(Error::not_found(format!("folder {} does not exist", self.folder.display())));
         }
@@ -62,7 +62,7 @@ impl Selection {
         Ok(())
     }
 
-    pub fn check_for(&self, kind: DialogKind) -> Result<()> {
+    pub(crate) fn check_for(&self, kind: DialogKind) -> Result<()> {
         match kind {
             DialogKind::Open => self.files.iter().try_for_each(|file| existing_file(file)),
             DialogKind::Save if self.files.len() > 1 => Err(Error::invalid("a Save dialog takes exactly one path")),
@@ -113,21 +113,10 @@ fn existing_file(file: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use deckhand_core::{ErrorCode, config::GuardConfig};
 
     use super::*;
-
-    struct TempFiles(Vec<PathBuf>);
-
-    impl Drop for TempFiles {
-        fn drop(&mut self) {
-            for path in &self.0 {
-                let _ = fs::remove_file(path);
-            }
-        }
-    }
+    use crate::test_fixture::{TempFiles, temp_file};
 
     fn guard() -> GuardConfig {
         GuardConfig { deny_paths: vec![PathBuf::from("C:\\Denied")], ..GuardConfig::default() }
@@ -140,12 +129,6 @@ mod tests {
 
     fn parse_error(paths: &[&str]) -> ErrorCode {
         parse(paths).unwrap_err().code
-    }
-
-    fn temp_file(name: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("deckhand-pick-{}-{name}", std::process::id()));
-        fs::write(&path, b"deckhand").unwrap();
-        path
     }
 
     fn one(path: &Path) -> Selection {

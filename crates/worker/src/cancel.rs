@@ -6,18 +6,18 @@ use std::sync::{
 use deckhand_core::{Error, ErrorCode, Result};
 
 #[derive(Debug, Clone, Default)]
-pub struct Cancel(Arc<AtomicBool>);
+pub(crate) struct Cancel(Arc<AtomicBool>);
 
 impl Cancel {
-    pub fn cancel(&self) {
+    pub(crate) fn cancel(&self) {
         self.0.store(true, Ordering::SeqCst);
     }
 
-    pub fn is_cancelled(&self) -> bool {
+    pub(crate) fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::SeqCst)
     }
 
-    pub fn check(&self) -> Result<()> {
+    pub(crate) fn check(&self) -> Result<()> {
         if self.is_cancelled() { Err(Error::new(ErrorCode::Cancelled, "the request was cancelled")) } else { Ok(()) }
     }
 }

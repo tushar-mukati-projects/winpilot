@@ -11,35 +11,35 @@ use crate::cancel::Cancel;
 const FINISH_POLL: Duration = Duration::from_millis(10);
 
 #[derive(Default)]
-pub struct InFlight {
+pub(crate) struct InFlight {
     cancels: Mutex<HashMap<u64, Cancel>>,
     threads: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl InFlight {
-    pub fn register(&self, id: u64) -> Cancel {
+    pub(crate) fn register(&self, id: u64) -> Cancel {
         let cancel = Cancel::default();
         self.cancels.lock().insert(id, cancel.clone());
         cancel
     }
 
-    pub fn finished(&self, id: u64) {
+    pub(crate) fn finished(&self, id: u64) {
         self.cancels.lock().remove(&id);
     }
 
-    pub fn cancel(&self, id: u64) {
+    pub(crate) fn cancel(&self, id: u64) {
         if let Some(cancel) = self.cancels.lock().get(&id) {
             cancel.cancel();
         }
     }
 
-    pub fn track(&self, thread: JoinHandle<()>) {
+    pub(crate) fn track(&self, thread: JoinHandle<()>) {
         let mut threads = self.threads.lock();
         threads.retain(|running| !running.is_finished());
         threads.push(thread);
     }
 
-    pub fn cancel_all_and_wait(&self, patience: Duration) -> usize {
+    pub(crate) fn cancel_all_and_wait(&self, patience: Duration) -> usize {
         for cancel in self.cancels.lock().values() {
             cancel.cancel();
         }

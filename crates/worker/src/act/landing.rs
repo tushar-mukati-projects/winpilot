@@ -6,7 +6,7 @@ use super::{
 };
 use crate::engine::Engine;
 
-pub fn ensure_keys_land(engine: &Engine, focused: &Focused) -> Result<()> {
+pub(crate) fn ensure_keys_land(engine: &Engine, focused: &Focused) -> Result<()> {
     require_in_front(&focused.window)?;
     let Some(element) = &focused.element else { return Ok(()) };
     if focus_is_inside(engine, element.id)? {

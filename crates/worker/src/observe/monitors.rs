@@ -4,7 +4,7 @@ use deckhand_core::{
 };
 use deckhand_desktop::Monitor;
 
-pub fn list() -> Result<MonitorsReport> {
+pub(crate) fn list() -> Result<MonitorsReport> {
     let monitors = deckhand_desktop::monitors()?.iter().map(monitor_info).collect();
     Ok(MonitorsReport { monitors })
 }

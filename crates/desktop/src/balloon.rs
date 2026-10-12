@@ -13,17 +13,17 @@ use crate::{
     window_timer::WindowTimer,
 };
 
-pub(crate) const BALLOON_LIFETIME: Duration = Duration::from_secs(10);
+const BALLOON_LIFETIME: Duration = Duration::from_secs(10);
 const LIFETIME_TIMER: usize = 1;
 
 #[derive(Debug)]
-pub(crate) struct BalloonLifetime {
+struct BalloonLifetime {
     _timer: WindowTimer,
     window: BalloonWindow,
 }
 
 impl BalloonLifetime {
-    pub(crate) fn start(lifetime: Duration) -> Result<Self> {
+    fn start(lifetime: Duration) -> Result<Self> {
         let window = BalloonWindow::create()?;
         let timer = WindowTimer::start(window.hwnd(), LIFETIME_TIMER, finite_millis(lifetime))
             .ok_or_else(|| Error::internal("could not start the notification's lifetime timer"))?;

@@ -21,10 +21,6 @@ const CHARS_PER_EXTRA_SECOND: u64 = 2000;
 const KEY_PRESS_BUDGET: Duration = Duration::from_millis(100);
 
 impl Call {
-    pub fn deadline(&self) -> Duration {
-        self.deadline_with_glide(0)
-    }
-
     pub fn deadline_with_glide(&self, default_glide_ms: u64) -> Duration {
         let deadline = match self {
             Self::Observe(args) => observe_budget(args),
@@ -116,7 +112,7 @@ mod tests {
     }
 
     fn observe(json: &str) -> Duration {
-        Call::Observe(serde_json::from_str(json).unwrap()).deadline()
+        Call::Observe(serde_json::from_str(json).unwrap()).deadline_with_glide(0)
     }
 
     #[test]
@@ -142,20 +138,26 @@ mod tests {
     #[test]
     fn act_deadline_grows_with_steps_and_is_capped() {
         let pause = step(r#"{"do":"wait","ms":1000}"#);
-        assert_eq!(act(vec![pause.clone()]).deadline(), ACT_OVERHEAD + Duration::from_secs(2));
-        assert_eq!(act(vec![pause; 100]).deadline(), MAX_DEADLINE);
-        assert_eq!(act(vec![step(r#"{"do":"wait","ms":60000}"#)]).deadline(), ACT_OVERHEAD + Duration::from_secs(6));
+        assert_eq!(act(vec![pause.clone()]).deadline_with_glide(0), ACT_OVERHEAD + Duration::from_secs(2));
+        assert_eq!(act(vec![pause; 100]).deadline_with_glide(0), MAX_DEADLINE);
+        assert_eq!(
+            act(vec![step(r#"{"do":"wait","ms":60000}"#)]).deadline_with_glide(0),
+            ACT_OVERHEAD + Duration::from_secs(6)
+        );
         let watched = step(r#"{"do":"wait","until":"appears","target":"e1","timeout_ms":8000}"#);
-        assert_eq!(act(vec![watched]).deadline(), ACT_OVERHEAD + Duration::from_secs(9));
+        assert_eq!(act(vec![watched]).deadline_with_glide(0), ACT_OVERHEAD + Duration::from_secs(9));
     }
 
     #[test]
     fn act_deadline_includes_explicit_glides() {
         let moved = step(r#"{"do":"mouse","action":"move","target":"e1","glide_ms":2000}"#);
-        assert_eq!(act(vec![moved]).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(2));
+        assert_eq!(act(vec![moved]).deadline_with_glide(0), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(2));
         let dragged = step(r#"{"do":"mouse","action":"drag","target":"e1","to":"e2","glide_ms":1500}"#);
-        assert_eq!(act(vec![dragged]).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(3));
-        assert_eq!(act(vec![step(r#"{"do":"mouse","action":"up"}"#)]).deadline(), ACT_OVERHEAD + STEP_BUDGET);
+        assert_eq!(act(vec![dragged]).deadline_with_glide(0), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(3));
+        assert_eq!(
+            act(vec![step(r#"{"do":"mouse","action":"up"}"#)]).deadline_with_glide(0),
+            ACT_OVERHEAD + STEP_BUDGET
+        );
     }
 
     #[test]
@@ -175,31 +177,34 @@ mod tests {
     #[test]
     fn act_deadline_accounts_for_typing_and_key_repeats() {
         let typed = |text: String| act(vec![Step::Type { target: None, text, enter: false, how: TypeHow::default() }]);
-        assert_eq!(typed("hi".to_string()).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(1));
-        assert_eq!(typed("a".repeat(10_000)).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(5));
-        assert_eq!(typed(String::new()).deadline(), ACT_OVERHEAD + STEP_BUDGET);
+        assert_eq!(typed("hi".to_string()).deadline_with_glide(0), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(1));
+        assert_eq!(
+            typed("a".repeat(10_000)).deadline_with_glide(0),
+            ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(5)
+        );
+        assert_eq!(typed(String::new()).deadline_with_glide(0), ACT_OVERHEAD + STEP_BUDGET);
         let set = step(r#"{"do":"set","target":"e1","value":"abc"}"#);
-        assert_eq!(act(vec![set]).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(1));
+        assert_eq!(act(vec![set]).deadline_with_glide(0), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(1));
         let keys = step(r#"{"do":"key","keys":"ctrl+k ctrl+s","repeat":50}"#);
-        assert_eq!(act(vec![keys]).deadline(), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(10));
+        assert_eq!(act(vec![keys]).deadline_with_glide(0), ACT_OVERHEAD + STEP_BUDGET + Duration::from_secs(10));
         let unparsable = Step::Key {
             keys: "bogus".to_string(),
             target: None,
             repeat: u32::MAX,
             action: crate::steps::KeyAction::Press,
         };
-        assert_eq!(act(vec![unparsable]).deadline(), MAX_DEADLINE);
+        assert_eq!(act(vec![unparsable]).deadline_with_glide(0), MAX_DEADLINE);
     }
 
     #[test]
     fn launch_and_pick_get_room_to_wait() {
         let launch = step(r#"{"do":"window","action":"launch","app":"Notepad"}"#);
-        assert_eq!(act(vec![launch]).deadline(), ACT_OVERHEAD + LAUNCH_BUDGET);
+        assert_eq!(act(vec![launch]).deadline_with_glide(0), ACT_OVERHEAD + LAUNCH_BUDGET);
         let pick = step(r#"{"do":"pick","paths":["C:\\a.txt"]}"#);
-        assert_eq!(act(vec![pick]).deadline(), ACT_OVERHEAD + DEFAULT_PICK + PICK_OVERHEAD);
+        assert_eq!(act(vec![pick]).deadline_with_glide(0), ACT_OVERHEAD + DEFAULT_PICK + PICK_OVERHEAD);
         let slow = step(r#"{"do":"pick","paths":["C:\\a.txt"],"timeout_ms":999999}"#);
-        assert_eq!(act(vec![slow]).deadline(), ACT_OVERHEAD + MAX_WAIT + PICK_OVERHEAD);
+        assert_eq!(act(vec![slow]).deadline_with_glide(0), ACT_OVERHEAD + MAX_WAIT + PICK_OVERHEAD);
         let close = step(r#"{"do":"window","action":"close","target":"w1"}"#);
-        assert_eq!(act(vec![close]).deadline(), ACT_OVERHEAD + STEP_BUDGET);
+        assert_eq!(act(vec![close]).deadline_with_glide(0), ACT_OVERHEAD + STEP_BUDGET);
     }
 }

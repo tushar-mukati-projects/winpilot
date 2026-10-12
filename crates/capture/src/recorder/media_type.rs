@@ -54,7 +54,7 @@ fn video_type(subtype: &GUID, size: Size, fps: u32) -> Result<IMFMediaType> {
     Ok(media_type)
 }
 
-pub(crate) const fn packed(high: u32, low: u32) -> u64 {
+const fn packed(high: u32, low: u32) -> u64 {
     ((high as u64) << 32) | low as u64
 }
 

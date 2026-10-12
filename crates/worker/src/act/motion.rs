@@ -12,18 +12,18 @@ use crate::{call_scope::CallScope, engine::Engine, overlay};
 const INTERRUPTED: &str =
     "the user moved the mouse or typed while Deckhand was moving the pointer, so it stopped; try again once they stop";
 
-pub struct Motion<'a> {
+pub(crate) struct Motion<'a> {
     engine: &'a Engine,
     call: &'a CallScope,
     started: Instant,
 }
 
 impl<'a> Motion<'a> {
-    pub fn start(engine: &'a Engine, call: &'a CallScope) -> Self {
+    pub(crate) fn start(engine: &'a Engine, call: &'a CallScope) -> Self {
         Self { engine, call, started: Instant::now() }
     }
 
-    pub fn check(&self) -> Result<()> {
+    pub(crate) fn check(&self) -> Result<()> {
         self.engine.guard.check_running(self.call)?;
         if self.engine.guard.physical_input_since(self.started) {
             return Err(Error::new(ErrorCode::UserActive, INTERRUPTED));
@@ -31,11 +31,11 @@ impl<'a> Motion<'a> {
         Ok(())
     }
 
-    pub fn glide_duration(&self, glide_ms: Option<u64>) -> Duration {
+    pub(crate) fn glide_duration(&self, glide_ms: Option<u64>) -> Duration {
         self.call.bounded(glide_duration(self.engine.config.cursor.glide_ms, glide_ms))
     }
 
-    pub fn glide_to(&self, to: Point, glide_ms: Option<u64>) -> Result<()> {
+    pub(crate) fn glide_to(&self, to: Point, glide_ms: Option<u64>) -> Result<()> {
         self.check()?;
         let duration = self.glide_duration(glide_ms);
         let from = deckhand_input::cursor_position().unwrap_or(to);
@@ -46,7 +46,7 @@ impl<'a> Motion<'a> {
         deckhand_input::glide_to_guarded(to, duration, || self.check())
     }
 
-    pub fn approach(&self, prepared: &Prepared, located: &Located, glide_ms: Option<u64>) -> Result<Point> {
+    pub(crate) fn approach(&self, prepared: &Prepared, located: &Located, glide_ms: Option<u64>) -> Result<Point> {
         let point = hit_point(self.engine, prepared, located)?;
         overlay::begin(self.engine, &located.window, self.call);
         self.glide_to(point, glide_ms)?;
@@ -56,7 +56,7 @@ impl<'a> Motion<'a> {
     }
 }
 
-pub fn glide_duration(default_ms: u64, glide_ms: Option<u64>) -> Duration {
+fn glide_duration(default_ms: u64, glide_ms: Option<u64>) -> Duration {
     Duration::from_millis(glide_ms.unwrap_or(default_ms).min(MAX_GLIDE_MS))
 }
 

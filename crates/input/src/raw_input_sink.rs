@@ -22,13 +22,13 @@ use crate::{
 
 const SINK_CLASS: PCWSTR = w!("DeckhandRawInputSink");
 
-pub struct RawInputSink {
+pub(crate) struct RawInputSink {
     _registration: RawInputRegistration,
     _window: MessageWindow,
 }
 
 impl RawInputSink {
-    pub fn start() -> Result<Self> {
+    pub(crate) fn start() -> Result<Self> {
         let window = MessageWindow::create()?;
         let registration = RawInputRegistration::register(window.0)?;
         Ok(Self { _registration: registration, _window: window })

@@ -4,17 +4,18 @@ use deckhand_core::{
     selector::Selector,
 };
 
-const SELECTOR_KEYS: [&str; 9] = ["role", "name", "name~", "id", "class", "text", "window", "process", "nth"];
+const SELECTOR_KEYS: [&str; 11] =
+    ["role", "name", "name~", "id", "class", "text", "window", "process", "nth", "ocr", "focused"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WindowSpec {
+pub(crate) enum WindowSpec {
     Handle(WindowRef),
     Element(ElementRef),
     Selector(Selector),
     Title(String),
 }
 
-pub fn parse(text: &str) -> Result<WindowSpec> {
+pub(crate) fn parse(text: &str) -> Result<WindowSpec> {
     let text = text.trim();
     if looks_like_window_ref(text) {
         return text.parse().map(WindowSpec::Handle);
@@ -32,11 +33,11 @@ pub fn parse(text: &str) -> Result<WindowSpec> {
     Ok(WindowSpec::Selector(selector))
 }
 
-pub fn looks_like_title(text: &str) -> bool {
+pub(crate) fn looks_like_title(text: &str) -> bool {
     !text.contains(':') || text.split_whitespace().filter_map(key_of).any(|key| !is_selector_key(key))
 }
 
-pub fn matches(spec: &WindowSpec, window: &WindowInfo) -> bool {
+pub(crate) fn matches(spec: &WindowSpec, window: &WindowInfo) -> bool {
     match spec {
         WindowSpec::Selector(selector) => selector.matches_window(window),
         WindowSpec::Title(title) => window.title.to_lowercase().contains(&title.to_lowercase()),
@@ -45,7 +46,7 @@ pub fn matches(spec: &WindowSpec, window: &WindowInfo) -> bool {
     }
 }
 
-pub fn describe(spec: &WindowSpec) -> String {
+pub(crate) fn describe(spec: &WindowSpec) -> String {
     match spec {
         WindowSpec::Handle(hwnd) => hwnd.to_string(),
         WindowSpec::Element(id) => id.to_string(),
@@ -94,6 +95,8 @@ mod tests {
         assert_eq!(parse("role:gizmo").unwrap_err().code, ErrorCode::InvalidArgument);
         let element_only = parse("name:Save").unwrap_err();
         assert!(element_only.message.contains("does not name a window"), "{}", element_only.message);
+        let ocr_only = parse("ocr:\"Export\"").unwrap_err();
+        assert!(ocr_only.message.contains("does not name a window"), "{}", ocr_only.message);
     }
 
     #[test]

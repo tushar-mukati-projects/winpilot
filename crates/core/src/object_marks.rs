@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 const OBJECT_REPLACEMENT: char = '\u{FFFC}';
 
-pub fn without_object_marks(text: &str) -> Cow<'_, str> {
+pub(crate) fn without_object_marks(text: &str) -> Cow<'_, str> {
     if text.contains(OBJECT_REPLACEMENT) {
         Cow::Owned(text.replace(OBJECT_REPLACEMENT, ""))
     } else {

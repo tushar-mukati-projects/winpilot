@@ -5,8 +5,7 @@ use windows::Win32::UI::Shell::{
     FileOpenDialog, FileSaveDialog, IFileDialog, IFileOpenDialog, IFileSaveDialog, IShellItem, IShellItemArray,
     SIGDN_FILESYSPATH,
 };
-use windows::Win32::UI::WindowsAndMessaging::{IDCANCEL, IDOK, MB_OKCANCEL, MessageBoxW};
-use windows::core::{Error, HRESULT, PWSTR, Result, w};
+use windows::core::{HRESULT, PWSTR, Result, w};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Choice<T> {
@@ -35,14 +34,6 @@ pub fn pick_save_path(owner: HWND) -> Result<Choice<String>> {
     }
     let item = unsafe { dialog.GetResult()? };
     Ok(Choice::Chosen(file_system_path(&item)?))
-}
-
-pub fn ask_confirmation(owner: HWND) -> Result<bool> {
-    match unsafe { MessageBoxW(Some(owner), w!("Are you sure?"), w!("Deckhand Fixture Confirm"), MB_OKCANCEL) } {
-        IDOK => Ok(true),
-        IDCANCEL => Ok(false),
-        _ => Err(Error::from_thread()),
-    }
 }
 
 fn add_options(dialog: &IFileDialog, extra: FILEOPENDIALOGOPTIONS) -> Result<()> {

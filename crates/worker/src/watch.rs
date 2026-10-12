@@ -5,41 +5,41 @@ use deckhand_core::WindowInfo;
 use crate::{engine::Engine, window_classes::is_frame_host};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Watch {
+pub(crate) struct Watch {
     pids: Vec<u32>,
 }
 
 impl Watch {
-    pub fn any() -> Self {
+    pub(crate) fn any() -> Self {
         Self::default()
     }
 
-    pub fn window(window: &WindowInfo) -> Self {
+    pub(crate) fn window(window: &WindowInfo) -> Self {
         let content = is_frame_host(window).then(|| deckhand_desktop::uwp_content_pid(window.hwnd)).flatten();
         Self { pids: with_content(window.pid, content) }
     }
 
-    pub fn windows(windows: &[WindowInfo]) -> Self {
+    pub(crate) fn windows(windows: &[WindowInfo]) -> Self {
         match windows {
             [only] => Self::window(only),
             _ => Self::any(),
         }
     }
 
-    pub fn wait_for_change(&self, engine: &Engine, since: Instant, timeout: Duration) -> bool {
+    pub(crate) fn wait_for_change(&self, engine: &Engine, since: Instant, timeout: Duration) -> bool {
         match self.pids.as_slice() {
             [pid] => engine.changes.wait_change(Some(*pid), since, timeout),
             _ => engine.changes.wait_any_change(since, timeout),
         }
     }
 
-    pub fn wait_quiet(&self, engine: &Engine, quiet: Duration, max: Duration) -> bool {
+    pub(crate) fn wait_quiet(&self, engine: &Engine, quiet: Duration, max: Duration) -> bool {
         let started = Instant::now();
         self.pids.iter().all(|pid| engine.changes.wait_quiet(*pid, quiet, max.saturating_sub(started.elapsed())))
     }
 }
 
-pub fn with_content(pid: u32, content: Option<u32>) -> Vec<u32> {
+fn with_content(pid: u32, content: Option<u32>) -> Vec<u32> {
     match content {
         Some(content) if content != pid => vec![pid, content],
         _ => vec![pid],

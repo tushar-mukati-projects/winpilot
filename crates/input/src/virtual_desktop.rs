@@ -7,7 +7,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 const ABSOLUTE_RANGE: i64 = 65_536;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct VirtualDesktop {
+pub(crate) struct VirtualDesktop {
     pub x: i32,
     pub y: i32,
     pub width: i32,
@@ -15,7 +15,7 @@ pub struct VirtualDesktop {
 }
 
 impl VirtualDesktop {
-    pub fn current() -> Result<Self> {
+    pub(crate) fn current() -> Result<Self> {
         let desktop = Self {
             x: metric(SM_XVIRTUALSCREEN),
             y: metric(SM_YVIRTUALSCREEN),
@@ -28,7 +28,7 @@ impl VirtualDesktop {
         Ok(desktop)
     }
 
-    pub fn absolute(self, point: Point) -> (i32, i32) {
+    pub(crate) fn absolute(self, point: Point) -> (i32, i32) {
         (normalize_axis(point.x, self.x, self.width), normalize_axis(point.y, self.y, self.height))
     }
 }

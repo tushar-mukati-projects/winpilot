@@ -10,7 +10,13 @@ use super::{
 };
 use crate::{call_scope::CallScope, engine::Engine};
 
-pub fn step(engine: &Engine, prepared: &Prepared, change: &SetChange, mode: Mode, call: &CallScope) -> Result<Done> {
+pub(crate) fn step(
+    engine: &Engine,
+    prepared: &Prepared,
+    change: &SetChange,
+    mode: Mode,
+    call: &CallScope,
+) -> Result<Done> {
     match change {
         SetChange::Value(text) => value::step(engine, prepared, text, mode, call),
         SetChange::Option(option) => select::option(engine, prepared, option, mode, call),

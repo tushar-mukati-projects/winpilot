@@ -25,7 +25,7 @@ const CHROMIUM_WAKE_DELAY: Duration = Duration::from_millis(150);
 pub(crate) struct Walk {
     pub(crate) elements: Vec<Element>,
     pub(crate) focused: Option<ElementRef>,
-    pub(crate) truncated: bool,
+    truncated: bool,
 }
 
 struct Pending {

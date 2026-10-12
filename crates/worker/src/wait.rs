@@ -11,27 +11,26 @@ mod fixture_tests;
 
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Element, Result, protocol::WaitCondition};
+use deckhand_core::{Result, protocol::WaitCondition};
 
 use self::{
     check::{Check, appears, disappears, target_label},
     ocr_look::OcrLook,
 };
-pub use self::{
+pub(crate) use self::{
     check::{is_gone, unless_gone},
     windows::WindowsBefore,
 };
 use crate::{call_scope::CallScope, engine::Engine, watch::Watch};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WaitReport {
-    pub satisfied: bool,
-    pub elapsed_ms: u64,
-    pub detail: String,
-    pub element: Option<Element>,
+pub(crate) struct WaitReport {
+    pub(crate) satisfied: bool,
+    pub(crate) elapsed_ms: u64,
+    pub(crate) detail: String,
 }
 
-pub fn until(
+pub(crate) fn until(
     engine: &Engine,
     condition: &WaitCondition,
     timeout: Duration,
@@ -42,14 +41,14 @@ pub fn until(
         WaitCondition::Time { wanted } => pause::pause(engine, *wanted, call),
         WaitCondition::Appears { target, window } => {
             let (label, scope) = (target_label(target), window.as_deref());
-            let mut ocr = OcrLook::new(Some(call));
+            let mut ocr = OcrLook::new(call);
             poll(engine, timeout, &presence::watch(engine, target, scope), call, || {
                 presence::locate(engine, target, scope, &mut ocr).map(|found| appears(&label, found))
             })
         }
         WaitCondition::Disappears { target, window } => {
             let (label, scope) = (target_label(target), window.as_deref());
-            let mut ocr = OcrLook::new(Some(call));
+            let mut ocr = OcrLook::new(call);
             poll(engine, timeout, &presence::watch(engine, target, scope), call, || {
                 presence::locate(engine, target, scope, &mut ocr).map(|found| disappears(&label, found))
             })
@@ -65,7 +64,7 @@ pub fn until(
         }
         WaitCondition::Text { text, window } => {
             let scope = window.as_deref();
-            let mut ocr = OcrLook::new(Some(call));
+            let mut ocr = OcrLook::new(call);
             poll(engine, timeout, &text::watch(engine, scope), call, || text::check(engine, text, scope, &mut ocr))
         }
         WaitCondition::Idle { quiet } => idle::wait(engine, *quiet, timeout, call),

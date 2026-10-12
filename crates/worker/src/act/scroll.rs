@@ -15,13 +15,13 @@ use crate::{call_scope::CallScope, engine::Engine, on_screen::clickable_point, o
 const AT_EDGE: &str = "already at the edge";
 const DEFAULT_AMOUNT: u32 = 3;
 
-pub struct ScrollRequest {
-    pub direction: Direction,
-    pub amount: Option<u32>,
-    pub glide_ms: Option<u64>,
+pub(crate) struct ScrollRequest {
+    pub(crate) direction: Direction,
+    pub(crate) amount: Option<u32>,
+    pub(crate) glide_ms: Option<u64>,
 }
 
-pub fn step(
+pub(crate) fn step(
     engine: &Engine,
     target: Option<&Prepared>,
     request: &ScrollRequest,
@@ -40,7 +40,7 @@ pub fn step(
     }
 }
 
-pub fn edge_note(moved: u32) -> Option<String> {
+fn edge_note(moved: u32) -> Option<String> {
     (moved == 0).then(|| AT_EDGE.to_string())
 }
 

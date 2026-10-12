@@ -14,19 +14,19 @@ use crate::{
 const HOST_TERMINAL: &str = "the foreground window is the agent's own terminal; give a target or focus the app first";
 const FOREGROUND_MOVED: &str = "the foreground window changed while waiting for the user; give a target or try again";
 
-pub type Prepared = Resolved;
+pub(crate) type Prepared = Resolved;
 
-pub fn prepare(engine: &Engine, spec: &TargetSpec, mode: Mode, call: &CallScope) -> Result<Prepared> {
+pub(crate) fn prepare(engine: &Engine, spec: &TargetSpec, mode: Mode, call: &CallScope) -> Result<Prepared> {
     let target = spec.parse()?;
     let resolved = resolve::target(engine, &target, call)?;
     ready(engine, resolved, mode, call)
 }
 
-pub fn prepare_default_window(engine: &Engine, call: &CallScope) -> Result<Prepared> {
+pub(crate) fn prepare_default_window(engine: &Engine, call: &CallScope) -> Result<Prepared> {
     ready(engine, Resolved { window: default_window(engine)?, reach: Reach::Window }, Mode::Foreground, call)
 }
 
-pub fn given_or_else(
+pub(crate) fn given_or_else(
     target: Option<&Prepared>,
     fallback: impl FnOnce() -> Result<Prepared>,
 ) -> Result<Cow<'_, Prepared>> {
@@ -36,7 +36,7 @@ pub fn given_or_else(
     }
 }
 
-pub fn foreground_app(engine: &Engine, call: &CallScope) -> Result<WindowInfo> {
+pub(crate) fn foreground_app(engine: &Engine, call: &CallScope) -> Result<WindowInfo> {
     let window = foreground_window()?;
     if engine.host.contains(window.pid) {
         return Err(Error::new(ErrorCode::Denied, HOST_TERMINAL));

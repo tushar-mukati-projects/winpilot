@@ -1,5 +1,5 @@
 pub const DEFAULT_MAX_CHARS: usize = 20_000;
-pub const MAX_CHARS_LIMIT: usize = 200_000;
+const MAX_CHARS_LIMIT: usize = 200_000;
 
 pub fn char_limit(requested: Option<u32>) -> usize {
     requested.map_or(DEFAULT_MAX_CHARS, |max| max as usize).clamp(1, MAX_CHARS_LIMIT)

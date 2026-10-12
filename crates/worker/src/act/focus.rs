@@ -10,13 +10,13 @@ use super::{
 use crate::{call_scope::CallScope, engine::Engine, resolve::Reach, wait::is_gone};
 
 #[derive(Debug, Clone)]
-pub struct Focused {
-    pub window: WindowInfo,
-    pub element: Option<Element>,
-    pub clicked: bool,
+pub(crate) struct Focused {
+    pub(crate) window: WindowInfo,
+    pub(crate) element: Option<Element>,
+    pub(crate) clicked: bool,
 }
 
-pub fn keyboard_target(engine: &Engine, target: Option<&Prepared>, call: &CallScope) -> Result<Focused> {
+pub(crate) fn keyboard_target(engine: &Engine, target: Option<&Prepared>, call: &CallScope) -> Result<Focused> {
     let focused = match target {
         None => Focused { window: foreground_app(engine, call)?, element: None, clicked: false },
         Some(prepared) => focus_prepared(engine, prepared, call)?,
@@ -25,7 +25,7 @@ pub fn keyboard_target(engine: &Engine, target: Option<&Prepared>, call: &CallSc
     Ok(focused)
 }
 
-pub fn focus_prepared(engine: &Engine, prepared: &Prepared, call: &CallScope) -> Result<Focused> {
+fn focus_prepared(engine: &Engine, prepared: &Prepared, call: &CallScope) -> Result<Focused> {
     let window = bring_forward(&prepared.window)?;
     let Some(element) = prepared.element_or_point_hit().cloned() else {
         return Ok(Focused { window, element: None, clicked: false });
@@ -41,14 +41,14 @@ fn is_point(prepared: &Prepared) -> bool {
     matches!(prepared.reach, Reach::Point { .. })
 }
 
-pub fn set_focus_verified(engine: &Engine, id: ElementRef) -> Result<bool> {
+pub(crate) fn set_focus_verified(engine: &Engine, id: ElementRef) -> Result<bool> {
     match engine.uia.run(move |uia| uia.set_focus(id)) {
         Err(error) if must_surface(&error) => Err(error),
         _ => focus_is_inside(engine, id),
     }
 }
 
-pub fn focus_is_inside(engine: &Engine, id: ElementRef) -> Result<bool> {
+pub(crate) fn focus_is_inside(engine: &Engine, id: ElementRef) -> Result<bool> {
     engine.uia.run(move |uia| {
         let Some(focused) = uia.focused()? else { return Ok(false) };
         match uia.contains(id, focused.id) {

@@ -8,10 +8,10 @@ use deckhand_desktop::WindowLabel;
 
 use crate::blackout;
 
-pub const DENIED_NOTE: &str =
+pub(crate) const DENIED_NOTE: &str =
     "parts of the recording are black because the window's title or process matched Deckhand's deny list";
 
-pub struct WindowWatch {
+pub(crate) struct WindowWatch {
     window: WindowRef,
     guard: GuardConfig,
     process: Option<(u32, String)>,
@@ -21,7 +21,7 @@ pub struct WindowWatch {
 }
 
 impl WindowWatch {
-    pub fn new(window: WindowRef, guard: GuardConfig) -> Self {
+    pub(crate) fn new(window: WindowRef, guard: GuardConfig) -> Self {
         Self {
             window,
             guard,
@@ -32,7 +32,7 @@ impl WindowWatch {
         }
     }
 
-    pub fn ever_denied(&self) -> Arc<AtomicBool> {
+    pub(crate) fn ever_denied(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.ever_denied)
     }
 

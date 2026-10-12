@@ -4,7 +4,7 @@ use crate::overlay::KeyChips;
 
 const MAX_CHORDS: usize = 6;
 
-pub fn key_chips(chords: &[Chord]) -> KeyChips {
+pub(crate) fn key_chips(chords: &[Chord]) -> KeyChips {
     if chords.iter().all(types_text) {
         return KeyChips::Typing;
     }
@@ -17,7 +17,7 @@ fn types_text(chord: &Chord) -> bool {
     only_shift && matches!(chord.key, Some(Key::Char(_) | Key::Named(NamedKey::Space)))
 }
 
-pub fn chord_text(chord: &Chord) -> String {
+pub(crate) fn chord_text(chord: &Chord) -> String {
     chord_label(chord).join("+")
 }
 

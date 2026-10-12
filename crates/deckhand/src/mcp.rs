@@ -53,10 +53,9 @@ const INSTRUCTIONS: &str = "Deckhand controls the Windows desktop through UI Aut
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
-    pub log_text: bool,
-    pub config_problem: Option<String>,
-    pub kill_hotkey: String,
-    pub guard: GuardConfig,
+    log_text: bool,
+    config_problem: Option<String>,
+    guard: GuardConfig,
 }
 
 impl Settings {
@@ -64,7 +63,6 @@ impl Settings {
         Self {
             log_text: loaded.config.log.log_text,
             config_problem: loaded.problem.clone(),
-            kill_hotkey: loaded.config.guard.kill_hotkey.clone(),
             guard: loaded.config.guard.clone(),
         }
     }
@@ -98,7 +96,7 @@ pub async fn serve_stdio(server: DeckhandServer) -> Result<()> {
 
 impl DeckhandServer {
     pub fn new(supervisor: Supervisor, audit: Audit, settings: Settings) -> Self {
-        let instructions = INSTRUCTIONS.replace("{hotkey}", &settings.kill_hotkey);
+        let instructions = INSTRUCTIONS.replace("{hotkey}", &settings.guard.kill_hotkey);
         let started = Instant::now();
         Self { supervisor, audit, settings, instructions, started, tool_router: Self::tool_router() }
     }
@@ -139,7 +137,7 @@ impl DeckhandServer {
 
     fn server_status(&self) -> Reply {
         let report =
-            status::server_report(self.started.elapsed(), &self.settings.kill_hotkey, self.supervisor.restarts());
+            status::server_report(self.started.elapsed(), &self.settings.guard.kill_hotkey, self.supervisor.restarts());
         Reply::Status(report)
     }
 
@@ -225,12 +223,7 @@ mod tests {
     const BAD_CONFIG: &str = "C:\\cfg\\config.toml is invalid (line 3: invalid type)";
 
     fn settings() -> Settings {
-        Settings {
-            log_text: false,
-            config_problem: None,
-            kill_hotkey: "ctrl+alt+escape".to_string(),
-            guard: GuardConfig::default(),
-        }
+        Settings { log_text: false, config_problem: None, guard: GuardConfig::default() }
     }
 
     fn server() -> (DeckhandServer, FakeSpawner) {

@@ -12,16 +12,12 @@ use crate::{
 };
 
 #[derive(Clone, Copy)]
-pub struct OcrUse<'a> {
-    pub call: Option<&'a CallScope>,
-    pub freshness: Freshness,
+pub(crate) struct OcrUse<'a> {
+    pub(crate) call: &'a CallScope,
+    pub(crate) freshness: Freshness,
 }
 
-impl OcrUse<'_> {
-    pub const UNCACHED: Self = Self { call: None, freshness: Freshness::CachedIsFine };
-}
-
-pub fn resolve(
+pub(crate) fn resolve(
     engine: &Engine,
     window: WindowInfo,
     text: &str,
@@ -29,7 +25,7 @@ pub fn resolve(
     using: OcrUse<'_>,
 ) -> Result<Resolved> {
     engine.guard.check_window(&window)?;
-    let lines = window_lines(engine, &window, using.call, using.freshness)?;
+    let lines = window_lines(engine, &window, Some(using.call), using.freshness)?;
     let found = pick_match(find_matches(&lines, text), text, nth).map_err(|error| in_window(error, &window))?;
     let point = found.rect.center();
     let under = engine.uia.run(move |uia| uia.element_at(point))?;

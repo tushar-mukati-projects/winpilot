@@ -3,8 +3,8 @@ use fast_image_resize::images::{Image, ImageRef};
 use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer};
 
 use super::layout::{Placement, Size, letterbox};
+use crate::pixels::BYTES_PER_PIXEL;
 
-const BYTES_PER_PIXEL: usize = 4;
 const OPAQUE_BLACK: [u8; 4] = [0, 0, 0, 255];
 
 pub(crate) struct Scaler {

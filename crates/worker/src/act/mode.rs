@@ -1,20 +1,28 @@
 use deckhand_core::{Result, WindowInfo, protocol::Step};
 
 use super::refusal::background_refusal;
+use crate::{call_scope::CallScope, engine::Engine};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Mode {
+pub(crate) enum Mode {
     Foreground,
     Background,
 }
 
 impl Mode {
-    pub const fn requested(background: bool) -> Self {
+    pub(crate) const fn requested(background: bool) -> Self {
         if background { Self::Background } else { Self::Foreground }
     }
 }
 
-pub fn for_window(requested: Mode, window: &WindowInfo, step: &Step) -> Result<Mode> {
+pub(crate) fn check_before(engine: &Engine, window: Option<&WindowInfo>, mode: Mode, call: &CallScope) -> Result<()> {
+    match mode {
+        Mode::Foreground => engine.guard.before_input(window, call),
+        Mode::Background => engine.guard.before_patterns(window, call),
+    }
+}
+
+pub(crate) fn for_window(requested: Mode, window: &WindowInfo, step: &Step) -> Result<Mode> {
     if requested == Mode::Background || window.on_current_desktop {
         return Ok(requested);
     }

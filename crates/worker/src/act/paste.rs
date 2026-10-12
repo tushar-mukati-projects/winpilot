@@ -14,28 +14,28 @@ const CHANGED_DURING_PASTE: &str =
     "something else changed the clipboard during the paste, so Deckhand left the new contents alone";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Restore {
+enum Restore {
     Text(String),
     Clear,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Readback {
-    pub id: ElementRef,
-    pub before: String,
+pub(crate) struct Readback {
+    pub(crate) id: ElementRef,
+    pub(crate) before: String,
 }
 
-pub fn restore_plan(saved: Option<String>) -> Restore {
+fn restore_plan(saved: Option<String>) -> Restore {
     saved.map_or(Restore::Clear, Restore::Text)
 }
 
-pub fn readback(engine: &Engine, element: Option<&Element>) -> Option<Readback> {
+pub(crate) fn readback(engine: &Engine, element: Option<&Element>) -> Option<Readback> {
     let field = element.filter(|element| is_readable(element))?;
     let before = read_value(engine, field.id).ok().flatten()?;
     Some(Readback { id: field.id, before })
 }
 
-pub fn paste(
+pub(crate) fn paste(
     engine: &Engine,
     window: &WindowInfo,
     readback: &Readback,
@@ -50,7 +50,7 @@ pub fn paste(
     pasted.map(|()| restore_note)
 }
 
-pub fn paste_landed(before: &str, now: &str, text: &str) -> bool {
+fn paste_landed(before: &str, now: &str, text: &str) -> bool {
     now != before || now.contains(text.trim())
 }
 

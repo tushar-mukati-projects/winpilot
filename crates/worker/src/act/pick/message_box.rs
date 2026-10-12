@@ -17,13 +17,13 @@ const DISMISSERS: [Button; 4] = [CANCEL, NO, OK, CLOSE];
 const NO_TEXT: &str = "the dialog showed a message without text";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Prompt {
+pub(crate) enum Prompt {
     Replace { yes: ElementRef, no: ElementRef },
     Question { text: String, decline: Option<ElementRef> },
     Message { text: String, dismiss: Option<ElementRef> },
 }
 
-pub fn classify(snapshot: &Snapshot, kind: DialogKind, requested: &Requested) -> Prompt {
+pub(crate) fn classify(snapshot: &Snapshot, kind: DialogKind, requested: &Requested) -> Prompt {
     let text = message_text(snapshot);
     let dismiss = DISMISSERS.iter().find_map(|wanted| button(snapshot, *wanted));
     let (Some(yes), Some(no)) = (button(snapshot, YES), button(snapshot, NO)) else {

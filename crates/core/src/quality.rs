@@ -28,7 +28,7 @@ impl Quality {
         }
     }
 
-    pub const fn screenshot_width(self) -> Option<u32> {
+    const fn screenshot_width(self) -> Option<u32> {
         match self {
             Self::Low => Some(960),
             Self::Medium => Some(1280),

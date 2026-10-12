@@ -14,7 +14,7 @@ use windows::{
         UI::{
             Accessibility::{CUIAutomation, IUIAutomation},
             WindowsAndMessaging::{
-                FindWindowExW, GA_ROOT, GetAncestor, GetClassNameW, GetWindowRect, IsWindowVisible, WindowFromPoint,
+                FindWindowExW, GA_ROOT, GetAncestor, GetWindowRect, IsWindowVisible, WindowFromPoint,
             },
         },
     },
@@ -26,19 +26,13 @@ use super::{
     monitor_at::{primary_work_area, scale_at},
     options::OverlayOptions,
 };
-use crate::{com::ComApartment, dpi::enable_dpi_awareness};
+use crate::{com::ComApartment, dpi::enable_dpi_awareness, window_identity::class_name};
 
 const SETTLE: Duration = Duration::from_millis(350);
 
 fn root_at(point: Point) -> HWND {
     let hwnd = unsafe { WindowFromPoint(POINT { x: point.x, y: point.y }) };
     unsafe { GetAncestor(hwnd, GA_ROOT) }
-}
-
-fn class_of(hwnd: HWND) -> String {
-    let mut name = [0u16; 128];
-    let length = unsafe { GetClassNameW(hwnd, &mut name) };
-    String::from_utf16_lossy(&name[..usize::try_from(length).unwrap_or(0)])
 }
 
 fn visible_overlay_covers(point: Point) -> bool {
@@ -82,7 +76,7 @@ impl Drop for ThreadCycles {
     }
 }
 
-windows_core::link!("kernel32.dll" "system" fn QueryThreadCycleTime(thread: HANDLE, cycles: *mut u64) -> windows_core::BOOL);
+windows::core::link!("kernel32.dll" "system" fn QueryThreadCycleTime(thread: HANDLE, cycles: *mut u64) -> windows::core::BOOL);
 
 fn cycles_of(thread: HANDLE) -> u64 {
     let mut cycles = 0u64;
@@ -140,7 +134,7 @@ fn hit_tests_and_clicks_pass_through_the_overlay() {
     assert!(visible_overlay_covers(border_point), "the border should be over the border point");
     for (point, expected) in [(probe, below.0), (border_point, below.1)] {
         assert_eq!(root_at(point), expected);
-        assert_ne!(class_of(root_at(point)), "DeckhandOverlay");
+        assert_ne!(class_name(root_at(point)), "DeckhandOverlay");
         let (process, class) = uia_owner_at(point);
         assert_ne!(process, unsafe { GetCurrentProcessId() });
         assert_ne!(class, "DeckhandOverlay");

@@ -6,7 +6,7 @@ use crate::shortcuts::Shortcut;
 pub const COLOURS: [&str; 3] = ["Red", "Green", "Blue"];
 pub const ITEM_COUNT: usize = 30;
 pub const APPEARED_CLICKED: &str = "Appeared clicked";
-pub const PATH_SEPARATOR: &str = " | ";
+const PATH_SEPARATOR: &str = " | ";
 
 pub fn clicks(count: u32) -> String {
     format!("Clicks: {count}")
@@ -45,14 +45,6 @@ pub fn saved(outcome: &Result<Choice<String>>) -> String {
         Ok(Choice::Chosen(path)) => format!("Saved: {path}"),
         Ok(Choice::Cancelled) => "Saved: cancelled".to_owned(),
         Err(error) => format!("Saved: error {}", error.code()),
-    }
-}
-
-pub fn confirmation(outcome: &Result<bool>) -> String {
-    match outcome {
-        Ok(true) => "Confirm: OK".to_owned(),
-        Ok(false) => "Confirm: Cancel".to_owned(),
-        Err(error) => format!("Confirm: error {}", error.code()),
     }
 }
 
@@ -110,13 +102,6 @@ mod tests {
         assert_eq!(saved(&Ok(Choice::Chosen(r"D:\report.txt".to_owned()))), r"Saved: D:\report.txt");
         assert_eq!(saved(&Ok(Choice::Cancelled)), "Saved: cancelled");
         assert_eq!(saved(&Err(Error::from_hresult(E_ACCESSDENIED))), "Saved: error 0x80070005");
-    }
-
-    #[test]
-    fn confirmation_text() {
-        assert_eq!(confirmation(&Ok(true)), "Confirm: OK");
-        assert_eq!(confirmation(&Ok(false)), "Confirm: Cancel");
-        assert_eq!(confirmation(&Err(Error::from_hresult(E_ACCESSDENIED))), "Confirm: error 0x80070005");
     }
 
     #[test]

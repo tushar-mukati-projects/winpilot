@@ -1,7 +1,7 @@
 const ELLIPSIS: char = '…';
-pub const NOTE_LIMIT: usize = 40;
+pub(crate) const NOTE_LIMIT: usize = 40;
 
-pub fn quoted(text: &str, limit: usize) -> String {
+pub(crate) fn quoted(text: &str, limit: usize) -> String {
     let mut out = String::with_capacity(text.len().min(limit * 2) + 2);
     out.push('"');
     for ch in text.chars().take(limit) {
@@ -14,7 +14,7 @@ pub fn quoted(text: &str, limit: usize) -> String {
     out
 }
 
-pub fn clipped(text: &str, limit: usize) -> String {
+pub(crate) fn clipped(text: &str, limit: usize) -> String {
     let mut out: String = text.chars().take(limit).collect();
     if text.chars().nth(limit).is_some() {
         out.push(ELLIPSIS);

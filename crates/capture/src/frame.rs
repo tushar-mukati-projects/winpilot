@@ -42,7 +42,7 @@ impl Frame {
         pixels.all(|pixel| pixel[..COLOUR_BYTES] == first[..COLOUR_BYTES])
     }
 
-    pub fn is_all_black(&self) -> bool {
+    pub(crate) fn is_all_black(&self) -> bool {
         self.is_uniform() && self.bgra.get(..COLOUR_BYTES).is_none_or(|first| first == [0, 0, 0])
     }
 
@@ -75,7 +75,7 @@ impl Frame {
         (x.max(0) as usize, y.max(0) as usize)
     }
 
-    pub(crate) fn paste(&mut self, piece: &Self) -> Result<()> {
+    fn paste(&mut self, piece: &Self) -> Result<()> {
         let overlap =
             overlap(self.rect(), piece.rect()).ok_or_else(|| Error::internal("piece is outside the frame"))?;
         let (x, y) = piece.offset_of(Point::new(overlap.x, overlap.y));

@@ -94,20 +94,18 @@ impl<F> Drop for HotkeyLoop<F> {
     }
 }
 
-struct Registration {
-    id: i32,
-}
+struct Registration;
 
 impl Registration {
     fn register(binding: HotkeyBinding) -> Option<Self> {
         let outcome = unsafe { RegisterHotKey(None, HOTKEY_ID, binding.modifiers, u32::from(binding.vk.0)) };
-        outcome.ok().map(|()| Self { id: HOTKEY_ID })
+        outcome.ok().map(|()| Self)
     }
 }
 
 impl Drop for Registration {
     fn drop(&mut self) {
-        let _ = unsafe { UnregisterHotKey(None, self.id) };
+        let _ = unsafe { UnregisterHotKey(None, HOTKEY_ID) };
     }
 }
 

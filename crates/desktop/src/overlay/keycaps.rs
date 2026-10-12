@@ -32,7 +32,7 @@ pub(crate) struct CapMetrics {
     gap: i32,
     shadow: i32,
     tray: i32,
-    pub(crate) lift: i32,
+    lift: i32,
 }
 
 impl CapMetrics {
@@ -60,7 +60,7 @@ pub(crate) enum Placed {
 pub(crate) struct CapsLayout {
     pub(crate) width: i32,
     pub(crate) height: i32,
-    pub(crate) tray: Rect,
+    tray: Rect,
     pub(crate) placed: Vec<Placed>,
 }
 

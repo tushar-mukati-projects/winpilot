@@ -146,7 +146,7 @@ pub(crate) fn paint_sparkle(canvas: &mut Canvas<'_>, layout: &PillLayout, palett
     }
 }
 
-pub(crate) fn paint_dot(canvas: &mut Canvas<'_>, layout: &PillLayout, color: Rgb, pulse: f32) {
+pub(crate) fn paint_dot(canvas: &mut Canvas<'_>, layout: &PillLayout, pulse: f32) {
     let region = layout.glyph_region();
     let (cx, cy) = layout.glyph;
     let radius = layout.glyph_radius * 0.62;
@@ -156,7 +156,7 @@ pub(crate) fn paint_dot(canvas: &mut Canvas<'_>, layout: &PillLayout, color: Rgb
             let distance = (x as f32 + 0.5 - cx).hypot(y as f32 + 0.5 - cy);
             let halo = lerp(0.0, 0.4, pulse) * (1.0 - smoothstep(radius * 0.6, halo_radius, distance));
             let core = lerp(0.75, 1.0, pulse) * coverage(distance - radius);
-            canvas.blend(x as usize, y as usize, Premul::of(color, core).over(Premul::of(color, halo)));
+            canvas.blend(x as usize, y as usize, Premul::of(WHITE, core).over(Premul::of(WHITE, halo)));
         }
     }
 }

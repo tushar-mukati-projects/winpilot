@@ -11,7 +11,7 @@ use crate::{app_windows::app_windows_matching, call_scope::CallScope, engine::En
 const PATH_DEPTH: usize = 4;
 const SEARCH_BUDGET: Duration = Duration::from_secs(5);
 
-pub fn run(engine: &Engine, request: &SearchRequest, call: &CallScope) -> Result<SearchReport> {
+pub(crate) fn run(engine: &Engine, request: &SearchRequest, call: &CallScope) -> Result<SearchReport> {
     let selector: Selector = request.query.parse()?;
     let mut matches = Vec::new();
     let complete = search_every_window(engine, &selector, call, request.max, &mut matches)?;
@@ -41,7 +41,7 @@ fn search_every_window(
     Ok(true)
 }
 
-pub fn time_for_another(spent: Duration, call_remaining: Duration, snapshot_budget: Duration) -> bool {
+fn time_for_another(spent: Duration, call_remaining: Duration, snapshot_budget: Duration) -> bool {
     spent < SEARCH_BUDGET && call_remaining > snapshot_budget
 }
 
@@ -66,42 +66,16 @@ fn ancestor_names(snapshot: &Snapshot, index: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use deckhand_core::Role;
+
     use super::*;
+    use crate::test_fixture::{element, snapshot};
 
     #[test]
     fn paths_skip_unnamed_ancestors_and_the_window_title() {
-        use deckhand_core::{ElementRef, Rect, Role, WindowRef, WindowState};
-        let window = WindowInfo {
-            hwnd: WindowRef(1),
-            title: "App".to_string(),
-            process: "app.exe".to_string(),
-            pid: 1,
-            class_name: String::new(),
-            rect: Rect::new(0, 0, 100, 100),
-            state: WindowState::Normal,
-            foreground: true,
-            elevated: false,
-            desktop: None,
-            on_current_desktop: true,
-        };
-        let element = |id: u32, depth: u16, name: &str| deckhand_core::Element {
-            id: ElementRef(id),
-            depth,
-            role: Role::Group,
-            name: name.to_string(),
-            value: None,
-            automation_id: String::new(),
-            class_name: String::new(),
-            rect: Rect::new(0, 0, 10, 10),
-            state: deckhand_core::ElementState::default(),
-            patterns: deckhand_core::Patterns::default(),
-        };
-        let snapshot = Snapshot {
-            window,
-            elements: vec![element(1, 0, "App"), element(2, 1, ""), element(3, 2, "Toolbar"), element(4, 3, "Save")],
-            focused: None,
-            truncated: false,
-        };
+        let group = |id: u32, depth: u16, name: &str| element(id, depth, Role::Group, name);
+        let snapshot =
+            snapshot("App", vec![group(1, 0, "App"), group(2, 1, ""), group(3, 2, "Toolbar"), group(4, 3, "Save")]);
         assert_eq!(ancestor_names(&snapshot, 3), ["Toolbar"]);
     }
 

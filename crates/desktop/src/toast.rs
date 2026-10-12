@@ -1,7 +1,7 @@
 use deckhand_core::{Context, Result};
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::UI::Notifications::{NotificationSetting, ToastNotification, ToastNotificationManager};
-use windows_core::HSTRING;
+use windows::core::HSTRING;
 
 use crate::{app_identity::APP_USER_MODEL_ID, com::ComApartment, toast_xml::toast_xml};
 

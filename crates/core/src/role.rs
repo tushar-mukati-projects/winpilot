@@ -152,7 +152,7 @@ impl Role {
         }
     }
 
-    pub const fn is_interactive(self) -> bool {
+    pub(crate) const fn is_interactive(self) -> bool {
         matches!(
             self,
             Self::Button
@@ -173,7 +173,7 @@ impl Role {
         )
     }
 
-    pub const fn is_container(self) -> bool {
+    pub(crate) const fn is_container(self) -> bool {
         matches!(
             self,
             Self::List

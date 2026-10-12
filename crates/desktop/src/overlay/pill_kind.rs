@@ -53,7 +53,7 @@ impl PillKind {
 
     pub(crate) fn label(self, fonts: &PillFonts, metrics: &PillMetrics, speaker: &Speaker<'_>) -> Result<PillLabel> {
         match self {
-            Self::Presence { tone, room } => fitting_label(fonts, metrics, tone, room, speaker).map(|(label, _)| label),
+            Self::Presence { tone, room } => fitting_label(fonts, metrics, tone, room, speaker),
             Self::Recording { seconds } => render_label(fonts, &recording_words(speaker.label, seconds)),
         }
     }

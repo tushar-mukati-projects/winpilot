@@ -14,7 +14,7 @@ use crate::{
     overlay, resolve,
 };
 
-pub fn run(engine: &Engine, request: &ElementsRequest) -> Result<Observation> {
+pub(crate) fn run(engine: &Engine, request: &ElementsRequest) -> Result<Observation> {
     let window = resolve::window(engine, request.window.as_deref())?;
     let query = request.query.as_deref().map(str::parse::<Selector>).transpose()?;
     let mut observation = observe_window(engine, &window)?;
@@ -25,7 +25,7 @@ pub fn run(engine: &Engine, request: &ElementsRequest) -> Result<Observation> {
     Ok(observation)
 }
 
-pub fn observe_window(engine: &Engine, window: &WindowInfo) -> Result<Observation> {
+pub(crate) fn observe_window(engine: &Engine, window: &WindowInfo) -> Result<Observation> {
     let snapshot = engine.snapshot(window)?;
     let ocr =
         exposes_no_uia(&snapshot).then(|| window_lines(engine, window, None, Freshness::CachedIsFine).ok()).flatten();

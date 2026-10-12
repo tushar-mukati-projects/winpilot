@@ -18,7 +18,7 @@ use self::{
     message_box::Prompt,
     selection::{Requested, Selection},
 };
-use super::{click_target, done::Done, foreground::owner_chain};
+use super::{click_target, done::Done, foreground::owner_chain, summary::file_count};
 use crate::{
     app_windows::app_windows, call_scope::CallScope, default_window::default_window, engine::Engine, guard::Guard,
     overlay, until::until, watch::Watch, window_classes::is_dialog,
@@ -28,11 +28,11 @@ const ALREADY_OPEN_WAIT: Duration = Duration::from_secs(1);
 const CLOSE_WAIT: Duration = Duration::from_secs(5);
 const FOLDER_WAIT: Duration = Duration::from_secs(5);
 
-pub struct PickRequest<'a> {
-    pub paths: &'a [String],
-    pub open_with: Option<&'a TargetSpec>,
-    pub overwrite: bool,
-    pub timeout_ms: Option<u64>,
+pub(crate) struct PickRequest<'a> {
+    pub(crate) paths: &'a [String],
+    pub(crate) open_with: Option<&'a TargetSpec>,
+    overwrite: bool,
+    pub(crate) timeout_ms: Option<u64>,
 }
 
 impl<'a> TryFrom<&'a Step> for PickRequest<'a> {
@@ -56,11 +56,11 @@ enum Outcome {
     Prompt(WindowInfo),
 }
 
-pub fn check_paths(paths: &[String], guard: &Guard) -> Result<()> {
+pub(crate) fn check_paths(paths: &[String], guard: &Guard) -> Result<()> {
     Selection::parse(paths, |path| guard.checked_path(path))?.check_folder()
 }
 
-pub fn step(engine: &Engine, request: &PickRequest<'_>, step: &Step, call: &CallScope) -> Result<Done> {
+pub(crate) fn step(engine: &Engine, request: &PickRequest<'_>, step: &Step, call: &CallScope) -> Result<Done> {
     let selection = Selection::parse(request.paths, |path| engine.guard.checked_path(path))?;
     selection.check_folder()?;
     let requested = selection.requested();
@@ -75,13 +75,12 @@ pub fn step(engine: &Engine, request: &PickRequest<'_>, step: &Step, call: &Call
     Ok(Done::noting(picked_note(opened.dialog.kind, &selection.files)))
 }
 
-pub fn picked_note(kind: DialogKind, files: &[String]) -> String {
+fn picked_note(kind: DialogKind, files: &[String]) -> String {
     let shown: Vec<&str> = match kind {
         DialogKind::Open => files.iter().map(|path| base_name(path)).collect(),
         DialogKind::Save => files.iter().map(String::as_str).collect(),
     };
-    let count = if files.len() == 1 { "1 file".to_string() } else { format!("{} files", files.len()) };
-    format!("picked {count} in the {} dialog: {}", kind.name(), shown.join(", "))
+    format!("picked {} in the {} dialog: {}", file_count(files.len()), kind.name(), shown.join(", "))
 }
 
 fn base_name(path: &str) -> &str {
@@ -289,30 +288,8 @@ fn still_open(dialog: &FileDialog) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::PathBuf};
-
     use super::*;
-    use crate::test_fixture::{FixtureApp, engine};
-
-    struct TempFiles(Vec<PathBuf>);
-
-    impl Drop for TempFiles {
-        fn drop(&mut self) {
-            for path in &self.0 {
-                let _ = fs::remove_file(path);
-            }
-        }
-    }
-
-    fn temp_path(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("deckhand-pick-{}-{name}", std::process::id()))
-    }
-
-    fn temp_file(name: &str) -> PathBuf {
-        let path = temp_path(name);
-        fs::write(&path, b"deckhand").unwrap();
-        path
-    }
+    use crate::test_fixture::{FixtureApp, TempFiles, engine, temp_file, temp_path};
 
     fn text(path: &Path) -> String {
         path.to_string_lossy().into_owned()

@@ -12,7 +12,7 @@ const SLACK: Duration = Duration::from_secs(1);
 const OUT_OF_TIME: &str =
     "the call ran out of time before it finished; try again with fewer steps or a shorter timeout";
 
-pub struct CallScope {
+pub(crate) struct CallScope {
     cancel: Cancel,
     deadline: Instant,
     acting: AtomicBool,
@@ -23,13 +23,13 @@ pub struct CallScope {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HeldButton {
-    pub button: MouseButton,
-    pub pressed_at: Point,
+pub(crate) struct HeldButton {
+    pub(crate) button: MouseButton,
+    pub(crate) pressed_at: Point,
 }
 
 impl CallScope {
-    pub fn new(cancel: Cancel, deadline: Instant) -> Self {
+    pub(crate) fn new(cancel: Cancel, deadline: Instant) -> Self {
         Self {
             cancel,
             deadline,
@@ -41,45 +41,45 @@ impl CallScope {
         }
     }
 
-    pub fn note_held(&self, button: MouseButton, pressed_at: Point) {
+    pub(crate) fn note_held(&self, button: MouseButton, pressed_at: Point) {
         let mut held = self.held.lock();
         if held.iter().all(|held| held.button != button) {
             held.push(HeldButton { button, pressed_at });
         }
     }
 
-    pub fn note_released(&self, button: MouseButton) {
+    pub(crate) fn note_released(&self, button: MouseButton) {
         self.held.lock().retain(|held| held.button != button);
     }
 
-    pub fn take_held(&self) -> Vec<HeldButton> {
+    pub(crate) fn take_held(&self) -> Vec<HeldButton> {
         std::mem::take(&mut *self.held.lock())
     }
 
-    pub fn held_buttons(&self) -> Vec<MouseButton> {
+    pub(crate) fn held_buttons(&self) -> Vec<MouseButton> {
         self.held.lock().iter().map(|held| held.button).collect()
     }
 
-    pub fn note_held_keys(&self, chord: Chord) {
+    pub(crate) fn note_held_keys(&self, chord: Chord) {
         let mut held = self.held_keys.lock();
         if !held.contains(&chord) {
             held.push(chord);
         }
     }
 
-    pub fn note_released_keys(&self, chord: Chord) {
+    pub(crate) fn note_released_keys(&self, chord: Chord) {
         self.held_keys.lock().retain(|held| *held != chord);
     }
 
-    pub fn take_held_keys(&self) -> Vec<Chord> {
+    pub(crate) fn take_held_keys(&self) -> Vec<Chord> {
         std::mem::take(&mut *self.held_keys.lock())
     }
 
-    pub fn held_keys(&self) -> Vec<Chord> {
+    pub(crate) fn held_keys(&self) -> Vec<Chord> {
         self.held_keys.lock().clone()
     }
 
-    pub fn check(&self) -> Result<()> {
+    pub(crate) fn check(&self) -> Result<()> {
         self.cancel.check()?;
         if self.expired() {
             return Err(out_of_time());
@@ -87,58 +87,58 @@ impl CallScope {
         Ok(())
     }
 
-    pub fn expired(&self) -> bool {
+    pub(crate) fn expired(&self) -> bool {
         Instant::now() >= self.deadline
     }
 
-    pub fn remaining(&self) -> Duration {
+    pub(crate) fn remaining(&self) -> Duration {
         self.deadline.saturating_duration_since(Instant::now())
     }
 
-    pub fn bounded(&self, wanted: Duration) -> Duration {
+    pub(crate) fn bounded(&self, wanted: Duration) -> Duration {
         wanted.min(self.remaining())
     }
 
-    pub fn note_acting(&self) {
+    pub(crate) fn note_acting(&self) {
         self.acting.store(true, Ordering::SeqCst);
     }
 
-    pub fn is_acting(&self) -> bool {
+    pub(crate) fn is_acting(&self) -> bool {
         self.acting.load(Ordering::SeqCst)
     }
 
-    pub fn note_overlay_shown(&self) {
+    pub(crate) fn note_overlay_shown(&self) {
         self.overlay_shown.store(true, Ordering::SeqCst);
     }
 
-    pub fn showed_overlay(&self) -> bool {
+    pub(crate) fn showed_overlay(&self) -> bool {
         self.overlay_shown.load(Ordering::SeqCst)
     }
 
-    pub fn remember_ocr(&self, reading: OcrReading) {
+    pub(crate) fn remember_ocr(&self, reading: OcrReading) {
         *self.ocr.lock() = Some(reading);
     }
 
-    pub fn recalled_ocr(&self) -> Option<OcrReading> {
+    pub(crate) fn recalled_ocr(&self) -> Option<OcrReading> {
         self.ocr.lock().clone()
     }
 
-    pub fn forget_ocr(&self) {
+    pub(crate) fn forget_ocr(&self) {
         *self.ocr.lock() = None;
     }
 }
 
-pub fn working_deadline(started: Instant, allowed: Duration) -> Instant {
+pub(crate) fn working_deadline(started: Instant, allowed: Duration) -> Instant {
     started.checked_add(allowed.saturating_sub(SLACK)).unwrap_or(started)
 }
 
-pub fn out_of_time() -> Error {
+fn out_of_time() -> Error {
     Error::timeout(OUT_OF_TIME)
 }
 
 #[cfg(test)]
 impl CallScope {
-    pub fn relaxed() -> Self {
+    pub(crate) fn relaxed() -> Self {
         Self::new(Cancel::default(), working_deadline(Instant::now(), Duration::from_secs(600)))
     }
 }

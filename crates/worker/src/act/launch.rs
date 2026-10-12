@@ -15,6 +15,7 @@ use super::{
     shortcut::refuse_shortcut,
 };
 use crate::{
+    app_catalog::{FRESH_LISTING, RECENT_LISTING},
     app_match::{self, without_launch_extension},
     call_scope::CallScope,
     engine::Engine,
@@ -26,8 +27,6 @@ use crate::{
 };
 
 const WINDOW_WAIT: Duration = Duration::from_secs(20);
-const FRESH_LISTING: Duration = Duration::from_secs(300);
-const RECENT_LISTING: Duration = Duration::from_secs(10);
 const LAUNCH_INSTEAD: &str = "launch the program it points to, or the app by name";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -56,7 +55,7 @@ struct Started {
     since: u64,
 }
 
-pub fn launch(engine: &Engine, app: &str, args: Option<&str>, call: &CallScope) -> Result<Done> {
+pub(crate) fn launch(engine: &Engine, app: &str, args: Option<&str>, call: &CallScope) -> Result<Done> {
     let target = launch_target(engine, app.trim())?;
     check_args(engine, args)?;
     let plan = plan(&engine.config.guard, target, args)?;

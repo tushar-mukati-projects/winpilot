@@ -9,7 +9,7 @@ use deckhand_core::Result;
 
 use super::clock::{TickClock, total_ticks};
 use super::encoder::{Encoded, EncoderInput, EncoderStart, EncoderThread};
-use super::layout::{MAX_VIDEO_HEIGHT, Size, output_size};
+use super::layout::{Size, output_size};
 use super::outcome::{Counters, EndReason, Finished, Started};
 use super::output_file::OutputFile;
 use super::scaler::Scaler;
@@ -112,7 +112,7 @@ fn prepare(
     make_thread_per_monitor_aware()?;
     let (mut source, clipped) = Source::open(source, video.cursor)?;
     source.wait_for_first_frame(stop, deadline)?;
-    let size = output_size(source.size(), video.max_width, MAX_VIDEO_HEIGHT);
+    let size = output_size(source.size(), video.max_width);
     let settings = WriterSettings::new(output.path().to_path_buf(), video.format, size, video.fps, video.quality);
     let encoder = EncoderThread::spawn(EncoderStart { settings, output: Arc::clone(output), stop, deadline })?;
     Ok(Prepared { source, encoder, size, clipped })

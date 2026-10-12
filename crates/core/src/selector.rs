@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Term {
+enum Term {
     Role(Role),
     Name(String),
     NameContains(String),
@@ -24,13 +24,13 @@ pub enum Term {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelectorStep {
-    pub terms: Vec<Term>,
+struct SelectorStep {
+    terms: Vec<Term>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Selector {
-    pub steps: Vec<SelectorStep>,
+    steps: Vec<SelectorStep>,
 }
 
 const CHAIN: &str = ">>";
@@ -117,10 +117,7 @@ impl Selector {
     }
 
     pub fn nth(&self) -> Option<u32> {
-        self.terms().find_map(|term| match term {
-            Term::Nth(position) => Some(*position),
-            _ => None,
-        })
+        self.terms().find_map(Term::position)
     }
 
     pub fn plain_text(&self) -> Option<&str> {
@@ -191,10 +188,7 @@ impl SelectorStep {
     }
 
     fn nth(&self) -> Option<u32> {
-        self.terms.iter().find_map(|term| match term {
-            Term::Nth(position) => Some(*position),
-            _ => None,
-        })
+        self.terms.iter().find_map(Term::position)
     }
 
     fn texts(&self) -> impl Iterator<Item = &str> {
@@ -217,6 +211,13 @@ impl SelectorStep {
 }
 
 impl Term {
+    const fn position(&self) -> Option<u32> {
+        match self {
+            Self::Nth(position) => Some(*position),
+            _ => None,
+        }
+    }
+
     const fn is_window_term(&self) -> bool {
         matches!(self, Self::Window(_) | Self::Process(_))
     }

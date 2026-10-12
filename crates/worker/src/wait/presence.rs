@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{app_windows::app_windows_matching, engine::Engine, resolve, watch::Watch};
 
-pub fn locate(engine: &Engine, target: &Target, scope: Option<&str>, ocr: &mut OcrLook<'_>) -> Result<Presence> {
+pub(crate) fn locate(engine: &Engine, target: &Target, scope: Option<&str>, ocr: &mut OcrLook<'_>) -> Result<Presence> {
     match target {
         Target::Element(id) => element(engine, *id),
         Target::Window(hwnd) => window(*hwnd),
@@ -18,7 +18,7 @@ pub fn locate(engine: &Engine, target: &Target, scope: Option<&str>, ocr: &mut O
     }
 }
 
-pub fn watch(engine: &Engine, target: &Target, scope: Option<&str>) -> Watch {
+pub(crate) fn watch(engine: &Engine, target: &Target, scope: Option<&str>) -> Watch {
     let windows = match target {
         Target::Element(id) => resolve::element_window(engine, *id).map(|window| vec![window]),
         Target::Window(hwnd) => deckhand_desktop::window(*hwnd).map(|window| vec![window]),
@@ -28,17 +28,17 @@ pub fn watch(engine: &Engine, target: &Target, scope: Option<&str>) -> Watch {
     windows.map(|windows| Watch::windows(&windows)).unwrap_or_default()
 }
 
-pub fn first_visible<'a>(found: &[&'a Element]) -> Option<&'a Element> {
-    found.iter().copied().find(|element| element.is_visible())
+fn any_visible(found: &[&Element]) -> bool {
+    found.iter().any(|element| element.is_visible())
 }
 
-pub fn is_open(window: &WindowInfo) -> bool {
+fn is_open(window: &WindowInfo) -> bool {
     window.state != WindowState::Minimized
 }
 
 fn element(engine: &Engine, id: ElementRef) -> Result<Presence> {
     let found = unless_gone(engine.uia.run(move |uia| uia.element(id)))?;
-    Ok(Presence::certain(found.filter(Element::is_visible).map(Shown::Element)))
+    Ok(Presence::certain(found.filter(Element::is_visible).map(|_| Shown::Element)))
 }
 
 fn window(hwnd: WindowRef) -> Result<Presence> {
@@ -63,8 +63,8 @@ fn selector_match(
     let mut blind = Vec::new();
     for window in windows {
         let Some(snapshot) = unless_gone(engine.snapshot(&window))? else { continue };
-        if let Some(element) = first_visible(&selector.find(&snapshot)) {
-            return Ok(Presence::certain(Some(Shown::Element(element.clone()))));
+        if any_visible(&selector.find(&snapshot)) {
+            return Ok(Presence::certain(Some(Shown::Element)));
         }
         complete &= !snapshot.truncated;
         if exposes_no_uia(&snapshot) {
@@ -86,33 +86,23 @@ fn scope_windows(engine: &Engine, selector: &Selector, scope: Option<&str>) -> R
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ElementState, Patterns, Rect, Role};
+    use deckhand_core::{Rect, Role};
 
     use super::*;
 
     fn element(id: u32, offscreen: bool) -> Element {
-        Element {
-            id: ElementRef(id),
-            depth: 1,
-            role: Role::Button,
-            name: "OK".to_string(),
-            value: None,
-            automation_id: String::new(),
-            class_name: String::new(),
-            rect: Rect::new(0, 0, 10, 10),
-            state: ElementState { enabled: true, offscreen, ..ElementState::default() },
-            patterns: Patterns::default(),
-        }
+        let mut element = crate::test_fixture::element(id, 1, Role::Button, "OK");
+        element.state.offscreen = offscreen;
+        element
     }
 
     #[test]
-    fn the_first_visible_match_wins() {
+    fn only_a_visible_match_counts() {
         let hidden = element(1, true);
         let shown = element(2, false);
-        let later = element(3, false);
-        assert_eq!(first_visible(&[&hidden, &shown, &later]).map(|found| found.id), Some(ElementRef(2)));
-        assert_eq!(first_visible(&[&hidden]), None);
-        assert_eq!(first_visible(&[]), None);
+        assert!(any_visible(&[&hidden, &shown]));
+        assert!(!any_visible(&[&hidden]));
+        assert!(!any_visible(&[]));
     }
 
     #[test]

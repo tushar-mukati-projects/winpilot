@@ -11,17 +11,17 @@ use crate::{
 
 const OCR_EVERY: Duration = Duration::from_millis(400);
 
-pub struct Paced<T> {
+struct Paced<T> {
     every: Duration,
     last: Option<(Instant, T)>,
 }
 
 impl<T: Clone> Paced<T> {
-    pub const fn new(every: Duration) -> Self {
+    const fn new(every: Duration) -> Self {
         Self { every, last: None }
     }
 
-    pub fn get(&mut self, now: Instant, compute: impl FnOnce() -> Result<T>) -> Result<T> {
+    fn get(&mut self, now: Instant, compute: impl FnOnce() -> Result<T>) -> Result<T> {
         if let Some((at, value)) = &self.last
             && now.saturating_duration_since(*at) < self.every
         {
@@ -33,17 +33,17 @@ impl<T: Clone> Paced<T> {
     }
 }
 
-pub struct OcrLook<'a> {
-    call: Option<&'a CallScope>,
+pub(crate) struct OcrLook<'a> {
+    call: &'a CallScope,
     paced: Paced<Presence>,
 }
 
 impl<'a> OcrLook<'a> {
-    pub const fn new(call: Option<&'a CallScope>) -> Self {
+    pub(crate) const fn new(call: &'a CallScope) -> Self {
         Self { call, paced: Paced::new(OCR_EVERY) }
     }
 
-    pub fn presence(
+    pub(crate) fn presence(
         &mut self,
         engine: &Engine,
         windows: &[WindowInfo],
@@ -60,12 +60,12 @@ fn read_presence(
     windows: &[WindowInfo],
     text: &str,
     nth: Option<u32>,
-    call: Option<&CallScope>,
+    call: &CallScope,
 ) -> Result<Presence> {
     let wanted = position(nth);
     for window in windows {
         let fresh = Freshness::TakenAfter(Instant::now());
-        let Some(lines) = unless_gone(window_lines(engine, window, call, fresh))? else { continue };
+        let Some(lines) = unless_gone(window_lines(engine, window, Some(call), fresh))? else { continue };
         if let Some(found) = find_matches(&lines, text).into_iter().nth(wanted) {
             return Ok(Presence::certain(Some(Shown::Text { text: found.text, rect: found.rect })));
         }

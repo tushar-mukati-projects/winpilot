@@ -4,7 +4,7 @@ use deckhand_core::{Element, Error, Rect, Result, Snapshot, WindowInfo, WindowRe
 use deckhand_fixture::{FixtureProcess, Placement};
 use windows::Win32::{
     Foundation::HWND,
-    UI::WindowsAndMessaging::{FindWindowW, GetClassNameW, GetForegroundWindow},
+    UI::WindowsAndMessaging::{FindWindowW, GetForegroundWindow},
 };
 use windows_core::{PCWSTR, w};
 
@@ -48,9 +48,7 @@ pub(crate) fn foreground() -> Option<WindowInfo> {
 }
 
 fn class_of(hwnd: HWND) -> String {
-    let mut buffer = [0u16; 256];
-    let length = unsafe { GetClassNameW(hwnd, &mut buffer) };
-    String::from_utf16_lossy(&buffer[..usize::try_from(length).unwrap_or(0)])
+    win::class_name(win::window_ref(hwnd)).unwrap_or_default()
 }
 
 pub(crate) struct Fixture {

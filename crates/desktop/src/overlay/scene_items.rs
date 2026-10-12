@@ -15,7 +15,7 @@ use super::{
     viewfinder::{STILL_VIEWFINDER_LIFE, VIEWFINDER_LIFE},
 };
 
-pub(crate) const CHIPS_SHOWN: Duration = Duration::from_millis(900);
+const CHIPS_SHOWN: Duration = Duration::from_millis(900);
 const CHIPS_FADE: Duration = Duration::from_millis(200);
 
 pub(crate) const RECORDING_FRAME: Duration = Duration::from_millis(33);

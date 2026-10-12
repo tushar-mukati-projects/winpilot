@@ -14,12 +14,12 @@ use crate::layout::{KeyboardLayout, LayoutKey};
 const FUNCTION_KEYS: std::ops::RangeInclusive<u8> = 1..=24;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ResolvedKey {
+pub(crate) enum ResolvedKey {
     Virtual(LayoutKey),
     Unicode(char),
 }
 
-pub fn resolve_key(key: Key, layout: &impl KeyboardLayout) -> Result<ResolvedKey> {
+pub(crate) fn resolve_key(key: Key, layout: &impl KeyboardLayout) -> Result<ResolvedKey> {
     match key {
         Key::Named(named) => Ok(unmodified(named_key_vk(named))),
         Key::Function(number) => function_key_vk(number).map(unmodified),
@@ -27,15 +27,15 @@ pub fn resolve_key(key: Key, layout: &impl KeyboardLayout) -> Result<ResolvedKey
     }
 }
 
-pub fn is_dead_key_char(c: char, layout: &impl KeyboardLayout) -> bool {
+pub(crate) fn is_dead_key_char(c: char, layout: &impl KeyboardLayout) -> bool {
     layout.char_key(c).is_some_and(|found| layout.is_dead_key(found.vk))
 }
 
-pub fn not_on_layout(c: char) -> Error {
+pub(crate) fn not_on_layout(c: char) -> Error {
     Error::invalid(format!("key '{c}' is not on the current keyboard layout"))
 }
 
-pub fn merge_modifiers(first: Modifiers, second: Modifiers) -> Modifiers {
+pub(crate) fn merge_modifiers(first: Modifiers, second: Modifiers) -> Modifiers {
     Modifiers {
         ctrl: first.ctrl || second.ctrl,
         alt: first.alt || second.alt,
@@ -44,14 +44,14 @@ pub fn merge_modifiers(first: Modifiers, second: Modifiers) -> Modifiers {
     }
 }
 
-pub fn modifier_keys(modifiers: Modifiers) -> Vec<VIRTUAL_KEY> {
+pub(crate) fn modifier_keys(modifiers: Modifiers) -> Vec<VIRTUAL_KEY> {
     [(modifiers.ctrl, VK_CONTROL), (modifiers.alt, VK_MENU), (modifiers.shift, VK_SHIFT), (modifiers.win, VK_LWIN)]
         .into_iter()
         .filter_map(|(held, vk)| held.then_some(vk))
         .collect()
 }
 
-pub fn is_extended_key(vk: VIRTUAL_KEY) -> bool {
+pub(crate) fn is_extended_key(vk: VIRTUAL_KEY) -> bool {
     matches!(
         vk,
         VK_INSERT

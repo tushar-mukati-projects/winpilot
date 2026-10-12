@@ -1,14 +1,14 @@
 use crate::error::{Error, Result};
 
-pub fn first_stray<'a>(given: &[(&'a str, bool)], allowed: impl Fn(&str) -> bool) -> Option<&'a str> {
+pub(crate) fn first_stray<'a>(given: &[(&'a str, bool)], allowed: impl Fn(&str) -> bool) -> Option<&'a str> {
     given.iter().find(|(name, given)| *given && !allowed(name)).map(|(name, _)| *name)
 }
 
-pub fn does_not_apply(field: &str, place: &str) -> Error {
+pub(crate) fn does_not_apply(field: &str, place: &str) -> Error {
     Error::invalid(format!("{field} does not apply to {place}"))
 }
 
-pub fn only_one(sources: &[(&str, bool)]) -> Result<()> {
+pub(crate) fn only_one(sources: &[(&str, bool)]) -> Result<()> {
     let given: Vec<&str> = sources.iter().filter(|(_, given)| *given).map(|(name, _)| *name).collect();
     if given.len() <= 1 {
         return Ok(());
@@ -17,7 +17,7 @@ pub fn only_one(sources: &[(&str, bool)]) -> Result<()> {
     Err(Error::invalid(format!("give only one of {}; got {}", either(&names), given.join(" and "))))
 }
 
-pub fn either(names: &[&str]) -> String {
+pub(crate) fn either(names: &[&str]) -> String {
     match names.split_last() {
         None => String::new(),
         Some((last, [])) => (*last).to_string(),

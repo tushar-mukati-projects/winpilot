@@ -50,7 +50,7 @@ impl MessageThread {
         }
     }
 
-    pub(crate) fn post(&self, message: u32) -> bool {
+    fn post(&self, message: u32) -> bool {
         unsafe { PostThreadMessageW(self.thread_id, message, WPARAM(0), LPARAM(0)) }.is_ok()
     }
 }

@@ -69,26 +69,26 @@ impl VideoFormat {
         }
     }
 
-    pub const fn max_fps(self) -> u32 {
+    pub(crate) const fn max_fps(self) -> u32 {
         match self {
             Self::Mp4 => 60,
             Self::Gif => 20,
         }
     }
 
-    pub const fn default_max_width(self) -> u32 {
+    pub(crate) const fn default_max_width(self) -> u32 {
         match self {
             Self::Mp4 => 1920,
             Self::Gif => 960,
         }
     }
 
-    pub fn of_path(path: &str) -> Option<Self> {
+    fn of_path(path: &str) -> Option<Self> {
         let extension = Path::new(path.trim()).extension()?.to_str()?;
         [Self::Mp4, Self::Gif].into_iter().find(|format| format.extension().eq_ignore_ascii_case(extension))
     }
 
-    pub fn for_path(path: &str, asked: Option<Self>) -> Result<Self> {
+    pub(crate) fn for_path(path: &str, asked: Option<Self>) -> Result<Self> {
         let from_path = Self::of_path(path).ok_or_else(|| Error::invalid("path must end in .mp4 or .gif"))?;
         match asked {
             Some(format) if format != from_path => Err(Error::invalid(format!(
@@ -118,7 +118,7 @@ impl RecordRequest {
         }
     }
 
-    pub fn start_options(&self) -> Vec<&'static str> {
+    pub(crate) fn start_options(&self) -> Vec<&'static str> {
         [
             ("target", self.target.is_some()),
             ("region", self.region.is_some()),

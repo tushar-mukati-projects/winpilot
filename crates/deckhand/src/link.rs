@@ -19,7 +19,7 @@ use tokio::sync::oneshot;
 
 use crate::death::{Death, stopped_error};
 
-pub type ReplyReceiver = oneshot::Receiver<Result<Reply>>;
+type ReplyReceiver = oneshot::Receiver<Result<Reply>>;
 type ReplySender = oneshot::Sender<Result<Reply>>;
 type Pending = HashMap<u64, ReplySender>;
 pub type DeathHook = Box<dyn Fn(&Link, &Death, bool) + Send + Sync>;

@@ -19,7 +19,7 @@ pub fn release_chord(chord: &Chord) -> Result<()> {
     send(&held_chord_events(chord, KeyTransition::Release, &layout)?)
 }
 
-pub fn held_chord_events(
+fn held_chord_events(
     chord: &Chord,
     transition: KeyTransition,
     layout: &impl KeyboardLayout,

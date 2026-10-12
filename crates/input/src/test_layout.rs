@@ -5,9 +5,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 
 use crate::layout::{KeyboardLayout, LayoutKey};
 
-pub const DEAD_CIRCUMFLEX: VIRTUAL_KEY = VIRTUAL_KEY(0xDD);
+pub(crate) const DEAD_CIRCUMFLEX: VIRTUAL_KEY = VIRTUAL_KEY(0xDD);
 
-pub struct FakeLayout;
+pub(crate) struct FakeLayout;
 
 impl KeyboardLayout for FakeLayout {
     fn char_key(&self, c: char) -> Option<LayoutKey> {

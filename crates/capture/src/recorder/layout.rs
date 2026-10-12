@@ -1,4 +1,4 @@
-pub(crate) const MAX_VIDEO_HEIGHT: u32 = 2160;
+const MAX_VIDEO_HEIGHT: u32 = 2160;
 const MIN_SIDE: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,9 +29,9 @@ impl Size {
     }
 }
 
-pub(crate) fn output_size(source: Size, max_width: u32, max_height: u32) -> Size {
+pub(crate) fn output_size(source: Size, max_width: u32) -> Size {
     let (width, height) = (f64::from(source.width.max(1)), f64::from(source.height.max(1)));
-    let scale = (f64::from(max_width.max(MIN_SIDE)) / width).min(f64::from(max_height.max(MIN_SIDE)) / height).min(1.0);
+    let scale = (f64::from(max_width.max(MIN_SIDE)) / width).min(f64::from(MAX_VIDEO_HEIGHT) / height).min(1.0);
     Size::new(even_side(width * scale), even_side(height * scale))
 }
 
@@ -69,24 +69,24 @@ mod tests {
 
     #[test]
     fn large_sources_scale_down_to_the_max_width_keeping_aspect() {
-        assert_eq!(output_size(Size::new(2560, 1600), 1920, MAX_VIDEO_HEIGHT), Size::new(1920, 1200));
-        assert_eq!(output_size(Size::new(3840, 2160), 1920, MAX_VIDEO_HEIGHT), Size::new(1920, 1080));
-        assert_eq!(output_size(Size::new(2560, 1600), 960, MAX_VIDEO_HEIGHT), Size::new(960, 600));
+        assert_eq!(output_size(Size::new(2560, 1600), 1920), Size::new(1920, 1200));
+        assert_eq!(output_size(Size::new(3840, 2160), 1920), Size::new(1920, 1080));
+        assert_eq!(output_size(Size::new(2560, 1600), 960), Size::new(960, 600));
     }
 
     #[test]
     fn small_sources_keep_their_size_rounded_down_to_even() {
-        assert_eq!(output_size(Size::new(800, 600), 1920, MAX_VIDEO_HEIGHT), Size::new(800, 600));
-        assert_eq!(output_size(Size::new(1001, 667), 1920, MAX_VIDEO_HEIGHT), Size::new(1000, 666));
-        assert_eq!(output_size(Size::new(1, 1), 1920, MAX_VIDEO_HEIGHT), Size::new(2, 2));
-        assert_eq!(output_size(Size::new(0, 0), 1920, MAX_VIDEO_HEIGHT), Size::new(2, 2));
+        assert_eq!(output_size(Size::new(800, 600), 1920), Size::new(800, 600));
+        assert_eq!(output_size(Size::new(1001, 667), 1920), Size::new(1000, 666));
+        assert_eq!(output_size(Size::new(1, 1), 1920), Size::new(2, 2));
+        assert_eq!(output_size(Size::new(0, 0), 1920), Size::new(2, 2));
     }
 
     #[test]
     fn every_output_side_is_even_and_inside_the_limits() {
         for width in (1..=4000).step_by(37) {
             for height in (1..=3000).step_by(41) {
-                let size = output_size(Size::new(width, height), 1920, MAX_VIDEO_HEIGHT);
+                let size = output_size(Size::new(width, height), 1920);
                 assert!(size.width.is_multiple_of(2) && size.height.is_multiple_of(2), "{width}x{height} -> {size:?}");
                 assert!(size.width <= 1920 && size.height <= MAX_VIDEO_HEIGHT, "{width}x{height} -> {size:?}");
                 assert!(size.width >= 2 && size.height >= 2);
@@ -96,14 +96,14 @@ mod tests {
 
     #[test]
     fn tall_sources_are_limited_by_height() {
-        assert_eq!(output_size(Size::new(1000, 5000), 1920, MAX_VIDEO_HEIGHT), Size::new(432, 2160));
-        assert_eq!(output_size(Size::new(1600, 2560), 3840, MAX_VIDEO_HEIGHT), Size::new(1350, 2160));
+        assert_eq!(output_size(Size::new(1000, 5000), 1920), Size::new(432, 2160));
+        assert_eq!(output_size(Size::new(1600, 2560), 3840), Size::new(1350, 2160));
     }
 
     #[test]
     fn extreme_aspect_ratios_keep_at_least_two_pixels() {
-        assert_eq!(output_size(Size::new(10_000, 3), 1920, MAX_VIDEO_HEIGHT), Size::new(1920, 2));
-        assert_eq!(output_size(Size::new(3, 10_000), 1920, MAX_VIDEO_HEIGHT), Size::new(2, 2160));
+        assert_eq!(output_size(Size::new(10_000, 3), 1920), Size::new(1920, 2));
+        assert_eq!(output_size(Size::new(3, 10_000), 1920), Size::new(2, 2160));
     }
 
     #[test]

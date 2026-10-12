@@ -8,14 +8,14 @@ use deckhand_core::{
 
 use crate::{app_windows::app_windows, default_window::default_window, engine::Engine, observe};
 
-pub struct Baseline {
+pub(crate) struct Baseline {
     window: WindowInfo,
     snapshot: Snapshot,
     windows: Vec<WindowInfo>,
 }
 
 impl Baseline {
-    pub fn capture(engine: &Engine, mode: AfterMode) -> Option<Self> {
+    pub(crate) fn capture(engine: &Engine, mode: AfterMode) -> Option<Self> {
         if mode != AfterMode::Diff {
             return None;
         }
@@ -23,13 +23,13 @@ impl Baseline {
         Self::of(engine, window).ok()
     }
 
-    pub fn of(engine: &Engine, window: WindowInfo) -> Result<Self> {
+    pub(crate) fn of(engine: &Engine, window: WindowInfo) -> Result<Self> {
         let snapshot = engine.snapshot(&window)?;
         let windows = app_windows(engine)?;
         Ok(Self { window, snapshot, windows })
     }
 
-    pub fn compare(&self, engine: &Engine, current: WindowInfo) -> Result<DiffReport> {
+    pub(crate) fn compare(&self, engine: &Engine, current: WindowInfo) -> Result<DiffReport> {
         let after = engine.snapshot(&current)?;
         let (opened, closed) = window_changes(&self.windows, &app_windows(engine)?);
         let focused = after.focused.and_then(|id| after.get(id)).cloned();
@@ -37,7 +37,7 @@ impl Baseline {
     }
 }
 
-pub fn report(engine: &Engine, mode: AfterMode, baseline: Option<&Baseline>) -> Result<After> {
+pub(crate) fn report(engine: &Engine, mode: AfterMode, baseline: Option<&Baseline>) -> Result<After> {
     match mode {
         AfterMode::None => Ok(After::None),
         AfterMode::Screenshot => observe::of_window(engine, &default_window(engine)?).map(After::Screenshot),
@@ -54,7 +54,7 @@ fn diff_or_observe(engine: &Engine, baseline: Option<&Baseline>) -> Result<After
     }
 }
 
-pub fn window_changes(before: &[WindowInfo], after: &[WindowInfo]) -> (Vec<WindowInfo>, Vec<WindowInfo>) {
+fn window_changes(before: &[WindowInfo], after: &[WindowInfo]) -> (Vec<WindowInfo>, Vec<WindowInfo>) {
     let earlier: HashSet<WindowRef> = before.iter().map(|window| window.hwnd).collect();
     let later: HashSet<WindowRef> = after.iter().map(|window| window.hwnd).collect();
     let opened = after.iter().filter(|window| !earlier.contains(&window.hwnd)).cloned().collect();
@@ -64,24 +64,12 @@ pub fn window_changes(before: &[WindowInfo], after: &[WindowInfo]) -> (Vec<Windo
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Rect, WindowState};
+    use deckhand_core::Rect;
 
     use super::*;
 
     fn window(hwnd: i64, title: &str) -> WindowInfo {
-        WindowInfo {
-            hwnd: WindowRef(hwnd),
-            title: title.to_string(),
-            process: "app.exe".to_string(),
-            pid: 10,
-            class_name: "App".to_string(),
-            rect: Rect::new(0, 0, 100, 100),
-            state: WindowState::Normal,
-            foreground: false,
-            elevated: false,
-            desktop: None,
-            on_current_desktop: true,
-        }
+        crate::test_fixture::window(hwnd, "app.exe", title, Rect::new(0, 0, 100, 100))
     }
 
     fn hwnds(windows: &[WindowInfo]) -> Vec<i64> {

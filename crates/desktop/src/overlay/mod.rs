@@ -46,8 +46,6 @@ mod render_thread;
 mod ripple;
 mod ripple_layers;
 mod rounded_box;
-#[cfg(test)]
-mod samples;
 mod scale;
 mod scan;
 mod scan_layers;

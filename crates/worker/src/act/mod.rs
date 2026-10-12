@@ -65,7 +65,7 @@ use deckhand_core::{
     protocol::{ActArgs, ActReport, After, AfterMode, Step, StepOutcome},
 };
 
-pub use self::notify_limit::NotifyLimit;
+pub(crate) use self::notify_limit::NotifyLimit;
 use self::{after::Baseline, click_choice::ClickOptions, mode::Mode, steps::StepContext};
 use crate::{
     call_scope::CallScope,
@@ -78,7 +78,7 @@ use crate::{
 const RESPONSIVE_WAIT: Duration = Duration::from_millis(500);
 const AFTER_SKIPPED: &str = "after-state skipped: too little of the call's time was left to read the window";
 
-pub fn run(engine: &Engine, args: &ActArgs, call: &CallScope) -> Result<ActReport> {
+pub(crate) fn run(engine: &Engine, args: &ActArgs, call: &CallScope) -> Result<ActReport> {
     let started = Instant::now();
     let report = run_holding_actor(engine, args, call, started);
     if call.showed_overlay() {
@@ -87,14 +87,14 @@ pub fn run(engine: &Engine, args: &ActArgs, call: &CallScope) -> Result<ActRepor
     report
 }
 
-pub fn click_target(engine: &Engine, target: &TargetSpec, step: &Step, call: &CallScope) -> Result<WindowInfo> {
+fn click_target(engine: &Engine, target: &TargetSpec, step: &Step, call: &CallScope) -> Result<WindowInfo> {
     let prepared = target::prepare(engine, target, Mode::Foreground, call)?;
     mode::for_window(Mode::Foreground, &prepared.window, step)?;
     click::click_prepared(engine, &prepared, ClickOptions::default(), call)?;
     Ok(prepared.window)
 }
 
-pub fn settle(engine: &Engine, window: &WindowInfo, call: &CallScope) {
+pub(crate) fn settle(engine: &Engine, window: &WindowInfo, call: &CallScope) {
     let _responsive = deckhand_desktop::wait_until_responsive(window.hwnd, call.bounded(RESPONSIVE_WAIT));
     let quiet = Duration::from_millis(engine.config.act.settle_quiet_ms);
     let max = call.bounded(Duration::from_millis(engine.config.act.settle_max_ms));

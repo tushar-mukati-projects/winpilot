@@ -9,22 +9,22 @@ use deckhand_core::{
 
 use super::window_watch::DENIED_NOTE;
 
-pub struct Active {
-    pub recorder: Recorder,
-    pub path: String,
-    pub area: Rect,
-    pub note: Option<String>,
-    pub ever_denied: Option<Arc<AtomicBool>>,
+pub(crate) struct Active {
+    pub(crate) recorder: Recorder,
+    pub(crate) path: String,
+    pub(crate) area: Rect,
+    pub(crate) note: Option<String>,
+    pub(crate) ever_denied: Option<Arc<AtomicBool>>,
 }
 
-pub struct Claim {
-    pub attempt: u64,
-    pub stop: Arc<AtomicBool>,
-    pub replaced: Option<RecordReport>,
+pub(crate) struct Claim {
+    pub(crate) attempt: u64,
+    pub(crate) stop: Arc<AtomicBool>,
+    pub(crate) replaced: Option<RecordReport>,
 }
 
 #[derive(Default)]
-pub struct RecordingSlot {
+pub(crate) struct RecordingSlot {
     state: State,
     attempts: u64,
     closed: bool,
@@ -43,7 +43,7 @@ enum State {
 }
 
 impl RecordingSlot {
-    pub fn claim(&mut self) -> Result<Claim> {
+    pub(crate) fn claim(&mut self) -> Result<Claim> {
         if self.closed {
             return Err(Error::new(ErrorCode::Cancelled, "Deckhand is shutting down, so no new recording can start"));
         }
@@ -63,34 +63,34 @@ impl RecordingSlot {
         Ok(Claim { attempt: self.attempts, stop, replaced })
     }
 
-    pub fn begin(&mut self, active: Active) -> RecordReport {
+    pub(crate) fn begin(&mut self, active: Active) -> RecordReport {
         let report =
             recording_report(&active.path, active.recorder.started(), active.recorder.progress(), active.note.clone());
         self.state = State::Recording(active);
         report
     }
 
-    pub fn abandon(&mut self, claim: Claim) {
+    pub(crate) fn abandon(&mut self, claim: Claim) {
         if matches!(self.state, State::Starting { attempt, .. } if attempt == claim.attempt) {
             self.state = claim.replaced.map_or(State::Idle, State::Finished);
         }
     }
 
-    pub const fn close(&mut self) {
+    pub(crate) const fn close(&mut self) {
         self.closed = true;
     }
 
-    pub fn cancel_start(&self) -> bool {
+    pub(crate) fn cancel_start(&self) -> bool {
         let State::Starting { stop, .. } = &self.state else { return false };
         stop.store(true, Ordering::Release);
         true
     }
 
-    pub const fn is_starting(&self) -> bool {
+    pub(crate) const fn is_starting(&self) -> bool {
         matches!(self.state, State::Starting { .. })
     }
 
-    pub fn status(&mut self) -> RecordReport {
+    pub(crate) fn status(&mut self) -> RecordReport {
         self.settle();
         match &self.state {
             State::Idle => RecordReport::idle(),
@@ -105,7 +105,7 @@ impl RecordingSlot {
         }
     }
 
-    pub fn stop(&mut self) -> RecordReport {
+    pub(crate) fn stop(&mut self) -> RecordReport {
         match std::mem::take(&mut self.state) {
             State::Idle => RecordReport::idle(),
             starting @ State::Starting { .. } => {
@@ -117,7 +117,7 @@ impl RecordingSlot {
         }
     }
 
-    pub const fn indicator_area(&self) -> Option<Rect> {
+    pub(crate) const fn indicator_area(&self) -> Option<Rect> {
         match &self.state {
             State::Recording(active) => Some(active.area),
             State::Idle | State::Starting { .. } | State::Finished(_) => None,
@@ -148,14 +148,14 @@ fn finish(active: Active) -> RecordReport {
     report
 }
 
-pub fn joined(note: Option<String>, more: &str) -> String {
+pub(crate) fn joined(note: Option<String>, more: &str) -> String {
     match note {
         Some(note) => format!("{note}; {more}"),
         None => more.to_string(),
     }
 }
 
-pub fn recording_report(path: &str, started: Started, progress: Progress, note: Option<String>) -> RecordReport {
+fn recording_report(path: &str, started: Started, progress: Progress, note: Option<String>) -> RecordReport {
     RecordReport {
         state: RecordState::Recording,
         path: Some(path.to_string()),
@@ -169,7 +169,7 @@ pub fn recording_report(path: &str, started: Started, progress: Progress, note: 
     }
 }
 
-pub fn finished_report(path: &str, started: Started, finished: &Finished) -> RecordReport {
+fn finished_report(path: &str, started: Started, finished: &Finished) -> RecordReport {
     RecordReport {
         state: RecordState::Finished,
         path: Some(path.to_string()),

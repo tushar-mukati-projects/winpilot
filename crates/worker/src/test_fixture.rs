@@ -24,7 +24,7 @@ const POLL: Duration = Duration::from_millis(25);
 const QUIET: Duration = Duration::from_millis(200);
 const SEND_TIMEOUT_MS: u32 = 2000;
 
-pub fn engine() -> &'static Engine {
+pub(crate) fn engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
     ENGINE.get_or_init(|| {
         let _ = deckhand_desktop::enable_dpi_awareness();
@@ -36,7 +36,7 @@ pub fn engine() -> &'static Engine {
     })
 }
 
-pub fn window(hwnd: i64, process: &str, title: &str, rect: Rect) -> WindowInfo {
+pub(crate) fn window(hwnd: i64, process: &str, title: &str, rect: Rect) -> WindowInfo {
     WindowInfo {
         hwnd: WindowRef(hwnd),
         title: title.to_string(),
@@ -52,7 +52,7 @@ pub fn window(hwnd: i64, process: &str, title: &str, rect: Rect) -> WindowInfo {
     }
 }
 
-pub fn element(id: u32, depth: u16, role: Role, name: &str) -> Element {
+pub(crate) fn element(id: u32, depth: u16, role: Role, name: &str) -> Element {
     Element {
         id: ElementRef(id),
         depth,
@@ -67,16 +67,16 @@ pub fn element(id: u32, depth: u16, role: Role, name: &str) -> Element {
     }
 }
 
-pub fn with_id(element: Element, automation_id: &str) -> Element {
+pub(crate) fn with_id(element: Element, automation_id: &str) -> Element {
     Element { automation_id: automation_id.to_string(), ..element }
 }
 
-pub fn snapshot(title: &str, elements: Vec<Element>) -> Snapshot {
+pub(crate) fn snapshot(title: &str, elements: Vec<Element>) -> Snapshot {
     let window = window(0x10, "app.exe", title, Rect::new(0, 0, 800, 600));
     Snapshot { window, elements, focused: None, truncated: false }
 }
 
-pub fn fixture_exe() -> Option<PathBuf> {
+pub(crate) fn fixture_exe() -> Option<PathBuf> {
     let found = deckhand_fixture::fixture_exe();
     if found.is_none() {
         eprintln!("skipping: deckhand-fixture.exe is not built (cargo build -p deckhand-fixture)");
@@ -84,12 +84,32 @@ pub fn fixture_exe() -> Option<PathBuf> {
     found
 }
 
-pub fn unique_title(kind: &str) -> String {
+pub(crate) fn unique_title(kind: &str) -> String {
     static NEXT: AtomicU32 = AtomicU32::new(1);
     format!("Deckhand Fixture {kind} {}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed))
 }
 
-pub struct ClosesTitled(pub String);
+pub(crate) struct TempFiles(pub(crate) Vec<PathBuf>);
+
+impl Drop for TempFiles {
+    fn drop(&mut self) {
+        for path in &self.0 {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+pub(crate) fn temp_path(name: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("deckhand-pick-{}-{name}", std::process::id()))
+}
+
+pub(crate) fn temp_file(name: &str) -> PathBuf {
+    let path = temp_path(name);
+    std::fs::write(&path, b"deckhand").unwrap();
+    path
+}
+
+pub(crate) struct ClosesTitled(pub(crate) String);
 
 impl Drop for ClosesTitled {
     fn drop(&mut self) {
@@ -100,22 +120,22 @@ impl Drop for ClosesTitled {
     }
 }
 
-pub struct FixtureApp {
-    pub window: WindowInfo,
+pub(crate) struct FixtureApp {
+    pub(crate) window: WindowInfo,
     _closes: ClosesTitled,
     process: FixtureProcess,
 }
 
 impl FixtureApp {
-    pub fn launch() -> Option<Self> {
+    pub(crate) fn launch() -> Option<Self> {
         Self::launch_at(unique_title("Worker"), Placement::OffScreen)
     }
 
-    pub fn launch_titled(title: String) -> Option<Self> {
+    pub(crate) fn launch_titled(title: String) -> Option<Self> {
         Self::launch_at(title, Placement::OffScreen)
     }
 
-    pub fn launch_on_screen() -> Option<Self> {
+    pub(crate) fn launch_on_screen() -> Option<Self> {
         Self::launch_at(unique_title("Worker"), Placement::OnScreen)
     }
 
@@ -128,23 +148,23 @@ impl FixtureApp {
         Some(Self { window, _closes: closes, process })
     }
 
-    pub fn title(&self) -> &str {
+    pub(crate) fn title(&self) -> &str {
         &self.window.title
     }
 
-    pub fn hwnd(&self) -> WindowRef {
+    pub(crate) fn hwnd(&self) -> WindowRef {
         self.window.hwnd
     }
 
-    pub fn current_window(&self) -> WindowInfo {
+    pub(crate) fn current_window(&self) -> WindowInfo {
         deckhand_desktop::window(self.hwnd()).unwrap()
     }
 
-    pub fn selector(&self, terms: &str) -> String {
+    pub(crate) fn selector(&self, terms: &str) -> String {
         format!("window:\"{}\" {terms}", self.title())
     }
 
-    pub fn text(&self, control: i32) -> String {
+    pub(crate) fn text(&self, control: i32) -> String {
         let Ok(child) = (unsafe { GetDlgItem(Some(self.process.hwnd()), control) }) else { return String::new() };
         let mut buffer = [0u16; 4096];
         let mut copied = 0usize;
@@ -163,7 +183,7 @@ impl FixtureApp {
         String::from_utf16_lossy(&buffer[..length])
     }
 
-    pub fn settled_text(&self, control: i32, done: impl Fn(&str) -> bool) -> String {
+    pub(crate) fn settled_text(&self, control: i32, done: impl Fn(&str) -> bool) -> String {
         let deadline = Instant::now() + PATIENCE;
         loop {
             let text = self.text(control);
@@ -174,15 +194,8 @@ impl FixtureApp {
         }
     }
 
-    pub fn wait_for_text(&self, control: i32, expected: &str) -> bool {
-        let deadline = Instant::now() + PATIENCE;
-        while Instant::now() < deadline {
-            if self.text(control) == expected {
-                return true;
-            }
-            thread::sleep(POLL);
-        }
-        false
+    pub(crate) fn wait_for_text(&self, control: i32, expected: &str) -> bool {
+        self.settled_text(control, |text| text == expected) == expected
     }
 }
 

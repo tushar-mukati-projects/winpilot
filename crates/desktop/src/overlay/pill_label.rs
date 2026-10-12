@@ -43,13 +43,12 @@ pub(crate) fn fitting_label(
     tone: Tone,
     room: i32,
     speaker: &Speaker<'_>,
-) -> Result<(PillLabel, Wording)> {
+) -> Result<PillLabel> {
     let full = render_label(fonts, &pill_words(tone, Wording::Full, speaker.label, speaker.hotkey))?;
     if metrics.fits(room, full.width()) {
-        return Ok((full, Wording::Full));
+        return Ok(full);
     }
-    let short = pill_words(tone, Wording::Short, speaker.label, speaker.hotkey);
-    Ok((render_label(fonts, &short)?, Wording::Short))
+    render_label(fonts, &pill_words(tone, Wording::Short, speaker.label, speaker.hotkey))
 }
 
 #[cfg(test)]
@@ -58,24 +57,31 @@ mod tests {
 
     const SPEAKER: Speaker<'static> = Speaker { label: "Claude", hotkey: Some("Ctrl+Alt+Esc") };
 
-    fn label_for(width: i32) -> (PillLabel, Wording) {
+    fn label_for(width: i32) -> (PillLabel, PillLabel) {
         let metrics = PillMetrics::at_scale(1.0);
         let fonts = PillFonts::new(metrics.font_px).unwrap();
-        fitting_label(&fonts, &metrics, Tone::Working, width, &SPEAKER).unwrap()
+        let fitted = fitting_label(&fonts, &metrics, Tone::Working, width, &SPEAKER).unwrap();
+        (fitted, worded(&fonts, Wording::Full))
+    }
+
+    fn worded(fonts: &PillFonts, wording: Wording) -> PillLabel {
+        render_label(fonts, &pill_words(Tone::Working, wording, SPEAKER.label, SPEAKER.hotkey)).unwrap()
     }
 
     #[test]
     fn wide_windows_get_the_full_label() {
-        let (full, wording) = label_for(1200);
-        assert_eq!(wording, Wording::Full);
+        let (full, expected) = label_for(1200);
+        assert_eq!(full, expected);
         let (short, _) = label_for(300);
         assert!(full.width() > short.width() + 100, "{} vs {}", full.width(), short.width());
     }
 
     #[test]
     fn narrow_windows_get_the_short_label() {
-        let (label, wording) = label_for(300);
-        assert_eq!(wording, Wording::Short);
+        let (label, full) = label_for(300);
+        assert_ne!(label, full);
+        let fonts = PillFonts::new(PillMetrics::at_scale(1.0).font_px).unwrap();
+        assert_eq!(label, worded(&fonts, Wording::Short));
         assert!(PillMetrics::at_scale(1.0).fits(300, label.width()));
     }
 }

@@ -4,7 +4,7 @@ use deckhand_core::{Point, glide_timing::glide_point};
 
 use super::{easing::progress, fade::Fade, presence::FRAME, scene_frame::BadgeFrame, scene_items::Look};
 
-pub(crate) const BADGE_LINGER: Duration = Duration::from_millis(1200);
+const BADGE_LINGER: Duration = Duration::from_millis(1200);
 const BADGE_FADE_IN: Duration = Duration::from_millis(160);
 const BADGE_FADE_OUT: Duration = Duration::from_millis(300);
 

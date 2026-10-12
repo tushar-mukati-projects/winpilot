@@ -8,7 +8,7 @@ use super::clip::{clipped, quoted};
 const TEXT_LIMIT: usize = 24;
 const TARGET_LIMIT: usize = 60;
 
-pub fn summarize(step: &Step) -> String {
+pub(crate) fn summarize(step: &Step) -> String {
     match step {
         Step::Click { target, button, count, modifiers, .. } => {
             click_summary(target, *button, *count, modifiers.as_deref())
@@ -114,7 +114,7 @@ fn window_summary(action: WindowAction, target: Option<&TargetSpec>, app: Option
     }
 }
 
-fn file_count(count: usize) -> String {
+pub(crate) fn file_count(count: usize) -> String {
     if count == 1 { "1 file".to_string() } else { format!("{count} files") }
 }
 

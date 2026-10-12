@@ -14,23 +14,11 @@ pub(crate) fn border_strips(target: Rect, thickness: i32, screen: Rect) -> [Opti
         Rect::new(outline.x, below_top, thickness, inner_height),
         Rect::new(far_edge(outline.x, outline.width, thickness), below_top, thickness, inner_height),
     ];
-    edges.map(|edge| clip(edge, screen))
+    edges.map(|edge| edge.intersection(screen))
 }
 
 fn far_edge(start: i32, length: i32, thickness: i32) -> i32 {
     start.saturating_add(length).saturating_sub(thickness)
-}
-
-fn clip(rect: Rect, bounds: Rect) -> Option<Rect> {
-    let left = rect.x.max(bounds.x);
-    let top = rect.y.max(bounds.y);
-    let right = end(rect.x, rect.width).min(end(bounds.x, bounds.width));
-    let bottom = end(rect.y, rect.height).min(end(bounds.y, bounds.height));
-    (right > left && bottom > top).then(|| Rect::new(left, top, right.saturating_sub(left), bottom.saturating_sub(top)))
-}
-
-fn end(start: i32, length: i32) -> i32 {
-    start.saturating_add(length.max(0))
 }
 
 #[cfg(test)]

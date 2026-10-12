@@ -7,13 +7,13 @@ use deckhand_core::{
 use crate::window_spec::looks_like_title;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReadTarget {
+pub(crate) enum ReadTarget {
     DefaultWindow,
     Window(String),
     Element(Target),
 }
 
-pub fn read_target(spec: Option<&str>) -> Result<ReadTarget> {
+pub(crate) fn read_target(spec: Option<&str>) -> Result<ReadTarget> {
     let Some(text) = spec.map(str::trim).filter(|text| !text.is_empty()) else { return Ok(ReadTarget::DefaultWindow) };
     if looks_like_window_ref(text) || (!looks_like_element_ref(text) && looks_like_title(text)) {
         return Ok(ReadTarget::Window(text.to_string()));

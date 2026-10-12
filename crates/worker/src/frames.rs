@@ -4,12 +4,12 @@ use deckhand_desktop::overlay::CaptureHideGuard;
 
 use crate::{blackout, engine::Engine, overlay};
 
-pub const OVERLAY_MAY_SHOW: &str =
+const OVERLAY_MAY_SHOW: &str =
     "Deckhand's overlay could not be confirmed hidden in time, so it may appear in this capture";
 
-pub struct Captured {
-    pub frame: Frame,
-    pub note: Option<&'static str>,
+pub(crate) struct Captured {
+    pub(crate) frame: Frame,
+    pub(crate) note: Option<&'static str>,
 }
 
 impl Captured {
@@ -22,19 +22,19 @@ impl Captured {
     }
 }
 
-pub fn region(engine: &Engine, rect: Rect) -> Result<Captured> {
+pub(crate) fn region(engine: &Engine, rect: Rect) -> Result<Captured> {
     screened(engine, None, || engine.capturer.screen(rect))
 }
 
-pub fn monitor(engine: &Engine, index: usize) -> Result<Captured> {
+pub(crate) fn monitor(engine: &Engine, index: usize) -> Result<Captured> {
     screened(engine, None, || engine.capturer.monitor(index))
 }
 
-pub fn window(engine: &Engine, window: &WindowInfo) -> Result<Captured> {
+pub(crate) fn window(engine: &Engine, window: &WindowInfo) -> Result<Captured> {
     capture_window(engine, window, None)
 }
 
-pub fn element(engine: &Engine, window: &WindowInfo, rect: Rect) -> Result<Captured> {
+pub(crate) fn element(engine: &Engine, window: &WindowInfo, rect: Rect) -> Result<Captured> {
     let area = rect.intersection(window.rect).ok_or_else(outside_window)?;
     capture_window(engine, window, Some(area))
 }
@@ -75,7 +75,7 @@ fn elsewhere(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> Result
     }
 }
 
-pub fn not_drawn(window: &WindowInfo) -> Error {
+fn not_drawn(window: &WindowInfo) -> Error {
     let desktop = other_desktop(window).unwrap_or_else(|| "another desktop".to_string());
     Error::unsupported(format!(
         "{} is on {desktop}; Windows doesn't draw it there, so try observe mode=text or move it to this desktop",

@@ -12,7 +12,7 @@ use crate::{
 
 const SLICE: Duration = Duration::from_secs(1);
 
-pub fn wait(engine: &Engine, quiet: Duration, timeout: Duration, call: &CallScope) -> Result<WaitReport> {
+pub(crate) fn wait(engine: &Engine, quiet: Duration, timeout: Duration, call: &CallScope) -> Result<WaitReport> {
     let started = Instant::now();
     let window = default_window(engine)?;
     let watch = Watch::window(&window);
@@ -28,7 +28,7 @@ pub fn wait(engine: &Engine, quiet: Duration, timeout: Duration, call: &CallScop
     }
 }
 
-pub fn quiet_check(window: &WindowInfo, quiet: Duration, calm: bool) -> Check {
+fn quiet_check(window: &WindowInfo, quiet: Duration, calm: bool) -> Check {
     if calm {
         Check::met(format!("{} has been quiet for {} ms", window_line(window), duration_ms(quiet)))
     } else {
@@ -38,25 +38,13 @@ pub fn quiet_check(window: &WindowInfo, quiet: Duration, calm: bool) -> Check {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Rect, WindowRef, WindowState};
+    use deckhand_core::Rect;
 
     use super::*;
 
     #[test]
     fn quiet_and_busy_details() {
-        let window = WindowInfo {
-            hwnd: WindowRef(3),
-            title: "Editor".to_string(),
-            process: "code.exe".to_string(),
-            pid: 9,
-            class_name: "Chrome_WidgetWin_1".to_string(),
-            rect: Rect::new(0, 0, 10, 10),
-            state: WindowState::Normal,
-            foreground: false,
-            elevated: false,
-            desktop: None,
-            on_current_desktop: true,
-        };
+        let window = crate::test_fixture::window(3, "code.exe", "Editor", Rect::new(0, 0, 10, 10));
         let calm = quiet_check(&window, Duration::from_millis(300), true);
         assert!(calm.met);
         assert_eq!(calm.detail, "w3 code.exe \"Editor\" has been quiet for 300 ms");

@@ -6,7 +6,7 @@ use deckhand_desktop::VisibleWindow;
 
 use crate::blackout;
 
-pub struct DeniedWindows {
+pub(crate) struct DeniedWindows {
     guard: GuardConfig,
     hold: CoverHold,
     rects: Vec<Rect>,
@@ -14,7 +14,7 @@ pub struct DeniedWindows {
 }
 
 impl DeniedWindows {
-    pub fn new(guard: GuardConfig) -> Self {
+    pub(crate) fn new(guard: GuardConfig) -> Self {
         Self { guard, hold: CoverHold::default(), rects: Vec::new(), whole_frame: true }
     }
 

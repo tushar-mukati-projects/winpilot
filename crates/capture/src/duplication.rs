@@ -38,14 +38,14 @@ pub(crate) enum DxgiFailure {
     Unsupported,
 }
 
-pub(crate) fn classify_creation(error: &windows_core::Error) -> DxgiFailure {
+fn classify_creation(error: &windows_core::Error) -> DxgiFailure {
     match classify_runtime(error) {
         DxgiFailure::Transient if !TRANSIENT_CODES.contains(&error.code()) => DxgiFailure::Unsupported,
         failure => failure,
     }
 }
 
-pub(crate) fn classify_runtime(error: &windows_core::Error) -> DxgiFailure {
+fn classify_runtime(error: &windows_core::Error) -> DxgiFailure {
     if LOST_CODES.contains(&error.code()) { DxgiFailure::AccessLost } else { DxgiFailure::Transient }
 }
 
@@ -85,7 +85,7 @@ impl Duplication {
     }
 
     pub(crate) fn poll(&mut self, now: Instant) -> Result<(), DxgiFailure> {
-        if self.acquire_latest(POLL_TIMEOUT_MS)? {
+        if self.acquire_latest()? {
             self.last_frame_at = Some(now);
         }
         Ok(())
@@ -100,10 +100,10 @@ impl Duplication {
         copy_block(&source, from, target, to).map_err(|_| DxgiFailure::Transient)
     }
 
-    fn acquire_latest(&mut self, timeout_ms: u32) -> Result<bool, DxgiFailure> {
+    fn acquire_latest(&mut self) -> Result<bool, DxgiFailure> {
         let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
         let mut resource: Option<IDXGIResource> = None;
-        let acquired = unsafe { self.session.AcquireNextFrame(timeout_ms, &raw mut info, &raw mut resource) };
+        let acquired = unsafe { self.session.AcquireNextFrame(POLL_TIMEOUT_MS, &raw mut info, &raw mut resource) };
         match acquired {
             Err(error) if error.code() == DXGI_ERROR_WAIT_TIMEOUT => return Ok(false),
             Err(error) => return Err(classify_runtime(&error)),

@@ -8,7 +8,7 @@ use crate::{
     protocol::{Call, Reply},
 };
 
-pub const MAX_FRAME_BYTES: usize = 64 << 20;
+const MAX_FRAME_BYTES: usize = 64 << 20;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

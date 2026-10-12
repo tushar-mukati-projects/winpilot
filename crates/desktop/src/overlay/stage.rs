@@ -77,7 +77,6 @@ impl Stage {
             label: cast.label.clone(),
             hotkey: cast.hotkey.clone(),
             palette: cast.palette.clone(),
-            alarm: Palette::crimson(),
         };
         let stage = Self {
             border: BorderLayers::new(make.layers(presence)?),

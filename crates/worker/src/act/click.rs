@@ -14,14 +14,25 @@ use crate::{call_scope::CallScope, engine::Engine, overlay};
 
 const MOUSE: &str = "mouse";
 
-pub fn step(engine: &Engine, prepared: &Prepared, options: ClickOptions, mode: Mode, call: &CallScope) -> Result<Done> {
+pub(crate) fn step(
+    engine: &Engine,
+    prepared: &Prepared,
+    options: ClickOptions,
+    mode: Mode,
+    call: &CallScope,
+) -> Result<Done> {
     match mode {
         Mode::Foreground => click_prepared(engine, prepared, options, call),
         Mode::Background => click_in_background(engine, prepared, call),
     }
 }
 
-pub fn click_prepared(engine: &Engine, prepared: &Prepared, options: ClickOptions, call: &CallScope) -> Result<Done> {
+pub(crate) fn click_prepared(
+    engine: &Engine,
+    prepared: &Prepared,
+    options: ClickOptions,
+    call: &CallScope,
+) -> Result<Done> {
     let patterns = prepared.tracked_element().map(|element| element.patterns);
     match choose_path(options, prepared.window.foreground, patterns) {
         ClickPath::Mouse => click_and_settle(engine, prepared, options, call),
