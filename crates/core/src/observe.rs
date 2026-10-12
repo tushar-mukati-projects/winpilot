@@ -14,7 +14,7 @@ use crate::{
         ObserveRequest, ScreenshotRequest, SearchRequest, TextRequest,
     },
     quality::Quality,
-    recording::{RecordAction, RecordRequest, VideoFormat},
+    recording::{RecordAction, RecordAudio, RecordRequest, VideoFormat},
     text_limit::char_limit,
 };
 
@@ -130,6 +130,10 @@ pub struct ObserveArgs {
         description = "record: absolute .mp4 or .gif path that does not exist yet. Default: Videos\\Deckhand\\deckhand-<time>.mp4."
     )]
     pub path: Option<String>,
+    #[schemars(
+        description = "record start, mp4 only: system (default; what the PC plays), mic, both or none. gif has no sound."
+    )]
+    pub audio: Option<RecordAudio>,
 }
 
 impl ObserveMode {
@@ -297,6 +301,7 @@ impl ObserveArgs {
             cursor: self.cursor,
             max_width: self.max_width,
             path: self.path.clone(),
+            audio: self.audio,
         };
         request.validate()?;
         Ok(request)
@@ -432,6 +437,23 @@ mod tests {
         assert_eq!(invalid(r#"{"mode":"screenshot","quality":0}"#), "quality must be from 1 to 100, got 0");
         assert!(invalid(r#"{"mode":"screenshot","target":"w1","monitor":0}"#).starts_with("give only one of target"));
         assert!(serde_json::from_str::<ObserveArgs>(r#"{"mode":"screenshot","quality":"high"}"#).is_err());
+    }
+
+    #[test]
+    fn recordings_take_an_audio_source() {
+        let ObserveRequest::Record(record) = request(r#"{"mode":"record","action":"start","audio":"both"}"#) else {
+            panic!("expected a recording")
+        };
+        assert_eq!(record.audio, Some(RecordAudio::Both));
+        assert_eq!(
+            invalid(r#"{"mode":"record","action":"start","format":"gif","audio":"mic"}"#),
+            "gif recordings have no sound; drop audio=mic or record mp4"
+        );
+        assert_eq!(
+            invalid(r#"{"mode":"screenshot","audio":"system"}"#),
+            "audio does not apply to mode=screenshot; it is for mode=record"
+        );
+        assert!(serde_json::from_str::<ObserveArgs>(r#"{"mode":"record","audio":"speakers"}"#).is_err());
     }
 
     #[test]

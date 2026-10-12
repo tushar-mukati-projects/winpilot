@@ -5,6 +5,7 @@ use deckhand_core::{
     protocol::{Quality, VideoFormat},
 };
 
+use super::audio_backlog::TrackSamples;
 use super::gif_writer::GifWriter;
 use super::layout::Size;
 use super::mp4::{InputPixels, Mp4Writer, preferred_inputs};
@@ -17,6 +18,7 @@ pub(crate) struct WriterSettings {
     pub fps: u32,
     pub quality: Quality,
     pub mp4_inputs: Vec<InputPixels>,
+    pub audio: bool,
 }
 
 pub(crate) enum VideoWriter {
@@ -26,15 +28,15 @@ pub(crate) enum VideoWriter {
 
 impl WriterSettings {
     pub(crate) fn new(path: PathBuf, format: VideoFormat, size: Size, fps: u32, quality: Quality) -> Self {
-        Self { path, format, size, fps, quality, mp4_inputs: preferred_inputs(size) }
+        Self { path, format, size, fps, quality, mp4_inputs: preferred_inputs(size), audio: false }
     }
 }
 
 impl VideoWriter {
     pub(crate) fn create(settings: &WriterSettings) -> Result<Self> {
-        let WriterSettings { path, format, size, fps, quality, mp4_inputs } = settings;
+        let WriterSettings { path, format, size, fps, quality, mp4_inputs, audio } = settings;
         match format {
-            VideoFormat::Mp4 => Mp4Writer::create(path, *size, *fps, *quality, mp4_inputs).map(Self::Mp4),
+            VideoFormat::Mp4 => Mp4Writer::create(path, *size, *fps, *quality, mp4_inputs, *audio).map(Self::Mp4),
             VideoFormat::Gif => GifWriter::create(path, *size, *fps, *quality).map(Self::Gif),
         }
     }
@@ -50,6 +52,20 @@ impl VideoWriter {
         match self {
             Self::Mp4(writer) => writer.repeat(tick),
             Self::Gif(_) => Ok(()),
+        }
+    }
+
+    pub(crate) fn write_audio(&self, samples: &TrackSamples) -> Result<()> {
+        match self {
+            Self::Mp4(writer) => writer.write_audio(samples),
+            Self::Gif(_) => Ok(()),
+        }
+    }
+
+    pub(crate) fn audio_refusal(&self) -> Option<String> {
+        match self {
+            Self::Mp4(writer) => writer.audio_refusal(),
+            Self::Gif(_) => None,
         }
     }
 

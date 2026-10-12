@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use deckhand_capture::{Finished, Progress, Recorder, Started};
+use deckhand_capture::{AudioSource, Finished, Progress, Recorder, Started};
 use deckhand_core::{
     Error, ErrorCode, Rect, Result,
-    protocol::{RecordReport, RecordState},
+    protocol::{RecordAudio, RecordReport, RecordState},
 };
 
 use super::window_watch::DENIED_NOTE;
@@ -139,9 +139,9 @@ fn busy(what: &str) -> Error {
 }
 
 fn finish(active: Active) -> RecordReport {
-    let started = active.recorder.started();
+    let started = active.recorder.started().clone();
     let denied = active.ever_denied.as_ref().is_some_and(|flag| flag.load(Ordering::Acquire));
-    let mut report = finished_report(&active.path, started, &active.recorder.stop());
+    let mut report = finished_report(&active.path, &started, &active.recorder.stop());
     if denied {
         report.note = Some(joined(report.note.take(), DENIED_NOTE));
     }
@@ -155,7 +155,7 @@ pub(crate) fn joined(note: Option<String>, more: &str) -> String {
     }
 }
 
-fn recording_report(path: &str, started: Started, progress: Progress, note: Option<String>) -> RecordReport {
+fn recording_report(path: &str, started: &Started, progress: Progress, note: Option<String>) -> RecordReport {
     RecordReport {
         state: RecordState::Recording,
         path: Some(path.to_string()),
@@ -165,11 +165,12 @@ fn recording_report(path: &str, started: Started, progress: Progress, note: Opti
         width: started.width,
         height: started.height,
         fps: started.fps,
+        audio: started.audio.source.map(record_audio),
         note,
     }
 }
 
-fn finished_report(path: &str, started: Started, finished: &Finished) -> RecordReport {
+fn finished_report(path: &str, started: &Started, finished: &Finished) -> RecordReport {
     RecordReport {
         state: RecordState::Finished,
         path: Some(path.to_string()),
@@ -179,17 +180,34 @@ fn finished_report(path: &str, started: Started, finished: &Finished) -> RecordR
         width: started.width,
         height: started.height,
         fps: started.fps,
+        audio: finished.audio.source.map(record_audio),
         note: finished.note(),
+    }
+}
+
+const fn record_audio(source: AudioSource) -> RecordAudio {
+    match source {
+        AudioSource::System => RecordAudio::System,
+        AudioSource::Mic => RecordAudio::Mic,
+        AudioSource::Both => RecordAudio::Both,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use deckhand_capture::EndReason;
+    use deckhand_capture::{AudioTrack, EndReason};
 
     use super::*;
 
-    const STARTED: Started = Started { width: 1920, height: 1200, fps: 30, clipped: false };
+    fn started() -> Started {
+        Started {
+            width: 1920,
+            height: 1200,
+            fps: 30,
+            clipped: false,
+            audio: AudioTrack { source: Some(AudioSource::System), note: None },
+        }
+    }
 
     fn finished_slot(report: RecordReport) -> RecordingSlot {
         RecordingSlot { state: State::Finished(report), attempts: 0, closed: false }
@@ -202,11 +220,12 @@ mod tests {
     #[test]
     fn a_running_recording_reports_progress_without_bytes() {
         let progress = Progress { frames: 90, dropped: 0, seconds: 3.0 };
-        let report = recording_report("C:\\v\\a.mp4", STARTED, progress, Some("clipped".to_string()));
+        let report = recording_report("C:\\v\\a.mp4", &started(), progress, Some("clipped".to_string()));
         assert_eq!(report.state, RecordState::Recording);
         assert_eq!((report.frames, report.seconds, report.bytes), (90, 3.0, 0));
         assert_eq!((report.width, report.height, report.fps), (1920, 1200, 30));
         assert_eq!(report.note.as_deref(), Some("clipped"));
+        assert_eq!(report.audio, Some(RecordAudio::System));
     }
 
     #[test]
@@ -219,12 +238,17 @@ mod tests {
             reason: EndReason::TimeLimit(10),
             write_error: None,
             finalize_error: None,
+            audio: AudioTrack { source: Some(AudioSource::Both), note: Some("sound stopped at 4.0 s: x".to_string()) },
         };
-        let report = finished_report("C:\\v\\a.mp4", STARTED, &finished);
+        let report = finished_report("C:\\v\\a.mp4", &started(), &finished);
         assert_eq!(report.state, RecordState::Finished);
         assert_eq!(report.path.as_deref(), Some("C:\\v\\a.mp4"));
         assert_eq!((report.frames, report.bytes), (300, 4096));
-        assert_eq!(report.note.as_deref(), Some("stopped automatically at max_seconds (10 s)"));
+        assert_eq!(report.audio, Some(RecordAudio::Both));
+        assert_eq!(
+            report.note.as_deref(),
+            Some("stopped automatically at max_seconds (10 s); sound stopped at 4.0 s: x")
+        );
     }
 
     #[test]

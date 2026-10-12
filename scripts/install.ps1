@@ -2,7 +2,9 @@ param(
     [switch]$SkipBuild,
     [switch]$Register,
     [switch]$Uninstall,
-    [switch]$Purge
+    [switch]$Purge,
+    [ValidateSet("tiny", "base", "small")]
+    [string]$SpeechModel
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,6 +18,13 @@ $appId = "Deckhand.Agent"
 $appIdKey = "HKCU:\Software\Classes\AppUserModelId\$appId"
 $configDir = Join-Path $env:APPDATA "deckhand"
 $logDir = Join-Path $env:LOCALAPPDATA "deckhand"
+$modelDir = Join-Path $logDir "models"
+$speechModelSource = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
+$speechModelHashes = @{
+    tiny  = "BE07E048E1E599AD46341C8D2A135645097A538221678B7ACDD1B1919C6E1B21"
+    base  = "60ED5BC3DD14EEA856493D334349B405782DDCAF0028D4B5DF4088345FBA2EFE"
+    small = "1BE3A9B2063867B937E64E2EC7483364A79917E157FA98C5D94B5C1FFFEA987B"
+}
 
 function Remove-RetiredCopies {
     Get-ChildItem -Path $installDir -Filter "deckhand.old-*.exe" -ErrorAction SilentlyContinue | ForEach-Object {
@@ -90,6 +99,44 @@ function Remove-McpRegistration {
     Write-Output "removed the 'deckhand' MCP registration (if it existed)"
 }
 
+function Test-ModelHash([string]$Path, [string]$Expected) {
+    if (-not (Test-Path $Path)) { return $false }
+    return (Get-FileHash $Path -Algorithm SHA256).Hash -eq $Expected
+}
+
+function Get-SpeechModel([string]$Name, [string]$Partial) {
+    $previousProgress = $ProgressPreference
+    $ProgressPreference = "SilentlyContinue"
+    try {
+        Invoke-WebRequest -Uri "$speechModelSource/ggml-$Name.bin" -OutFile $Partial -UseBasicParsing
+    }
+    finally {
+        $ProgressPreference = $previousProgress
+    }
+}
+
+function Install-SpeechModel([string]$Name) {
+    $expected = $speechModelHashes[$Name]
+    $target = Join-Path $modelDir "ggml-$Name.bin"
+    if (Test-ModelHash $target $expected) {
+        Write-Output "the $Name speech model is already installed and verified at $target"
+        return
+    }
+    New-Item -ItemType Directory -Force -Path $modelDir | Out-Null
+    $partial = "$target.download"
+    if (Test-Path $partial) { Remove-Item $partial -Force }
+    Write-Output "downloading the $Name speech model from $speechModelSource"
+    Get-SpeechModel $Name $partial
+    $actual = (Get-FileHash $partial -Algorithm SHA256).Hash
+    if ($actual -ne $expected) {
+        Remove-Item $partial -Force
+        throw "the downloaded $Name model does not match its pinned SHA-256 ($actual vs $expected); it was deleted, run the command again"
+    }
+    Move-Item $partial $target -Force
+    if (-not (Test-ModelHash $target $expected)) { throw "the installed model at $target failed its hash check after the move; run the command again" }
+    Write-Output "installed the $Name speech model at $target (sha256 $expected)"
+}
+
 function Uninstall-Deckhand {
     Remove-McpRegistration
     if (Test-Path $appIdKey) { Remove-Item $appIdKey -Recurse -Force }
@@ -112,7 +159,7 @@ function Uninstall-Deckhand {
         }
     }
     else {
-        Write-Output "kept the config in $configDir and the logs in $logDir (pass -Purge to remove them)"
+        Write-Output "kept the config in $configDir and the logs and speech models in $logDir (pass -Purge to remove them)"
     }
 }
 
@@ -121,6 +168,10 @@ if ($Uninstall) {
     return
 }
 if ($Purge) { throw "-Purge only works together with -Uninstall" }
+if ($SpeechModel) {
+    Install-SpeechModel $SpeechModel
+    return
+}
 
 if (-not $SkipBuild) {
     Push-Location $repo

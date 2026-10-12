@@ -10,9 +10,10 @@ use deckhand_core::Result;
 use super::clock::{TickClock, total_ticks};
 use super::encoder::{Encoded, EncoderInput, EncoderStart, EncoderThread};
 use super::layout::{Size, output_size};
-use super::outcome::{Counters, EndReason, Finished, Started};
+use super::outcome::{AudioTrack, Counters, EndReason, Finished, Started};
 use super::output_file::OutputFile;
 use super::scaler::Scaler;
+use super::sound_start::{start_sound, without_sound};
 use super::source::Source;
 use super::spec::{RecordingSource, Redactor, StopCheck, VideoSettings};
 use super::video_writer::WriterSettings;
@@ -49,6 +50,7 @@ struct Prepared {
     encoder: EncoderThread,
     size: Size,
     clipped: bool,
+    audio: AudioTrack,
 }
 
 struct Sampling<'a> {
@@ -86,20 +88,27 @@ pub(crate) fn run(input: SamplerInput) -> Finished {
 
 fn record(input: SamplerInput) -> Finished {
     let SamplerInput { source, output, video, redactor, kill_switch, stop, deadline, counters, ready } = input;
-    let Prepared { source, encoder, size, clipped } = match prepare(source, &output, video, &stop, deadline) {
+    let Prepared { source, encoder, size, clipped, audio } = match prepare(source, &output, video, &stop, deadline) {
         Ok(prepared) => prepared,
         Err(error) => {
             let _ = ready.send(Err(error));
             return Finished::failed_to_join();
         }
     };
-    let _ = ready.send(Ok(Started { width: size.width, height: size.height, fps: video.fps, clipped }));
-    let clock = TickClock::new(Instant::now(), video.fps);
+    let started = Started { width: size.width, height: size.height, fps: video.fps, clipped, audio: audio.clone() };
+    let _ = ready.send(Ok(started));
+    let clock = start_clock(&encoder, video.fps);
     let limit = Limit { ticks: total_ticks(video.fps, video.max_seconds), seconds: video.max_seconds };
     let watch = Watch { stop: &stop, kill_switch: &kill_switch, counters: &counters };
     let ended = Sampling::new(source, &encoder, size, redactor).run(&clock, limit, &watch);
     let encoded = encoder.finish(counters.ticks());
-    finished(ended, encoded, &counters, video.fps, output.path())
+    finished(ended, encoded, audio, &counters, (video.fps, output.path()))
+}
+
+fn start_clock(encoder: &EncoderThread, fps: u32) -> TickClock {
+    let start = Instant::now();
+    let _ = encoder.input.send(EncoderInput::Begin { at: start });
+    TickClock::new(start, fps)
 }
 
 fn prepare(
@@ -114,13 +123,17 @@ fn prepare(
     source.wait_for_first_frame(stop, deadline)?;
     let size = output_size(source.size(), video.max_width);
     let settings = WriterSettings::new(output.path().to_path_buf(), video.format, size, video.fps, video.quality);
-    let encoder = EncoderThread::spawn(EncoderStart { settings, output: Arc::clone(output), stop, deadline })?;
-    Ok(Prepared { source, encoder, size, clipped })
+    let (capture, audio) = start_sound(video.audio);
+    let start = EncoderStart { settings, audio: capture, output: Arc::clone(output), stop, deadline };
+    let encoder = EncoderThread::spawn(start)?;
+    let audio = encoder.audio_refusal.as_deref().map_or(audio, without_sound);
+    Ok(Prepared { source, encoder, size, clipped, audio })
 }
 
-fn finished(ended: Ended, encoded: Encoded, counters: &Counters, fps: u32, path: &Path) -> Finished {
+fn finished(ended: Ended, encoded: Encoded, audio: AudioTrack, counters: &Counters, file: (u32, &Path)) -> Finished {
+    let (fps, path) = file;
     let progress = counters.progress(fps);
-    let Encoded { write_error, finalize_error } = encoded;
+    let Encoded { write_error, finalize_error, audio_note } = encoded;
     let reason = match ended {
         Ended::Because(reason) => reason,
         Ended::EncoderGone => {
@@ -135,6 +148,7 @@ fn finished(ended: Ended, encoded: Encoded, counters: &Counters, fps: u32, path:
         reason,
         write_error,
         finalize_error,
+        audio: AudioTrack { source: audio.source, note: audio.note.or(audio_note) },
     }
 }
 

@@ -191,7 +191,11 @@ fn record_headline(report: &RecordReport) -> String {
         RecordState::Recording => recording_line(report, path),
         RecordState::Finished => {
             let frames = frame_count(report.frames);
-            format!("saved {path} · {:.1} s · {frames} · {}", report.seconds, byte_size(report.bytes))
+            let saved = format!("saved {path} · {:.1} s · {frames} · {}", report.seconds, byte_size(report.bytes));
+            match report.audio {
+                Some(audio) => format!("{saved} · {}", audio.label()),
+                None => saved,
+            }
         }
     }
 }
@@ -199,6 +203,7 @@ fn record_headline(report: &RecordReport) -> String {
 fn recording_line(report: &RecordReport, path: &str) -> String {
     let mut parts =
         vec![format!("recording to {path}"), format!("{}x{} @ {} fps", report.width, report.height, report.fps)];
+    parts.extend(report.audio.map(|audio| audio.label().to_string()));
     if report.frames > 0 {
         parts.push(format!("{:.1} s", report.seconds));
         parts.push(frame_count(report.frames));
@@ -635,7 +640,7 @@ mod tests {
         element::fixtures::{app_window, element, snapshot, window, with_value},
         error::ErrorCode,
         geometry::ImageMapping,
-        protocol::Timing,
+        protocol::{RecordAudio, Timing},
         refs::{ElementRef, ImageRef},
     };
 
@@ -1490,6 +1495,7 @@ mod tests {
             width: 1920,
             height: 1200,
             fps: 30,
+            audio: None,
             note: None,
         }
     }
@@ -1524,6 +1530,27 @@ mod tests {
         assert_eq!(
             record(&saved),
             "saved C:\\clips\\x.mp4 · 12.4 s · 372 frames · 4.1 MB\ndropped 3 of 375 frames because encoding fell behind"
+        );
+    }
+
+    #[test]
+    fn record_reports_name_the_captured_sound() {
+        let running = RecordReport { audio: Some(RecordAudio::System), ..recording(RecordState::Recording) };
+        assert_eq!(
+            record(&running),
+            "recording to C:\\Videos\\Deckhand\\deckhand-20261011-101500.mp4 · 1920x1200 @ 30 fps · system audio · stop with observe mode=record action=stop"
+        );
+        let saved = RecordReport {
+            seconds: 3.0,
+            frames: 90,
+            bytes: 2048,
+            audio: Some(RecordAudio::Both),
+            note: Some("recorded without sound: no microphone is available".to_string()),
+            ..recording(RecordState::Finished)
+        };
+        assert_eq!(
+            record(&saved),
+            "saved C:\\Videos\\Deckhand\\deckhand-20261011-101500.mp4 · 3.0 s · 90 frames · 2 KB · system and mic audio\nrecorded without sound: no microphone is available"
         );
     }
 

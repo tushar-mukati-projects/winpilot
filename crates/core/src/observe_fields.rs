@@ -6,7 +6,7 @@ use crate::{
 
 use ObserveMode::{Apps, Clipboard, Elements, Record, Screenshot, Text};
 
-const FIELD_MODES: [(&str, &[ObserveMode]); 22] = [
+const FIELD_MODES: [(&str, &[ObserveMode]); 23] = [
     ("window", &[Elements, Text]),
     ("target", &[Text, Screenshot, Record]),
     ("query", &[Elements, Apps]),
@@ -29,6 +29,7 @@ const FIELD_MODES: [(&str, &[ObserveMode]); 22] = [
     ("max_seconds", &[Record]),
     ("cursor", &[Record]),
     ("path", &[Record]),
+    ("audio", &[Record]),
 ];
 
 impl ObserveArgs {
@@ -56,6 +57,7 @@ impl ObserveArgs {
             ("max_seconds", self.max_seconds.is_some()),
             ("cursor", self.cursor.is_some()),
             ("path", self.path.is_some()),
+            ("audio", self.audio.is_some()),
         ]
         .into_iter()
         .filter_map(|(name, given)| given.then_some(name))
@@ -121,6 +123,7 @@ mod tests {
             max_seconds: Some(1),
             cursor: Some(true),
             path: Some(String::new()),
+            audio: Some(crate::recording::RecordAudio::None),
             mode: Elements,
         };
         let given = everything.given_fields();

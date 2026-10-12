@@ -1,4 +1,5 @@
 mod actor;
+mod audio;
 mod canvas;
 mod capture_area;
 mod capturer;
@@ -25,12 +26,13 @@ mod window;
 mod window_print;
 mod window_visibility;
 
+pub use audio::{AudioCapture, AudioChunk, AudioEnd, AudioFormat, AudioSource, Pcm, capture_audio};
 pub use capturer::Capturer;
 pub use encode::{EncodeOptions, Encoded, encode};
 pub use frame::{Frame, FrameSource};
 pub use marks::Mark;
 pub use ocr::{ocr, ocr_magnified};
 pub use recorder::{
-    COVER_HOLD, CoverHold, EndReason, Finished, OutputFile, Progress, Recorder, RecordingSource, RecordingSpec, Redact,
-    Redactor, Started, StopCheck, VideoSettings,
+    AudioTrack, COVER_HOLD, CoverHold, EndReason, Finished, OutputFile, Progress, Recorder, RecordingSource,
+    RecordingSpec, Redact, Redactor, Started, StopCheck, VideoSettings,
 };

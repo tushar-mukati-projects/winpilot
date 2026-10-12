@@ -52,6 +52,7 @@ fn observe(args: &ObserveArgs, redaction: Redaction<'_>) -> String {
         ("marks", flag(args.marks)),
         ("action", args.action.as_ref().map(wire_name)),
         ("fps", args.fps.map(|fps| fps.to_string())),
+        ("audio", args.audio.map(|audio| audio.name().to_string())),
         ("name", args.path.as_deref().map(base_name)),
     ]);
     joined(&format!("mode={}", args.mode.name()), &details)

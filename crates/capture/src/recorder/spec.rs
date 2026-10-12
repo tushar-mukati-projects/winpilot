@@ -7,6 +7,7 @@ use deckhand_core::{
 };
 
 use super::output_file::OutputFile;
+use crate::audio::AudioSource;
 use crate::frame::Frame;
 
 pub trait Redact: Send {
@@ -31,6 +32,7 @@ pub struct VideoSettings {
     pub max_seconds: u32,
     pub cursor: bool,
     pub max_width: u32,
+    pub audio: Option<AudioSource>,
 }
 
 pub struct RecordingSpec {

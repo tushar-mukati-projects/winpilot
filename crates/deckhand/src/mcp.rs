@@ -31,8 +31,8 @@ const ALWAYS_LOAD: &str = "anthropic/alwaysLoad";
 
 const OBSERVE: &str = "See the desktop. mode: elements (default: a window as element lines with refs like e12; \
 query filters; all_windows with query searches every window), text (full text, UI Automation first, OCR fallback), \
-screenshot (an image with an img id for point targets), record (start, stop or status an MP4 or GIF), windows, \
-monitors, apps (installed; query filters), clipboard or status. window picks the window for elements and text; \
+screenshot (an image with an img id for point targets), record (start, stop or status an MP4 with sound, or a GIF), \
+windows, monitors, apps (installed; query filters), clipboard or status. window picks the window for elements and text; \
 target picks an element or window for text, screenshot and record. A field that belongs to another mode is an error.";
 const ACT: &str = "Do things: up to 50 steps per call, each {\"do\":...}, then a diff (return: diff, observe, \
 screenshot or none). Steps: click, type, key (press/down/up), mouse (move/down/up/scroll/drag), set \
@@ -48,6 +48,7 @@ const INSTRUCTIONS: &str = "Deckhand controls the Windows desktop through UI Aut
 - Use the pick step for Open, Save or upload dialogs, window action=launch to open apps, and wait instead of sleeping.\n\
 - When observe says an app exposes no UI Automation, it lists OCR lines with positions; target that text with ocr:\"Export\" (add window:, process: or nth: as needed).\n\
 - Take a screenshot only when text is not enough. Give a point in it with its img id so it maps back to the screen: {\"x\":640,\"y\":360,\"img\":\"i7\"}; without img, x and y are physical screen pixels.\n\
+- observe mode=record saves an MP4 with the PC's sound by default (audio: system, mic, both or none); GIFs are silent.\n\
 - act background:true works without the real mouse, keyboard or focus: UI Automation patterns first, and window messages for apps without them (clicks, drags, scrolls, typing and plain keys at a target); modifier chords and file pickers still need the foreground. Windows on other virtual desktops always get that.\n\
 - The user can stop all input with the kill hotkey ({hotkey}); act then fails with stopped_by_user. Tell the user instead of retrying.";
 
@@ -292,6 +293,7 @@ mod tests {
             "max_seconds",
             "cursor",
             "path",
+            "audio",
         ];
         for field in observe_fields {
             assert!(observe.input_schema["properties"].get(field).is_some(), "observe lacks {field}");

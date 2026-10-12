@@ -1,13 +1,21 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use super::clock::seconds_of;
+use crate::audio::AudioSource;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AudioTrack {
+    pub source: Option<AudioSource>,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Started {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
     pub clipped: bool,
+    pub audio: AudioTrack,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,6 +45,7 @@ pub struct Finished {
     pub reason: EndReason,
     pub write_error: Option<String>,
     pub finalize_error: Option<String>,
+    pub audio: AudioTrack,
 }
 
 #[derive(Debug, Default)]
@@ -91,6 +100,7 @@ impl Finished {
             reason: EndReason::CaptureFailed("the recording thread stopped unexpectedly".to_string()),
             write_error: None,
             finalize_error: None,
+            audio: AudioTrack::default(),
         }
     }
 
@@ -99,6 +109,7 @@ impl Finished {
             self.reason_note(),
             self.write_error_note(),
             self.dropped_note(),
+            self.audio.note.clone(),
             self.finalize_error.as_deref().map(unplayable),
         ]
         .into_iter()
@@ -152,6 +163,7 @@ mod tests {
             reason,
             write_error: None,
             finalize_error: finalize_error.map(str::to_string),
+            audio: AudioTrack::default(),
         }
     }
 
@@ -191,6 +203,19 @@ mod tests {
         let mut failed = finished(EndReason::EncoderFailed("disk full".to_string()), 0, None);
         failed.write_error = Some("disk full".to_string());
         assert_eq!(failed.note().unwrap(), "stopped early because encoding failed: disk full");
+    }
+
+    #[test]
+    fn an_audio_note_sits_between_the_frame_count_and_finalize_errors() {
+        let mut finished = finished(EndReason::Stopped, 0, Some("disk full"));
+        finished.audio = AudioTrack {
+            source: Some(AudioSource::System),
+            note: Some("sound stopped at 4.0 s: the playback device was disconnected or changed".to_string()),
+        };
+        assert_eq!(
+            finished.note().unwrap(),
+            "sound stopped at 4.0 s: the playback device was disconnected or changed; the file may be unplayable: disk full"
+        );
     }
 
     #[test]

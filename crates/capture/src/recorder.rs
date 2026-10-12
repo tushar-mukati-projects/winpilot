@@ -1,3 +1,7 @@
+mod audio_backlog;
+mod audio_feed;
+mod audio_lead;
+mod audio_type;
 mod bitrate;
 mod changed_area;
 mod clock;
@@ -6,16 +10,19 @@ mod encoder;
 mod gif_writer;
 mod gpu;
 mod layout;
+mod locked_buffer;
 mod media_foundation;
 mod media_type;
 mod monitor_area;
 mod mp4;
+mod mp4_audio;
 mod nv12;
 mod outcome;
 mod output_file;
 mod process_mta_anchor;
 mod sampler;
 mod scaler;
+mod sound_start;
 mod source;
 mod spec;
 mod staging;
@@ -35,14 +42,14 @@ use std::time::{Duration, Instant};
 use deckhand_core::{Context, Error, Result};
 
 pub use cover_hold::{COVER_HOLD, CoverHold};
-pub use outcome::{EndReason, Finished, Progress, Started};
+pub use outcome::{AudioTrack, EndReason, Finished, Progress, Started};
 pub use output_file::OutputFile;
 pub use spec::{RecordingSource, RecordingSpec, Redact, Redactor, StopCheck, VideoSettings};
 
 use outcome::Counters;
 use process_mta_anchor::anchor_mta_for_process_lifetime;
 use sampler::SamplerInput;
-use thread_join::join_within;
+pub(crate) use thread_join::join_within;
 
 const ABANDON_GRACE: Duration = Duration::from_secs(1);
 
@@ -61,7 +68,7 @@ impl Recorder {
         let RecordingSpec { source, output, video, redactor, kill_switch, stop } = spec;
         let (ready, started) = mpsc::channel();
         let mut recorder = Self {
-            started: Started { width: 0, height: 0, fps: video.fps, clipped: false },
+            started: Started { width: 0, height: 0, fps: video.fps, clipped: false, audio: AudioTrack::default() },
             fps: video.fps,
             stop,
             counters: Arc::new(Counters::default()),
@@ -84,8 +91,8 @@ impl Recorder {
         Ok(recorder)
     }
 
-    pub const fn started(&self) -> Started {
-        self.started
+    pub const fn started(&self) -> &Started {
+        &self.started
     }
 
     pub fn progress(&self) -> Progress {

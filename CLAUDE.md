@@ -19,6 +19,13 @@ cargo test -p deckhand --test e2e -- --ignored --test-threads=1
 .\scripts\install.ps1 -Register
 ```
 
+```powershell
+.\scripts\install.ps1 -SpeechModel base
+cargo test -p deckhand-speech -- --ignored --test-threads=1
+```
+
+The first line downloads the Whisper model once into `%LOCALAPPDATA%\deckhand\models` and checks its pinned SHA-256; it builds and installs nothing. The ignored speech tests need that model (they skip themselves without it), write and delete a temporary WAV, and touch no audio devices. Set `DECKHAND_SPEECH_SAMPLE` to a media file (and optionally `DECKHAND_SPEECH_LANGUAGE`) and add `--nocapture` to print its transcript and the real-time factor; use `--release` for representative speed.
+
 The e2e test drives the real mouse and keyboard against the fixture app, so build the fixture first and run it only when the user agrees. The optional benchmark sits outside the workspace: `cargo run --release --manifest-path bench/deskbench/Cargo.toml` (`--skip-uia`, `--skip-capture`, `--skip-startup`, `--webview-process <exe>`, `--deny-title <text>`). `scripts/install.ps1` builds, installs to `%LOCALAPPDATA%\Programs\deckhand`, registers the `Deckhand.Agent` notification identity and, with `-Register`, the Claude Code MCP server. `-Uninstall` undoes it; `-Purge` also removes config and logs.
 
 ## Crates
@@ -32,6 +39,7 @@ The e2e test drives the real mouse and keyboard against the fixture app, so buil
 | `deckhand-desktop` | Windows, focus, launch, clipboard, monitors, virtual desktops, integrity, change monitor, overlay, notifications, named sync objects | core, windows |
 | `deckhand-worker` | The engine: runs every observe mode and act step using the platform crates | all of the above |
 | `deckhand` | The binary: `deckhand mcp` (rmcp stdio server, worker supervisor, audit log) and `deckhand worker` | core, worker, rmcp |
+| `deckhand-speech` | Local speech-to-text: whisper.cpp ggml model reader, Whisper on candle with a cached decoder, resampling, Media Foundation media decoding. Takes plain samples; does not depend on capture. | core, windows, candle |
 | `deckhand-fixture` | A test-only Win32 app with known controls and file dialogs, and a library (`FixtureProcess`) that tests use to launch it; a dev-dependency only | windows |
 
 Public APIs live in each crate's `lib.rs`, which only declares modules and re-exports. Those signatures are the contract between crates; change them only when every caller is updated in the same change.
@@ -59,6 +67,7 @@ Public APIs live in each crate's `lib.rs`, which only declares modules and re-ex
 | Virtual desktops | `crates/desktop/src/virtual_desktops.rs`, `desktop_ids.rs` |
 | Overlay | `crates/desktop/src/overlay/` |
 | Notifications | `crates/desktop/src/notify.rs`, `toast.rs`, `balloon*.rs` |
+| Speech-to-text | `crates/speech/src/`: `transcriber`, `windowing`, `decoder` and `text_decoder` (model), `logits` (timestamp rules), `ggml` and `tensor_names` (model file), `audio` (resample), `media` (file decoding), `paths` (model location) |
 | Fixture launcher for tests | `crates/fixture/src/launch.rs` (`FixtureProcess`, re-exported from `lib.rs`) |
 
 ## Code rules

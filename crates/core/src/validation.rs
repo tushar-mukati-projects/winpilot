@@ -10,7 +10,7 @@ use crate::{
     observe_request::{ScreenshotRequest, TextRequest},
     protocol::{NOTIFY_MESSAGE_MAX, NOTIFY_TITLE_MAX},
     record_plan::{RECORD_SECONDS, RECORD_WIDTHS},
-    recording::{RecordAction, RecordRequest, VideoFormat},
+    recording::{RecordAction, RecordAudio, RecordRequest, VideoFormat},
     steps::{ActArgs, KeyAction, MouseAction, SetChange, Step, WindowAction},
 };
 
@@ -228,8 +228,14 @@ impl RecordRequest {
         check_optional("fps", self.fps, &(1..=fps_limit))?;
         check_optional("max_seconds", self.max_seconds, &RECORD_SECONDS)?;
         check_optional("max_width", self.max_width, &RECORD_WIDTHS)?;
-        check_record_path(self.path.as_deref(), self.format)
+        check_record_path(self.path.as_deref(), self.format)?;
+        check_record_audio(self)
     }
+}
+
+fn check_record_audio(request: &RecordRequest) -> Result<()> {
+    let Some(format) = VideoFormat::of_request(request.path.as_deref(), request.format) else { return Ok(()) };
+    RecordAudio::for_format(request.audio, format).map(drop)
 }
 
 fn check_no_start_options(request: &RecordRequest) -> Result<()> {
@@ -548,6 +554,22 @@ mod tests {
     }
 
     #[test]
+    fn record_audio_is_refused_for_gif_and_accepted_for_mp4() {
+        let gif = RecordRequest { format: Some(VideoFormat::Gif), audio: Some(RecordAudio::System), ..start() };
+        assert_eq!(invalid_message(gif.validate()), "gif recordings have no sound; drop audio=system or record mp4");
+        let gif_path =
+            RecordRequest { path: Some("C:\\v\\a.gif".to_string()), audio: Some(RecordAudio::Both), ..start() };
+        assert_eq!(invalid_message(gif_path.validate()), "gif recordings have no sound; drop audio=both or record mp4");
+        let silent_gif = RecordRequest { format: Some(VideoFormat::Gif), audio: Some(RecordAudio::None), ..start() };
+        assert!(silent_gif.validate().is_ok());
+        for audio in [RecordAudio::System, RecordAudio::Mic, RecordAudio::Both, RecordAudio::None] {
+            assert!(RecordRequest { audio: Some(audio), ..start() }.validate().is_ok());
+            let mp4 = RecordRequest { format: Some(VideoFormat::Mp4), audio: Some(audio), ..start() };
+            assert!(mp4.validate().is_ok());
+        }
+    }
+
+    #[test]
     fn record_stop_and_status_take_no_start_options() {
         assert!(RecordRequest::new(RecordAction::Stop).validate().is_ok());
         let noisy = RecordRequest {
@@ -558,6 +580,11 @@ mod tests {
         assert_eq!(
             invalid_message(noisy.validate()),
             "mode=record action=stop takes no other fields; remove fps, path"
+        );
+        let stop_audio = RecordRequest { audio: Some(RecordAudio::Mic), ..RecordRequest::new(RecordAction::Stop) };
+        assert_eq!(
+            invalid_message(stop_audio.validate()),
+            "mode=record action=stop takes no other fields; remove audio"
         );
         let status = RecordRequest { monitor: Some(0), ..RecordRequest::new(RecordAction::Status) };
         assert_eq!(

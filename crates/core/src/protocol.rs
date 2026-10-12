@@ -8,7 +8,7 @@ pub use crate::{
         TextRequest,
     },
     quality::Quality,
-    recording::{RecordAction, RecordReport, RecordRequest, RecordState, VideoFormat},
+    recording::{RecordAction, RecordAudio, RecordReport, RecordRequest, RecordState, VideoFormat},
     reports::{
         ActReport, After, AppInfo, AppKind, AppsReport, ClipboardReport, DiffReport, Found, MonitorInfo,
         MonitorsReport, Observation, ScreenshotReport, SearchReport, StatusReport, StepOutcome, TextReport, TextSource,

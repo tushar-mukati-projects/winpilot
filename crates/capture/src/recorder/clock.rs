@@ -43,6 +43,16 @@ pub(crate) fn sample_time(tick: u64, fps: u32) -> i64 {
     i64::try_from(units).unwrap_or(i64::MAX)
 }
 
+pub(crate) fn audio_frames_at(tick: u64, fps: u32, rate: u32) -> u64 {
+    let frames = u128::from(tick) * u128::from(rate) / u128::from(fps.max(1));
+    u64::try_from(frames).unwrap_or(u64::MAX)
+}
+
+pub(crate) fn audio_sample_time(frame: u64, rate: u32) -> i64 {
+    let units = u128::from(frame) * u128::from(HUNDRED_NANOS_PER_SECOND) / u128::from(rate.max(1));
+    i64::try_from(units).unwrap_or(i64::MAX)
+}
+
 pub(crate) fn gif_delay(first_tick: u64, end_tick: u64, fps: u32) -> u64 {
     let centiseconds =
         |tick: u64| (u128::from(tick) * u128::from(CENTISECONDS_PER_SECOND)).div_ceil(u128::from(fps.max(1)));
@@ -107,6 +117,16 @@ mod tests {
         assert_eq!(total_ticks(60, 1800), 108_000);
         assert_eq!(total_ticks(0, 5), 5);
         assert!((seconds_of(372, 30) - 12.4).abs() < 1e-9);
+    }
+
+    #[test]
+    fn audio_positions_line_up_with_video_ticks() {
+        assert_eq!(audio_frames_at(30, 30, 48_000), 48_000);
+        assert_eq!(audio_frames_at(1, 30, 48_000), 1600);
+        assert_eq!(audio_frames_at(7, 24, 48_000), 14_000);
+        assert_eq!(audio_sample_time(48_000, 48_000), sample_time(30, 30));
+        assert_eq!(audio_sample_time(1024, 48_000), 213_333);
+        assert_eq!(audio_sample_time(0, 0), 0);
     }
 
     #[test]

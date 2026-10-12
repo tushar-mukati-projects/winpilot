@@ -91,10 +91,11 @@ The server reads `%APPDATA%\deckhand\config.toml` once at startup and sends it t
 |---|---|
 | `deckhand-core` | Pure logic and the shared protocol: tool arguments and their validation, selectors, keys, roles, refs, geometry, diff, output formatting, config and themes, the agent-name mapping, OCR text matching, IPC framing. No Windows APIs, so it is tested exhaustively. |
 | `deckhand-uia` | UI Automation on one dedicated thread: automation setup, cache requests, snapshots, the element registry with refs and fingerprints, re-finding stale refs, pattern actions, text. |
-| `deckhand-capture` | Screen capture (DXGI duplication, GDI, PrintWindow), resize, JPEG and PNG encoding, ref marks, OCR, and the recorder (Windows.Graphics.Capture to Media Foundation H.264 or GIF). |
+| `deckhand-capture` | Screen capture (DXGI duplication, GDI, PrintWindow), resize, JPEG and PNG encoding, ref marks, OCR, WASAPI audio capture (`capture_audio`, `AudioCapture`), and the recorder (Windows.Graphics.Capture and WASAPI to Media Foundation H.264 and AAC, or GIF). |
 | `deckhand-input` | SendInput for mouse, keyboard and Unicode text, cursor glides, releasing stuck inputs, the Raw Input activity monitor, the kill-switch hotkey. |
 | `deckhand-desktop` | Window enumeration, focus and placement, launching apps, the clipboard, monitors and DPI, virtual desktops, WinEvent change hooks, integrity levels and the secure desktop, named sync objects, the overlay, notifications. |
 | `deckhand-worker` | The engine: every observe mode and act step, built from the platform crates, plus the guard (kill switch, yield, deny lists, actor lock). |
+| `deckhand-speech` | Local speech-to-text: the whisper.cpp ggml model reader, Whisper on candle with a cached decoder, resampling and downmixing, Media Foundation decoding of media files. Independent of the other platform crates; it takes plain interleaved samples. |
 | `deckhand` | The binary: MCP server (rmcp), worker supervisor, audit log. |
 | `deckhand-fixture` | A test-only Win32 app with known controls, delayed elements and file dialogs, plus a library (`FixtureProcess`) that tests use to launch it without stealing focus and to close it. |
 
@@ -108,6 +109,8 @@ COM objects are bound to threads, so the platform crates use the owning-thread a
 - **Capture actor** (`deckhand-capture`). Owns the GDI surfaces and the DXGI duplication, and runs OCR.
 - **Message threads** (`deckhand-desktop`, `deckhand-input`). The change monitor, activity monitor, hotkey listener, overlay and tray balloons each run a Win32 message loop on their own thread and stop by posting `WM_QUIT` when their owner is dropped.
 - **Recorder.** A sampling thread pulls frames and keeps time; an encoding thread writes the file, so a slow encoder drops frames instead of stalling capture.
+- **Audio capture.** One MTA thread per capture owns the WASAPI clients and sends timestamped chunks over a channel; it stops when its handle is stopped or dropped.
+- **Speech.** Each transcription runs in its own rayon pool whose threads lower themselves to below-normal priority; the calling thread drops to below normal too and is restored afterwards. Decoding a media file uses a scoped MTA apartment and `MFStartup` guard on the calling thread.
 - **Server.** A two-thread tokio runtime for MCP, plus one reader and one writer thread per worker pipe.
 
 Every thread that touches COM initializes it as MTA through a guard.
@@ -233,12 +236,14 @@ The overlay makes the agent visible without getting in the way. It runs on its o
 Windows.Graphics.Capture (window or monitor) ─▶ D3D11 staging ─▶ crop / scale / letterbox ─▶ redaction ─▶ encoder thread
                                                                                                      ├─ Media Foundation sink writer: H.264 in fragmented MP4
                                                                                                      └─ GIF writer: changed area only, palette per frame
+WASAPI loopback and/or microphone ─▶ f32, silence-filled timeline ─▶ mix ─▶ 48 kHz stereo ─▶ encoder thread ─▶ AAC in the same MP4
 ```
 
 - **Source.** Windows.Graphics.Capture records a window (cropped to an element when asked) or a monitor; a region is recorded from the monitor it lies on, clipped to that monitor. Windows draws its yellow capture border around the source, which keeps recordings visible to the user. The cursor is captured or not as asked. A window on another virtual desktop is refused, because Windows doesn't draw it there.
 - **Clock.** The sampler emits frames at a constant rate. When the source has no new frame, or capture falls behind, the previous frame is held, so nothing is ever shown early and the timeline matches wall time.
 - **Size.** The output size is chosen at the start: the source scaled down to `max_width`, keeping its shape and even dimensions. A window resized mid-recording is scaled to fit, with black bars where the shape differs. A monitor that changes resolution or position is followed.
 - **MP4.** Media Foundation's sink writer with hardware transforms enabled, writing H.264 into a fragmented MP4 container, tagged BT.709. The bitrate is 0.05, 0.08, 0.12 or 0.2 bits per pixel per frame for `low` to `max`, clamped to 1–60 Mbps. Outputs under 720 lines are converted to NV12 by Deckhand; larger ones are offered to the encoder as RGB32 first, with NV12 as the fallback. Fragmented MP4 means a file plays up to its last fragment, under a second from the end, even if the process is killed.
+- **Sound.** `audio` picks `system` (the default for MP4: WASAPI loopback of the default playback device), `mic` (the default capture device) or `both`; GIFs refuse any source but `none`. Capture is shared-mode and event-driven (with a 10 ms wake-up, since some Windows builds never signal loopback events), in each device's mix format converted to f32. For `both`, the microphone is downmixed or upmixed and linearly resampled to the loopback format and the two are summed and clipped. Loopback delivers no packets while nothing plays, so each device has a timeline anchored to the performance counter: every packet is placed by its QPC timestamp, a gap of more than 30 ms becomes silence, audio stamped before the start or overlapping what was already filled is trimmed, and an idle device is filled with silence up to 250 ms behind now (a second at a time), then exactly up to the stop. The stream is therefore continuous wall-clock audio from a known instant. The encoder thread aligns it to the video clock (trimming or padding the head by the difference between the two start instants), converts it to 48 kHz stereo 16-bit PCM, and the sink writer encodes AAC at 160 kbps into the same fragmented MP4. Audio is written only up to the video written so far and, at the end, cut or padded to exactly the video's length. If no device can be opened (or Windows blocks microphone access, which is reported as needs-user and never changed), or the AAC encoder is missing, the recording runs without sound and says why; if the device is lost mid-recording, the rest of the track is silence and the report says when sound stopped.
 - **GIF.** At most 20 fps. Only the changed rectangle of each frame is written, and unchanged frames extend the previous frame's delay. `video_quality` sets how hard the palette is fitted.
 - **Ending.** A recording ends at `max_seconds`, on the kill switch, when the recorded window closes, when the recorded monitor disappears, or on `stop`. The outcome (file, duration, frames, size, dropped frames, why it ended) is kept until the next `status`, `stop` or `start` reports it.
 - **Files.** The output file is reserved with create-new semantics before recording starts, so nothing is ever overwritten: default names get `-2`, `-3` and so on, and an explicit path that exists is refused. Paths under `deny_paths` are refused.
@@ -251,7 +256,40 @@ Before showing it, Deckhand checks `ToastNotifier.Setting`, so it can say when n
 
 Without the registered identity, such as a dev build run from `target`, Deckhand falls back to a tray-icon balloon on its own message thread, which Windows may also hold back. Balloons are dismissed when the worker shuts down.
 
-## 11. Background mode and virtual desktops
+## 11. Speech
+
+`deckhand-speech` turns audio into text on the PC, so an agent can listen in on a call, a video or the microphone, or transcribe a media file, without anything leaving the machine. It is a library today; `observe mode=listen` will wire it to the WASAPI capture in `deckhand-capture` or to a file.
+
+- **Engine.** OpenAI's Whisper on the CPU in pure Rust with candle (`candle-core`, `candle-nn` and `candle-transformers` 0.11.0, pinned). whisper.cpp through `whisper-rs` 0.16 was the first choice and its C++ part built with the Build Tools CMake, but `whisper-rs-sys` 0.15 ships bindings generated on Linux whose glibc `FILE` layout checks fail to compile on MSVC, and regenerating them needs libclang, which the build machine lacks. candle needs nothing beyond the Rust toolchain. The cost is speed: whisper.cpp would likely be two to three times faster.
+- **Model.** The multilingual whisper.cpp ggml files (`ggml-tiny.bin`, `ggml-base.bin`, `ggml-small.bin`) from `huggingface.co/ggerganov/whisper.cpp`, installed by `scripts\install.ps1 -SpeechModel <name>` into `%LOCALAPPDATA%\deckhand\models` and checked against a SHA-256 pinned in the script. A mismatch deletes the download, because this laptop has a known bit-flip fault on large writes. Nothing is downloaded at run time; a missing model is a `needs_user` error naming the install command. The crate reads the ggml format itself (`ggml.rs`): header, mel filters, the vocabulary as raw bytes, and f16 or f32 tensors, renamed to candle's Hugging Face names (`tensor_names.rs`) and widened to f32. Quantized ggml files are refused with a clear message.
+- **Pipeline.** Interleaved f32 at any rate and channel count, downmixed by averaging, then a 16 kHz windowed-sinc resampler (Blackman window, 16 zero crossings, table-driven), then candle's log-mel spectrogram, then 30-second windows through the encoder, then a greedy decoder. candle's own decoder re-runs every earlier token at each step, so the crate has its own decoder with a key/value cache (`text_decoder.rs`) that reuses the same weights. Logits follow OpenAI's timestamp rules (`logits.rs`): the first token is a timestamp within the first second, timestamps pair up and never go backwards, and a timestamp is forced when timestamps together outweigh any text token. A window that ends mid-sentence resumes at its last complete timestamp. Windows Whisper rates as no speech (no-speech probability over 0.6 with an average log-probability under −1) are dropped, and digital silence (peak under −60 dBFS) skips the model entirely, which avoids Whisper's habit of inventing "Thank you." over silence. `[BLANK_AUDIO]`-style markers are removed.
+- **Languages.** Detected from the first window's language tokens, or given as a code or name (`hi`, `hindi`, `en`). `translate` asks for English. English-only models refuse other languages and translation.
+- **CPU and priority.** Half the logical cores by default (the user is on the PC), at below-normal priority. candle's matrix multiplies run on the current rayon pool, so the per-call pool bounds them. The mel spectrogram spawns a few short-lived threads of its own at normal priority.
+- **Speed and memory.** The `base` model ran about 4.3 times faster than real time on the Ryzen 7 6800HS (8 threads, optimized build: 51 s of synthetic English speech in 11.6 to 12.3 s) and 3.5 times in a debug build, with every word right (it wrote numbers as digits and capitalised one "windows"). The weights sit in memory as f32: about 300 MB for `base` and 1 GB for `small`.
+- **Media files.** `decode_media` opens a Media Foundation Source Reader, selects only the first audio stream and asks for 16 kHz mono float, falling back to float at the native format. Formats are whatever Windows decodes (WAV, MP3, M4A/AAC, MP4, WMA, and WebM with the Web Media Extensions). No audio track is an `invalid_argument` error, an undecodable file `unsupported`, and decoding stops at two hours of 16 kHz audio.
+
+The crate API, for the `listen` wiring:
+
+```rust
+pub struct Transcriber;
+impl Transcriber {
+    pub fn load(model: &Path) -> Result<Transcriber>;
+    pub fn transcribe(&self, samples: &[f32], sample_rate: u32, channels: u16, options: &TranscribeOptions) -> Result<Transcript>;
+    pub fn is_multilingual(&self) -> bool;
+}
+pub struct TranscribeOptions { pub language: Option<String>, pub translate: bool, pub threads: Option<usize> }
+pub struct Transcript { pub language: String, pub segments: Vec<Segment> }
+pub struct Segment { pub start_ms: u64, pub end_ms: u64, pub text: String }
+impl Transcript { pub fn to_text(&self) -> String; pub fn is_empty(&self) -> bool; }
+pub fn decode_media(path: &Path) -> Result<(Vec<f32>, u32, u16)>;
+pub fn installed_model_path() -> Result<PathBuf>;
+pub fn default_model_path() -> Result<PathBuf>;
+pub fn model_path(name: &str) -> Result<PathBuf>;
+pub fn model_missing_error() -> Error;
+```
+
+`Transcriber` is `Send` and `Sync`; the model sits behind a mutex because decoding mutates its caches, so the worker should load it once, on first use, and keep it on one long-lived speech thread. `to_text` prints one `[mm:ss] text` line per segment. `listen` will take `seconds` and `source` (system, mic or both) or a `path`, plus `language` and `translate`, capture through `deckhand-capture`'s `Pcm`, and pass `pcm.samples`, `pcm.sample_rate` and `pcm.channels` straight in.
+## 12. Background mode and virtual desktops
 
 Normal mode behaves like a careful person: bring the window forward, glide the mouse, type real keys. Background mode (`act { background: true }`, falling back to `[act] background`, which is off by default) never touches the real mouse, keyboard or focus. The per-step rules are in the README's [background mode table](../README.md#background-mode-and-virtual-desktops). UI Automation patterns come first: a plain left click on an element goes through Invoke, Toggle, SelectionItem, ExpandCollapse and finally the legacy default action; typing into a writable field is appended to its value with `SetValue`, since patterns can't place a caret, and the step says so in a note; scrolling uses the element's or a container's scroll pattern.
 
@@ -265,16 +303,16 @@ A step that needs real input is refused before it runs, rather than silently fal
 
 Two limits are inherent. Web apps that ignore `SetValue` need the real keyboard. And true parallel control, with the agent's own mouse and keyboard while the user works, needs a separate Windows session (RDP loopback, a VM, or Microsoft's Agent Workspace preview), which Windows 11 Home doesn't offer out of the box.
 
-## 12. Testing strategy
+## 13. Testing strategy
 
 - **Unit tests** sit next to the code. `deckhand-core` is pure and tested exhaustively: selector parsing and ranking, keys, diff, formatting and token budgets, validation, config, deadlines, quality presets, glide paths and the agent-name mapping.
 - **Safe by default.** Plain `cargo test --workspace` may read the desktop (enumerate windows, snapshot, capture to memory) but must never inject input, move the mouse, change focus, write the clipboard, open or close windows, or leave files behind. It is safe to run while the user works.
-- **Opt-in desktop tests.** Anything more is `#[ignore = "<reason>"]`: moving the mouse and keyboard, opening dialogs or changing focus, opening the fixture app, recording the screen or encoding video, showing the overlay, writing the clipboard, showing a notification, launching Calculator, moving or closing real windows, registering a system-wide hotkey or raw input. These run with `-- --ignored` only when the user can leave the PC alone. Tests never print or save screen contents or window titles.
+- **Opt-in desktop tests.** Anything more is `#[ignore = "<reason>"]`: moving the mouse and keyboard, opening dialogs or changing focus, opening the fixture app, recording the screen or audio or encoding video, showing the overlay, writing the clipboard, showing a notification, launching Calculator, moving or closing real windows, registering a system-wide hotkey or raw input. These run with `-- --ignored` only when the user can leave the PC alone. Tests never print or save screen contents or window titles.
 - **The fixture app.** `deckhand-fixture` is a small Win32 app with known controls, delayed elements, Open and Save dialogs and a configurable title and position, so input tests have a stable target and never touch the user's own windows. Its library half, `FixtureProcess`, is the one launcher every test uses: it starts the app without activating it, on or off screen, waits for its window and closes it afterwards.
 - **End to end.** `crates/deckhand/tests/e2e.rs` starts the real binary with a throwaway `APPDATA` and `LOCALAPPDATA`, speaks MCP over stdio, checks that exactly the two tools are listed, and drives the fixture through batches, waits, file dialogs, screenshots, all-window queries and window actions. It also checks that closing the server's input finalizes a running recording into a valid MP4.
 - **Golden tasks** for comparing with Windows-MCP: Notepad (type 30 lines and save), Explorer (create, rename and move files in a scratch folder), Chrome (fill a web form including a native upload dialog), Calculator, reading Settings, and copying a paragraph from Chrome into Notepad.
 
-## 13. Known limits
+## 14. Known limits
 
 - Model thinking time remains. Deckhand cuts turns and context but can't remove model latency.
 - The UAC prompt, Ctrl+Alt+Del and the lock screen live on the secure desktop and are unreachable. Elevated apps can't be driven by an unelevated process.
@@ -284,7 +322,7 @@ Two limits are inherent. Web apps that ignore `SetValue` need the real keyboard.
 - Title deny rules only see the title bar.
 - An unsigned build that injects input may be flagged by Defender or Smart App Control; signing matters for distribution.
 
-## 14. Alternatives considered
+## 15. Alternatives considered
 
 | Option | Verdict |
 |---|---|
@@ -295,14 +333,14 @@ Two limits are inherent. Web apps that ignore `SetValue` need the real keyboard.
 | **Screenshot-first control** | Rejected as the default. Images cost far more tokens than element lines, coordinates break on DPI and layout changes, and acting by element is more reliable. Screenshots remain available, with marks and point targets, for canvas apps and visual checks. Vision parsers such as OmniParser were also too slow (0.6 s or more per frame on a GPU). |
 | **TypeScript or Python** | Rejected. The costs are COM calls, image work and input hooks; Rust reaches them directly through `windows-rs` with no interpreter lock or native-addon layer, starts in milliseconds and ships as one small executable. |
 
-## 15. Future ideas
+## 16. Future ideas
 
 - **A signed `uiAccess` build** to drive elevated windows. Whether a self-signed certificate is enough for `uiAccess` is unverified.
 - **A CDP fast path** for a dedicated automation Chrome profile, for pages where the accessibility tree is too coarse.
 - **Macros:** record a successful `act` batch and replay it by name.
 - **UIA Remote Operations**, to batch several pattern calls into one cross-process round trip.
 
-## 16. Sources
+## 17. Sources
 
 - Measurements: `bench/deskbench`, plus transcript and MCP-log analysis of Windows-MCP 0.8.8.
 - Windows-MCP: https://github.com/CursorTouch/Windows-MCP (issues #35, #87, #383, #416, #453)

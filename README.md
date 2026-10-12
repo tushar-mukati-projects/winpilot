@@ -23,7 +23,7 @@ after: window w2033540 notepad.exe "Save as" foreground …
 - **Two tools.** `observe` sees the screen in any form: elements, full text, screenshots, recordings, window, monitor and app lists, the clipboard and status. `act` runs a batch of up to 50 steps and reports a diff.
 - **Background mode.** Steps can run without touching your mouse, keyboard or focus, through UI Automation patterns or, for apps without them, window messages, including on windows on other virtual desktops.
 - **Visible agent.** An animated overlay rings the window being driven and names the agent ("Claude is controlling"), with themes, custom colours and a demo mode for screen recorders.
-- **Recording.** Record a window, element, region or monitor to MP4 (H.264) or GIF. Files stay playable even if something crashes.
+- **Recording.** Record a window, element, region or monitor to MP4 (H.264, with the PC's sound, the microphone or both) or GIF. Files stay playable even if something crashes.
 - **Notifications.** The agent can send you a Windows toast from "Deckhand" when a long task finishes.
 - **Safety rails.** A kill-switch hotkey, yielding to your own input, deny lists with blackout in screenshots and recordings, no control of elevated windows or the agent's own terminal, and an audit log.
 
@@ -53,7 +53,7 @@ Restart open Claude Code sessions to load it. A session still running the previo
 
 **Updating.** Pull and run the script again. It works even while sessions are using the old build: the running copy is renamed to `deckhand.old-<time>.exe` and deleted on a later run.
 
-**Uninstalling.** `.\scripts\install.ps1 -Uninstall` removes the MCP registration, the notification identity and the install folder. Your config (`%APPDATA%\deckhand`) and logs (`%LOCALAPPDATA%\deckhand`) stay unless you add `-Purge`.
+**Uninstalling.** `.\scripts\install.ps1 -Uninstall` removes the MCP registration, the notification identity and the install folder. Your config (`%APPDATA%\deckhand`) and logs and speech models (`%LOCALAPPDATA%\deckhand`) stay unless you add `-Purge`.
 
 ### Other MCP clients
 
@@ -83,7 +83,7 @@ Other clients, such as Codex, take the same command and `args` in their own conf
 | `elements` | One line per element of a window, with refs | `window`, `query`, `all_windows`, `all`, `coords`, `max` |
 | `text` | The full text of a window, element or region | `window` or `target` or `region`, `ocr`, `coords`, `max_chars` |
 | `screenshot` | A caption, then a JPEG or PNG image | `target` or `region` or `monitor`, `preset`, `quality`, `max_width`, `format`, `marks` |
-| `record` | Starts, stops or reports a screen recording | `action`, `target` or `region` or `monitor`, `format`, `fps`, `video_quality`, `max_width`, `max_seconds`, `cursor`, `path` |
+| `record` | Starts, stops or reports a screen recording | `action`, `target` or `region` or `monitor`, `format`, `fps`, `video_quality`, `max_width`, `max_seconds`, `cursor`, `path`, `audio` |
 | `windows` | The open app windows | none |
 | `monitors` | Displays with position, scale and work area | none |
 | `apps` | Installed apps that `window action=launch` can start | `query`, `max` |
@@ -111,6 +111,7 @@ Other clients, such as Codex, take the same command and `args` in their own conf
 | `marks` | Draw element ref labels on the screenshot. |
 | `action` | Recording `start`, `stop` or `status`; required for `mode=record`. `stop` and `status` take no other fields. |
 | `fps`, `max_seconds`, `cursor`, `path` | Override the [`[record]` config](#configuration) for one recording. |
+| `audio` | Recording `start` only: the sound in an MP4. `system` (default: what the PC plays), `mic`, `both` (mixed) or `none`. GIFs have no sound, so a GIF with any `audio` other than `none` is refused. |
 
 Arguments are checked per mode before anything runs. A field from another mode is an `invalid_argument` error that says where it belongs, such as `fps does not apply to mode=screenshot; it is for mode=record`. Text, screenshots and recordings take at most one source (`window`/`target`/`region` for text, `target`/`region`/`monitor` for the others); with none, they use the default window. When `apps` is cut short, a first line says so: `showing 30 of 212 installed apps; narrow with query or raise max`. `status` answers even when the worker is down or the config file is invalid.
 
@@ -189,10 +190,10 @@ Record a window, then stop:
 
 ```text
 observe {"mode":"record","action":"start","target":"window:\"Notepad\"","fps":15}
-recording to …\Videos\Deckhand\deckhand-20261012-101500.mp4 · 1280x800 @ 15 fps · stop with observe mode=record action=stop
+recording to …\Videos\Deckhand\deckhand-20261012-101500.mp4 · 1280x800 @ 15 fps · system audio · stop with observe mode=record action=stop
 
 observe {"mode":"record","action":"stop"}
-saved …\Videos\Deckhand\deckhand-20261012-101500.mp4 · 42.3 s · 635 frames · 3.8 MB
+saved …\Videos\Deckhand\deckhand-20261012-101500.mp4 · 42.3 s · 635 frames · 3.8 MB · system audio
 ```
 
 Launch Notepad, type, and save through the Save dialog in one call:
@@ -376,6 +377,7 @@ The overlay never takes focus or receives clicks. It is hidden from Deckhand's o
 `observe mode=record` records the default window, a window or element (cropped to it), a region or a monitor. One recording runs at a time.
 
 - **Formats.** MP4 (H.264 through Media Foundation, on the hardware encoder when there is one, tagged BT.709) or GIF.
+- **Sound.** MP4s carry an AAC track (48 kHz stereo, 160 kbps) of what the PC plays by default; `audio` picks `mic`, `both` (mixed) or `none`. Silence while nothing plays is kept, so sound stays in sync with the picture. If the sound can't start (no playback device, no microphone, or Windows blocking microphone access for desktop apps under Settings > Privacy & security > Microphone), the recording runs without sound and the reply says why; Deckhand never changes that setting. If the device disappears mid-recording, the rest is silent and the report says when sound stopped. The status and stop replies name the sound that was recorded. GIFs are always silent.
 - **Defaults.** 30 fps (GIF at most 20), quality `high`, up to 300 s, cursor shown, scaled to at most 1920 px wide (GIF 960), saved as `deckhand-<date>-<time>.mp4` in `Videos\Deckhand`, wherever OneDrive or a policy moved your Videos folder.
 - **Quality.** For MP4, `video_quality` sets the bitrate at 0.05, 0.08, 0.12 or 0.2 bits per pixel per frame, within 1–60 Mbps. For GIF it sets how hard the palette is fitted.
 - **Constant frame rate.** When nothing changes, or a frame can't be captured in time, the previous frame is held. A resized window is scaled to the size chosen at the start, with black bars where the shape differs. A monitor that changes resolution or position is followed.
@@ -389,6 +391,32 @@ The overlay never takes focus or receives clicks. It is hidden from Deckhand's o
 The `notify` step shows a Windows toast from "Deckhand", with its icon. It stays in Notification Center. The step's note says when notifications are turned off for Deckhand, for you or by group policy (`not shown: …`, though the step still succeeds), and when Windows may hold the banner back: during a full-screen app, presentation mode, the lock screen, or the first hour after sign-in. Do Not Disturb can't be detected, so the note never claims you saw it.
 
 Toasts need the app identity `Deckhand.Agent` that the install script registers. Without it, for example when running a dev build straight from `target`, Deckhand falls back to a tray balloon, which Windows may hold back.
+
+## Speech
+
+Deckhand can turn speech into text on your PC, so an agent can "listen in" on a call, a video or the microphone, or transcribe a media file. It runs OpenAI's Whisper locally on the CPU, in pure Rust ([candle](https://github.com/huggingface/candle)). Audio never leaves the machine and nothing is sent to a cloud service. The engine lives in the `deckhand-speech` crate; the `observe` mode that exposes it (`mode=listen`) is not wired up yet.
+
+**Install a model once.** Deckhand never downloads anything while it runs. Fetch a multilingual model with the install script:
+
+```powershell
+.\scripts\install.ps1 -SpeechModel base     # or tiny, or small
+```
+
+This only downloads the model; it doesn't rebuild or reinstall Deckhand. The file comes from the official whisper.cpp repository on Hugging Face (`ggerganov/whisper.cpp`), goes to `%LOCALAPPDATA%\deckhand\models\ggml-<name>.bin` and must match a SHA-256 pinned in the script; a mismatch deletes it and stops. Run the command again to re-check an installed model. `-Uninstall -Purge` removes the models with the logs.
+
+| Model | Download | Memory in use | Notes |
+|---|---|---|---|
+| `tiny` | 78 MB | about 160 MB | Fastest and least accurate. |
+| `base` | 148 MB | about 300 MB | The default balance of speed and accuracy. |
+| `small` | 488 MB | about 1 GB | More accurate, especially outside English and on noisy audio, but several times slower. |
+
+When several are installed, `base` is used first, then `small`, then `tiny`.
+
+**Languages.** The language is detected from the first 30 seconds, or you can name it (`en`, `hi`, `hindi`, any of Whisper's 99 languages). Translation to English is available too.
+
+**Speed.** On a Ryzen 7 6800HS laptop (8 cores, 16 threads), the `base` model transcribes about 4 seconds of speech per second of wall time, using half the logical cores at below-normal priority so your own work stays responsive. Silence is skipped without running the model.
+
+**Media files.** Anything Windows can decode with Media Foundation works: WAV, MP3, M4A and AAC, MP4 and WMA, plus WebM when the Web Media Extensions are installed. A file with no audio track gets a clear error.
 
 ## Safety
 
@@ -541,14 +569,15 @@ cargo test -p deckhand --test e2e -- --ignored --test-threads=1
 |---|---|
 | `deckhand-core` | Pure logic and the shared protocol: tool arguments and validation, selectors, keys, diff, output formatting, config, themes, agent names, OCR text matching, IPC framing. No Windows APIs. |
 | `deckhand-uia` | UI Automation on one dedicated thread: snapshots, refs and fingerprints, pattern actions, text. |
-| `deckhand-capture` | Screen and window capture (DXGI, GDI, PrintWindow), resize, JPEG/PNG encoding, marks, OCR, and recording to MP4 and GIF. |
+| `deckhand-capture` | Screen and window capture (DXGI, GDI, PrintWindow), resize, JPEG/PNG encoding, marks, OCR, audio capture (WASAPI), and recording to MP4 and GIF. |
 | `deckhand-input` | SendInput mouse, keyboard and text, cursor glide, the user-activity monitor, the kill-switch hotkey. |
 | `deckhand-desktop` | Windows, focus, launch, clipboard, monitors, virtual desktops, change events, the overlay, notifications. |
 | `deckhand-worker` | The engine behind every observe mode and act step. |
+| `deckhand-speech` | Local speech-to-text: Whisper on candle, the ggml model reader, resampling, Media Foundation decoding of media files. |
 | `deckhand` | The binary: MCP server, worker supervisor, audit log. |
 | `deckhand-fixture` | A test-only Win32 app with known controls and file dialogs, plus a small library (`deckhand_fixture::FixtureProcess`) that the tests use to launch and close it. |
 
-**Tests.** Plain `cargo test --workspace` is safe while you use the PC: it may read the desktop, but never injects input, moves the mouse, changes focus, writes the clipboard, opens windows or leaves files behind. Everything else is `#[ignore]`d with a reason, such as "moves the mouse and keyboard", "opens dialogs / changes focus", "records the screen", "shows the overlay", "writes the clipboard" or "shows a notification". Run those with `-- --ignored` only when you can leave the PC alone, and filter by test name to run one group. For example, the recording tests:
+**Tests.** Plain `cargo test --workspace` is safe while you use the PC: it may read the desktop, but never injects input, moves the mouse, changes focus, writes the clipboard, opens windows or leaves files behind. Everything else is `#[ignore]`d with a reason, such as "moves the mouse and keyboard", "opens dialogs / changes focus", "records the screen", "records audio", "shows the overlay", "writes the clipboard" or "shows a notification". Run those with `-- --ignored` only when you can leave the PC alone, and filter by test name to run one group. For example, the recording tests:
 
 ```powershell
 cargo test --release -p deckhand-capture -p deckhand-worker record -- --ignored --test-threads=1

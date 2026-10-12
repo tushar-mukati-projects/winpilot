@@ -2,11 +2,11 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use deckhand_capture::{Recorder, RecordingSpec, Redactor, VideoSettings};
+use deckhand_capture::{AudioSource, Recorder, RecordingSpec, Redactor, Started, VideoSettings};
 use deckhand_core::{
     Result,
     config::GuardConfig,
-    protocol::{RecordReport, RecordRequest},
+    protocol::{RecordAudio, RecordReport, RecordRequest},
     record_plan::{RecordPlan, record_plan},
 };
 
@@ -58,8 +58,14 @@ fn start_claimed(
         stop: Arc::clone(&claim.stop),
     };
     let recorder = Recorder::start(spec, patience(call))?;
-    let note = recorder.started().clipped.then(|| CLIPPED_NOTE.to_string());
+    let note = start_note(recorder.started());
     Ok(Active { recorder, path, area: source.area, note, ever_denied })
+}
+
+fn start_note(started: &Started) -> Option<String> {
+    let notes: Vec<String> =
+        [started.clipped.then(|| CLIPPED_NOTE.to_string()), started.audio.note.clone()].into_iter().flatten().collect();
+    (!notes.is_empty()).then(|| notes.join("; "))
 }
 
 fn redactor_for(redaction: Redaction, guard: &GuardConfig) -> (Redactor, Option<Arc<AtomicBool>>) {
@@ -92,11 +98,22 @@ const fn video_settings(plan: RecordPlan) -> VideoSettings {
         max_seconds: plan.max_seconds,
         cursor: plan.cursor,
         max_width: plan.max_width,
+        audio: audio_source(plan.audio),
+    }
+}
+
+const fn audio_source(audio: RecordAudio) -> Option<AudioSource> {
+    match audio {
+        RecordAudio::System => Some(AudioSource::System),
+        RecordAudio::Mic => Some(AudioSource::Mic),
+        RecordAudio::Both => Some(AudioSource::Both),
+        RecordAudio::None => None,
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use deckhand_capture::AudioTrack;
     use deckhand_core::protocol::RecordState;
 
     use super::*;
@@ -118,6 +135,27 @@ mod tests {
         let clipped = RecordReport { note: Some(CLIPPED_NOTE.to_string()), ..noted };
         let both = mention_replaced(clipped, Some(&earlier)).note.unwrap();
         assert!(both.starts_with("the region was clipped to the monitor it is on; discarded"), "{both}");
+    }
+
+    #[test]
+    fn the_planned_audio_picks_the_capture_source() {
+        assert_eq!(audio_source(RecordAudio::System), Some(AudioSource::System));
+        assert_eq!(audio_source(RecordAudio::Mic), Some(AudioSource::Mic));
+        assert_eq!(audio_source(RecordAudio::Both), Some(AudioSource::Both));
+        assert_eq!(audio_source(RecordAudio::None), None);
+    }
+
+    #[test]
+    fn start_notes_join_clipping_and_missing_sound() {
+        let mut started = Started { width: 8, height: 8, fps: 30, clipped: false, audio: AudioTrack::default() };
+        assert_eq!(start_note(&started), None);
+        started.audio.note = Some("recorded without sound: no microphone is available".to_string());
+        assert_eq!(start_note(&started).as_deref(), Some("recorded without sound: no microphone is available"));
+        started.clipped = true;
+        assert_eq!(
+            start_note(&started).as_deref(),
+            Some("the region was clipped to the monitor it is on; recorded without sound: no microphone is available")
+        );
     }
 
     #[test]

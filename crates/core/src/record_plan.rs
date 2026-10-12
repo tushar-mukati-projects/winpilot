@@ -4,7 +4,7 @@ use crate::{
     config::RecordConfig,
     error::{Error, Result},
     quality::Quality,
-    recording::{RecordRequest, VideoFormat},
+    recording::{RecordAudio, RecordRequest, VideoFormat},
 };
 
 pub(crate) const RECORD_SECONDS: RangeInclusive<u32> = 1..=1800;
@@ -18,6 +18,7 @@ pub struct RecordPlan {
     pub max_seconds: u32,
     pub cursor: bool,
     pub max_width: u32,
+    pub audio: RecordAudio,
 }
 
 pub fn record_plan(args: &RecordRequest, config: &RecordConfig) -> Result<RecordPlan> {
@@ -29,6 +30,7 @@ pub fn record_plan(args: &RecordRequest, config: &RecordConfig) -> Result<Record
         max_seconds: clamped(args.max_seconds.unwrap_or(config.max_seconds), &RECORD_SECONDS),
         cursor: args.cursor.unwrap_or(config.cursor),
         max_width: clamped(args.max_width.or(config.max_width).unwrap_or(format.default_max_width()), &RECORD_WIDTHS),
+        audio: RecordAudio::for_format(args.audio, format)?,
     })
 }
 
@@ -84,7 +86,8 @@ mod tests {
                 quality: Quality::High,
                 max_seconds: 300,
                 cursor: true,
-                max_width: 1920
+                max_width: 1920,
+                audio: RecordAudio::System
             }
         );
     }
@@ -119,7 +122,8 @@ mod tests {
                 quality: Quality::Low,
                 max_seconds: 15,
                 cursor: false,
-                max_width: 640
+                max_width: 640,
+                audio: RecordAudio::None
             }
         );
     }
@@ -159,6 +163,18 @@ mod tests {
         assert_eq!(invalid(&mismatch, &config), "path ends in .mp4 but format is gif; make them match");
         let unknown = RecordRequest { path: Some("C:\\v\\clip.avi".to_string()), ..start() };
         assert_eq!(invalid(&unknown, &config), "path must end in .mp4 or .gif");
+    }
+
+    #[test]
+    fn audio_defaults_to_system_for_mp4_and_none_for_gif() {
+        assert_eq!(plan(&start()).audio, RecordAudio::System);
+        assert_eq!(plan(&RecordRequest { audio: Some(RecordAudio::Mic), ..start() }).audio, RecordAudio::Mic);
+        let configured_gif = RecordConfig { format: VideoFormat::Gif, ..RecordConfig::default() };
+        assert_eq!(record_plan(&start(), &configured_gif).unwrap().audio, RecordAudio::None);
+        assert_eq!(
+            invalid(&RecordRequest { audio: Some(RecordAudio::Both), ..start() }, &configured_gif),
+            "gif recordings have no sound; drop audio=both or record mp4"
+        );
     }
 
     #[test]

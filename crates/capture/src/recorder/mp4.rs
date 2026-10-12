@@ -9,11 +9,14 @@ use windows::Win32::Media::MediaFoundation::{
 };
 use windows_core::HSTRING;
 
+use super::audio_backlog::TrackSamples;
 use super::bitrate::average_bitrate;
 use super::clock::sample_time;
 use super::layout::Size;
+use super::locked_buffer::LockedBuffer;
 use super::media_foundation::MediaFoundation;
 use super::media_type::{h264_output, nv12_input, rgb32_input};
+use super::mp4_audio::{add_audio_stream, write_audio};
 use super::nv12::{bgra_to_nv12, nv12_len};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,10 +34,18 @@ pub(crate) fn preferred_inputs(size: Size) -> Vec<InputPixels> {
     vec![InputPixels::Rgb32, InputPixels::Nv12]
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum AudioStream {
+    None,
+    Ready(u32),
+    Refused(String),
+}
+
 pub(crate) struct Mp4Writer {
     writer: IMFSinkWriter,
     _file: ByteStream,
     stream: u32,
+    audio: AudioStream,
     size: Size,
     fps: u32,
     input: InputPixels,
@@ -45,21 +56,42 @@ pub(crate) struct Mp4Writer {
 
 struct ByteStream(IMFByteStream);
 
+#[derive(Clone, Copy)]
+struct VideoSpec<'a> {
+    path: &'a Path,
+    size: Size,
+    fps: u32,
+    quality: Quality,
+    inputs: &'a [InputPixels],
+}
+
+struct Sink {
+    writer: IMFSinkWriter,
+    file: ByteStream,
+    stream: u32,
+    input: InputPixels,
+    audio: AudioStream,
+}
+
 impl Mp4Writer {
-    pub(crate) fn create(path: &Path, size: Size, fps: u32, quality: Quality, inputs: &[InputPixels]) -> Result<Self> {
+    pub(crate) fn create(
+        path: &Path,
+        size: Size,
+        fps: u32,
+        quality: Quality,
+        inputs: &[InputPixels],
+        with_audio: bool,
+    ) -> Result<Self> {
         let media_foundation = MediaFoundation::start()?;
-        let file = ByteStream::open_existing(path)?;
-        let writer = sink_writer(path, &file)?;
-        let output = h264_output(size, fps, average_bitrate(size.width, size.height, fps, quality))?;
-        let stream = unsafe { writer.AddStream(&output) }
-            .map_err(|error| Error::unsupported(format!("no H.264 encoder is available: {error}")))?;
-        let input = accepted_input(&writer, stream, size, fps, inputs)?;
+        let spec = VideoSpec { path, size, fps, quality, inputs };
+        let Sink { writer, file, stream, input, audio } = without_refused_audio(open_sink(spec, with_audio)?, spec)?;
         unsafe { writer.BeginWriting() }
             .map_err(|error| Error::unsupported(format!("the H.264 encoder would not start: {error}")))?;
         Ok(Self {
             writer,
             _file: file,
             stream,
+            audio,
             size,
             fps,
             input,
@@ -81,6 +113,20 @@ impl Mp4Writer {
 
     pub(crate) fn repeat(&mut self, tick: u64) -> Result<()> {
         self.hold_until(tick.saturating_add(1))
+    }
+
+    pub(crate) fn audio_refusal(&self) -> Option<String> {
+        match &self.audio {
+            AudioStream::Refused(reason) => Some(reason.clone()),
+            AudioStream::None | AudioStream::Ready(_) => None,
+        }
+    }
+
+    pub(crate) fn write_audio(&self, samples: &TrackSamples) -> Result<()> {
+        match self.audio {
+            AudioStream::Ready(stream) => write_audio(&self.writer, stream, samples),
+            AudioStream::None | AudioStream::Refused(_) => Ok(()),
+        }
     }
 
     pub(crate) fn finish(mut self, end_tick: u64) -> Result<()> {
@@ -132,6 +178,35 @@ impl Mp4Writer {
     }
 }
 
+fn open_sink(spec: VideoSpec<'_>, with_audio: bool) -> Result<Sink> {
+    let VideoSpec { path, size, fps, quality, inputs } = spec;
+    let file = ByteStream::open_existing(path)?;
+    let writer = sink_writer(path, &file)?;
+    let output = h264_output(size, fps, average_bitrate(size.width, size.height, fps, quality))?;
+    let stream = unsafe { writer.AddStream(&output) }
+        .map_err(|error| Error::unsupported(format!("no H.264 encoder is available: {error}")))?;
+    let input = accepted_input(&writer, stream, size, fps, inputs)?;
+    let audio = audio_stream(&writer, with_audio);
+    Ok(Sink { writer, file, stream, input, audio })
+}
+
+fn without_refused_audio(sink: Sink, spec: VideoSpec<'_>) -> Result<Sink> {
+    let AudioStream::Refused(reason) = &sink.audio else { return Ok(sink) };
+    let audio = AudioStream::Refused(reason.clone());
+    drop(sink);
+    Ok(Sink { audio, ..open_sink(spec, false)? })
+}
+
+fn audio_stream(writer: &IMFSinkWriter, with_audio: bool) -> AudioStream {
+    if !with_audio {
+        return AudioStream::None;
+    }
+    match add_audio_stream(writer) {
+        Ok(stream) => AudioStream::Ready(stream),
+        Err(error) => AudioStream::Refused(error.message),
+    }
+}
+
 impl ByteStream {
     fn open_existing(path: &Path) -> Result<Self> {
         let url = HSTRING::from(path.as_os_str());
@@ -180,35 +255,6 @@ fn accepted_input(
     }
     let reason = last_error.map_or_else(|| "no input format was offered".to_string(), |error| error.to_string());
     Err(Error::unsupported(format!("the H.264 encoder accepts neither RGB32 nor NV12 frames: {reason}")))
-}
-
-struct LockedBuffer<'a> {
-    buffer: &'a IMFMediaBuffer,
-    data: *mut u8,
-    length: usize,
-}
-
-impl<'a> LockedBuffer<'a> {
-    fn lock(buffer: &'a IMFMediaBuffer, length: usize) -> Result<Self> {
-        let mut data = std::ptr::null_mut();
-        let mut capacity = 0u32;
-        unsafe { buffer.Lock(&raw mut data, Some(&raw mut capacity), None) }.context("locking a video frame")?;
-        let locked = Self { buffer, data, length };
-        if data.is_null() || (capacity as usize) < length {
-            return Err(Error::internal("Media Foundation returned a video frame buffer that is too small"));
-        }
-        Ok(locked)
-    }
-
-    fn bytes_mut(&mut self) -> &mut [u8] {
-        unsafe { std::slice::from_raw_parts_mut(self.data, self.length) }
-    }
-}
-
-impl Drop for LockedBuffer<'_> {
-    fn drop(&mut self) {
-        let _ = unsafe { self.buffer.Unlock() };
-    }
 }
 
 #[cfg(test)]

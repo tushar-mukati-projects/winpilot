@@ -24,6 +24,15 @@ pub enum VideoFormat {
     Gif,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordAudio {
+    System,
+    Mic,
+    Both,
+    None,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordRequest {
     pub action: RecordAction,
@@ -37,6 +46,7 @@ pub struct RecordRequest {
     pub cursor: Option<bool>,
     pub max_width: Option<u32>,
     pub path: Option<String>,
+    pub audio: Option<RecordAudio>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,7 +68,39 @@ pub struct RecordReport {
     pub width: u32,
     pub height: u32,
     pub fps: u32,
+    #[serde(default)]
+    pub audio: Option<RecordAudio>,
     pub note: Option<String>,
+}
+
+impl RecordAudio {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Mic => "mic",
+            Self::Both => "both",
+            Self::None => "none",
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::System => "system audio",
+            Self::Mic => "mic audio",
+            Self::Both => "system and mic audio",
+            Self::None => "no audio",
+        }
+    }
+
+    pub(crate) fn for_format(asked: Option<Self>, format: VideoFormat) -> Result<Self> {
+        match (format, asked) {
+            (VideoFormat::Mp4, asked) => Ok(asked.unwrap_or(Self::System)),
+            (VideoFormat::Gif, None | Some(Self::None)) => Ok(Self::None),
+            (VideoFormat::Gif, Some(audio)) => {
+                Err(Error::invalid(format!("gif recordings have no sound; drop audio={} or record mp4", audio.name())))
+            }
+        }
+    }
 }
 
 impl VideoFormat {
@@ -88,6 +130,10 @@ impl VideoFormat {
         [Self::Mp4, Self::Gif].into_iter().find(|format| format.extension().eq_ignore_ascii_case(extension))
     }
 
+    pub(crate) fn of_request(path: Option<&str>, asked: Option<Self>) -> Option<Self> {
+        asked.or_else(|| path.and_then(Self::of_path))
+    }
+
     pub(crate) fn for_path(path: &str, asked: Option<Self>) -> Result<Self> {
         let from_path = Self::of_path(path).ok_or_else(|| Error::invalid("path must end in .mp4 or .gif"))?;
         match asked {
@@ -115,6 +161,7 @@ impl RecordRequest {
             cursor: None,
             max_width: None,
             path: None,
+            audio: None,
         }
     }
 
@@ -130,6 +177,7 @@ impl RecordRequest {
             ("cursor", self.cursor.is_some()),
             ("max_width", self.max_width.is_some()),
             ("path", self.path.is_some()),
+            ("audio", self.audio.is_some()),
         ]
         .into_iter()
         .filter_map(|(name, given)| given.then_some(name))
@@ -147,7 +195,18 @@ impl RecordReport {
     }
 
     const fn empty(state: RecordState) -> Self {
-        Self { state, path: None, seconds: 0.0, frames: 0, bytes: 0, width: 0, height: 0, fps: 0, note: None }
+        Self {
+            state,
+            path: None,
+            seconds: 0.0,
+            frames: 0,
+            bytes: 0,
+            width: 0,
+            height: 0,
+            fps: 0,
+            audio: None,
+            note: None,
+        }
     }
 }
 
@@ -171,7 +230,39 @@ mod tests {
         args.fps = Some(5);
         args.target = Some("w1".to_string());
         args.path = Some("C:\\a.mp4".to_string());
-        assert_eq!(args.start_options(), ["target", "fps", "path"]);
+        args.audio = Some(RecordAudio::None);
+        assert_eq!(args.start_options(), ["target", "fps", "path", "audio"]);
+    }
+
+    #[test]
+    fn mp4_records_system_audio_unless_asked_otherwise() {
+        assert_eq!(RecordAudio::for_format(None, VideoFormat::Mp4), Ok(RecordAudio::System));
+        for audio in [RecordAudio::System, RecordAudio::Mic, RecordAudio::Both, RecordAudio::None] {
+            assert_eq!(RecordAudio::for_format(Some(audio), VideoFormat::Mp4), Ok(audio));
+        }
+    }
+
+    #[test]
+    fn gif_is_always_silent_and_refuses_a_sound_source() {
+        assert_eq!(RecordAudio::for_format(None, VideoFormat::Gif), Ok(RecordAudio::None));
+        assert_eq!(RecordAudio::for_format(Some(RecordAudio::None), VideoFormat::Gif), Ok(RecordAudio::None));
+        let error = RecordAudio::for_format(Some(RecordAudio::Mic), VideoFormat::Gif).unwrap_err();
+        assert_eq!(error.message, "gif recordings have no sound; drop audio=mic or record mp4");
+    }
+
+    #[test]
+    fn audio_sources_have_wire_names_and_labels() {
+        assert_eq!(serde_json::to_value(RecordAudio::Both).unwrap(), serde_json::json!("both"));
+        assert_eq!(serde_json::from_str::<RecordAudio>("\"none\"").unwrap(), RecordAudio::None);
+        assert_eq!(RecordAudio::Mic.name(), "mic");
+        assert_eq!(RecordAudio::Both.label(), "system and mic audio");
+    }
+
+    #[test]
+    fn a_request_format_comes_from_format_or_the_path() {
+        assert_eq!(VideoFormat::of_request(Some("C:\\v\\a.gif"), None), Some(VideoFormat::Gif));
+        assert_eq!(VideoFormat::of_request(Some("C:\\v\\a.gif"), Some(VideoFormat::Mp4)), Some(VideoFormat::Mp4));
+        assert_eq!(VideoFormat::of_request(None, None), None);
     }
 
     #[test]
