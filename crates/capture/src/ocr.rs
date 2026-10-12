@@ -14,9 +14,20 @@ use windows_future::{AsyncOperationCompletedHandler, IAsyncOperation};
 
 use crate::com::ComApartment;
 use crate::frame::Frame;
-use crate::resize::{Fit, fit, fitted_pixels};
+use crate::pixels::BYTES_PER_PIXEL;
+use crate::resize::{Fit, fit, fitted_pixels, resize_bgra};
 
 const RECOGNITION_TIMEOUT: Duration = Duration::from_secs(10);
+const MAGNIFICATION: u32 = 2;
+const TILE_OVERLAP: u32 = 64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Tile {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Scaling {
@@ -48,6 +59,75 @@ pub fn ocr(frame: &Frame) -> Result<Vec<OcrLine>> {
     let operation = engine.RecognizeAsync(&bitmap).context("starting OCR")?;
     let result = finish_within(&operation, RECOGNITION_TIMEOUT)?;
     collect_lines(&result, Scaling::between(frame, fitted))
+}
+
+pub fn ocr_magnified(frame: &Frame) -> Result<Vec<OcrLine>> {
+    if !frame.is_well_formed() {
+        return Err(Error::invalid("frame size does not match its pixel buffer"));
+    }
+    let _apartment = ComApartment::enter_any()?;
+    let engine = create_engine()?;
+    let limit = OcrEngine::MaxImageDimension().context("reading the OCR size limit")?;
+    let side = (limit / MAGNIFICATION).max(TILE_OVERLAP * 2);
+    let mut lines: Vec<OcrLine> = Vec::new();
+    for tile in tiles(frame.width, frame.height, side, TILE_OVERLAP) {
+        for line in magnified_tile_lines(&engine, frame, tile)? {
+            if !lines.iter().any(|seen| same_line(seen, &line)) {
+                lines.push(line);
+            }
+        }
+    }
+    Ok(lines)
+}
+
+fn magnified_tile_lines(engine: &OcrEngine, frame: &Frame, tile: Tile) -> Result<Vec<OcrLine>> {
+    let (width, height) = (tile.width * MAGNIFICATION, tile.height * MAGNIFICATION);
+    let pixels = resize_bgra(&cropped(frame, tile), (tile.width, tile.height), (width, height))?;
+    let bitmap = software_bitmap(&pixels, width, height)?;
+    let operation = engine.RecognizeAsync(&bitmap).context("starting OCR")?;
+    let result = finish_within(&operation, RECOGNITION_TIMEOUT)?;
+    let origin = Point::new(frame.origin.x + tile.x as i32, frame.origin.y + tile.y as i32);
+    let shrink = 1.0 / f64::from(MAGNIFICATION);
+    collect_lines(&result, Scaling { origin, x: shrink, y: shrink })
+}
+
+fn tiles(width: u32, height: u32, side: u32, overlap: u32) -> Vec<Tile> {
+    let columns = tile_starts(width, side, overlap);
+    tile_starts(height, side, overlap)
+        .into_iter()
+        .flat_map(|y| {
+            columns.iter().map(move |&x| Tile { x, y, width: side.min(width - x), height: side.min(height - y) })
+        })
+        .collect()
+}
+
+fn tile_starts(length: u32, side: u32, overlap: u32) -> Vec<u32> {
+    let step = side.saturating_sub(overlap).max(1);
+    let mut starts = vec![0];
+    let mut start = 0;
+    while start + side < length {
+        start += step;
+        starts.push(start);
+    }
+    starts
+}
+
+fn cropped(frame: &Frame, tile: Tile) -> Vec<u8> {
+    let stride = frame.width as usize * BYTES_PER_PIXEL;
+    let row_bytes = tile.width as usize * BYTES_PER_PIXEL;
+    let left = tile.x as usize * BYTES_PER_PIXEL;
+    let mut pixels = Vec::with_capacity(row_bytes * tile.height as usize);
+    for row in tile.y..tile.y + tile.height {
+        let start = row as usize * stride + left;
+        if let Some(bytes) = frame.bgra.get(start..start + row_bytes) {
+            pixels.extend_from_slice(bytes);
+        }
+    }
+    pixels
+}
+
+fn same_line(seen: &OcrLine, line: &OcrLine) -> bool {
+    seen.text.trim().eq_ignore_ascii_case(line.text.trim()) && seen.rect.intersection(line.rect).is_some()
 }
 
 fn create_engine() -> Result<OcrEngine> {
@@ -225,6 +305,26 @@ mod tests {
         let word = line.words.iter().find(|word| word.text.contains("Deckhand")).unwrap();
         assert!(word.rect.x >= line.rect.x && word.rect.right() <= line.rect.right(), "{:?}", word.rect);
         assert!(word.rect.width < line.rect.width);
+    }
+
+    #[test]
+    fn magnified_reading_maps_text_back_to_the_frame() {
+        let frame = draw_text_frame(900, 160, 30, Point::new(100, 50));
+        let lines = ocr_magnified(&frame).unwrap();
+        let line = lines.iter().find(|line| line.text.contains("Deckhand")).unwrap();
+        assert!(line.rect.x >= 100 + 20 && line.rect.x <= 100 + 60, "{:?}", line.rect);
+        assert!(line.rect.y >= 50 && line.rect.bottom() <= 50 + 160, "{:?}", line.rect);
+        assert_eq!(lines.iter().filter(|line| line.text.contains("Deckhand")).count(), 1);
+    }
+
+    #[test]
+    fn tiles_cover_the_frame_with_overlap() {
+        let tiles = tiles(5000, 1600, 1300, 64);
+        assert_eq!(tiles.len(), 8);
+        assert_eq!(tiles.iter().map(|tile| tile.x + tile.width).max(), Some(5000));
+        assert_eq!(tiles.iter().map(|tile| tile.y + tile.height).max(), Some(1600));
+        assert_eq!(tiles[1], Tile { x: 1236, y: 0, width: 1300, height: 1300 });
+        assert_eq!(super::tiles(800, 600, 1300, 64), vec![Tile { x: 0, y: 0, width: 800, height: 600 }]);
     }
 
     #[test]

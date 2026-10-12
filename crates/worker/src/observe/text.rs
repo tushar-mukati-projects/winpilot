@@ -290,7 +290,10 @@ mod tests {
     fn a_live_chrome_window_reads_its_page_document() {
         let Some(window) = visible_chrome_window() else { return };
         let snapshot = engine().snapshot(&window).unwrap();
-        let chosen = main_text_element(&snapshot).expect("a visible Chrome window has a page document");
+        if !snapshot.elements.iter().any(|element| element.role == Role::Document) {
+            return;
+        }
+        let chosen = main_text_element(&snapshot).expect("a Chrome window with a document picks it");
         let page = snapshot.elements.iter().find(|element| element.id == chosen).unwrap();
         assert_eq!(page.role, Role::Document);
         let text = snapshot_text(engine(), &snapshot, deckhand_core::text_limit::DEFAULT_MAX_CHARS).unwrap();

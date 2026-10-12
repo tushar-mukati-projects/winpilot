@@ -29,7 +29,7 @@ pub use capturer::Capturer;
 pub use encode::{EncodeOptions, Encoded, encode};
 pub use frame::{Frame, FrameSource};
 pub use marks::Mark;
-pub use ocr::ocr;
+pub use ocr::{ocr, ocr_magnified};
 pub use recorder::{
     COVER_HOLD, CoverHold, EndReason, Finished, OutputFile, Progress, Recorder, RecordingSource, RecordingSpec, Redact,
     Redactor, Started, StopCheck, VideoSettings,

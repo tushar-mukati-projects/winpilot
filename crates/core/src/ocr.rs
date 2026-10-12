@@ -53,7 +53,7 @@ pub fn pick_match(matches: Vec<OcrMatch>, query: &str, nth: Option<u32>) -> Resu
     }
     let mut matches = matches.into_iter();
     match (matches.next(), matches.len()) {
-        (None, _) => Err(Error::not_found(format!("no text on screen matches ocr:\"{query}\""))),
+        (None, _) => Err(nothing_matches(query)),
         (Some(only), 0) => Ok(only),
         (Some(first), _) => Err(ambiguous(query, &std::iter::once(first).chain(matches).collect::<Vec<_>>())),
     }
@@ -112,7 +112,14 @@ fn span_match(words: &[OcrWord], folded: &[String], start: usize, end: usize, wa
 }
 
 fn too_few(query: &str, position: u32, count: usize) -> Error {
+    if count == 0 {
+        return nothing_matches(query);
+    }
     Error::not_found(format!("nth:{position} asks for more than the {count} places showing ocr:\"{query}\""))
+}
+
+fn nothing_matches(query: &str) -> Error {
+    Error::not_found(format!("no text on screen matches ocr:\"{query}\""))
 }
 
 fn ambiguous(query: &str, matches: &[OcrMatch]) -> Error {
@@ -245,6 +252,8 @@ mod tests {
         let error = pick_match(both, "Export", Some(3)).unwrap_err();
         assert_eq!(error.code, ErrorCode::NotFound);
         assert_eq!(error.message, "nth:3 asks for more than the 2 places showing ocr:\"Export\"");
+        let none = pick_match(Vec::new(), "Export", Some(1)).unwrap_err();
+        assert_eq!(none.message, "no text on screen matches ocr:\"Export\"");
     }
 
     fn tree(elements: Vec<Element>) -> Snapshot {

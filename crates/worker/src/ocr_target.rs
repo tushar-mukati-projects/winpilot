@@ -7,7 +7,7 @@ use deckhand_core::{
 use crate::{
     call_scope::CallScope,
     engine::Engine,
-    ocr_read::{Freshness, window_lines},
+    ocr_read::{Freshness, magnified_window_lines, window_lines},
     resolve::{Reach, Resolved},
 };
 
@@ -26,7 +26,11 @@ pub(crate) fn resolve(
 ) -> Result<Resolved> {
     engine.guard.check_window(&window)?;
     let lines = window_lines(engine, &window, Some(using.call), using.freshness)?;
-    let found = pick_match(find_matches(&lines, text), text, nth).map_err(|error| in_window(error, &window))?;
+    let mut matches = find_matches(&lines, text);
+    if matches.is_empty() {
+        matches = find_matches(&magnified_window_lines(engine, &window)?, text);
+    }
+    let found = pick_match(matches, text, nth).map_err(|error| in_window(error, &window))?;
     let point = found.rect.center();
     let under = engine.uia.run(move |uia| uia.element_at(point))?;
     Ok(Resolved { window, reach: Reach::Point { point, under } })

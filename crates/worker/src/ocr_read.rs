@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_capture::ocr;
+use deckhand_capture::{ocr, ocr_magnified};
 use deckhand_core::{Rect, Result, WindowInfo, WindowRef, ocr::OcrLine};
 
 use crate::{call_scope::CallScope, engine::Engine, frames, watch::Watch};
@@ -36,6 +36,10 @@ pub(crate) fn window_lines(
         call.remember_ocr(OcrReading { window: window.hwnd, rect: window.rect, at, lines: lines.clone() });
     }
     Ok(lines)
+}
+
+pub(crate) fn magnified_window_lines(engine: &Engine, window: &WindowInfo) -> Result<Vec<OcrLine>> {
+    ocr_magnified(&frames::window(engine, window)?.frame)
 }
 
 fn reusable(

@@ -2,7 +2,7 @@ use deckhand_capture::{Frame, FrameSource};
 use deckhand_core::{Error, Rect, Result, WindowInfo, WindowRef, WindowState, format::other_desktop};
 use deckhand_desktop::overlay::CaptureHideGuard;
 
-use crate::{blackout, engine::Engine, overlay};
+use crate::{blackout, cover, engine::Engine, overlay};
 
 const OVERLAY_MAY_SHOW: &str =
     "Deckhand's overlay could not be confirmed hidden in time, so it may appear in this capture";
@@ -39,6 +39,11 @@ pub(crate) fn element(engine: &Engine, window: &WindowInfo, rect: Rect) -> Resul
     capture_window(engine, window, Some(area))
 }
 
+fn own_popup_in_front(engine: &Engine, window: &WindowInfo) -> bool {
+    deckhand_desktop::foreground_window()
+        .is_some_and(|front| front != window.hwnd && !cover::window_covers(engine, window.hwnd, front))
+}
+
 fn capture_window(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> Result<Captured> {
     engine.guard.check_window(window)?;
     if window.state == WindowState::Minimized {
@@ -50,7 +55,7 @@ fn capture_window(engine: &Engine, window: &WindowInfo, area: Option<Rect>) -> R
     if !window.on_current_desktop {
         return elsewhere(engine, window, area).map(Captured::clean);
     }
-    if window.foreground {
+    if window.foreground || own_popup_in_front(engine, window) {
         let rect = area.unwrap_or(window.rect);
         return screened(engine, Some(window.hwnd), || engine.capturer.screen(rect));
     }
