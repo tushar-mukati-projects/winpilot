@@ -74,6 +74,10 @@ impl Guard {
         self.elevated
     }
 
+    pub(crate) fn allows_partial_host(&self, process: &str) -> bool {
+        self.config.allows_partial_host(process)
+    }
+
     pub(crate) fn denies(&self, window: &WindowInfo) -> bool {
         self.denies_titled(&window.process, &window.title)
     }

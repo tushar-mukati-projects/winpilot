@@ -5,7 +5,7 @@ use windows_core::BOOL;
 use crate::{
     automation::Uia,
     failure::{UiaResult, optional},
-    properties::{cached_runtime_id, current_runtime_id},
+    properties::{cached_runtime_id, cached_text, current_runtime_id},
     tree::cached_children,
     win,
 };
@@ -27,6 +27,19 @@ impl Uia {
             current = parent;
         }
         Ok(self.hosts_one_of(&outer, &chain))
+    }
+
+    pub fn marked_ancestor(&mut self, element: ElementRef, marked: impl Fn(&str) -> bool) -> Result<Option<String>> {
+        let mut current = self.resolve(element)?.element;
+        for _ in 0..=MAX_ANCESTRY {
+            let automation_id = cached_text(unsafe { current.CurrentAutomationId() });
+            if marked(&automation_id) {
+                return Ok(Some(automation_id));
+            }
+            let Some(parent) = self.parent_of(&current)? else { break };
+            current = parent;
+        }
+        Ok(None)
     }
 
     pub(crate) fn parent_of(&self, element: &IUIAutomationElement) -> Result<Option<IUIAutomationElement>> {

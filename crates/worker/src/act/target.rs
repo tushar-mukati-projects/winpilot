@@ -7,7 +7,7 @@ use crate::{
     call_scope::CallScope,
     default_window::default_window,
     engine::Engine,
-    overlay,
+    host_terminal, overlay,
     resolve::{self, Reach, Resolved},
 };
 
@@ -50,7 +50,7 @@ pub(crate) fn foreground_app(engine: &Engine, call: &CallScope) -> Result<Window
 }
 
 fn ready(engine: &Engine, resolved: Resolved, mode: Mode, call: &CallScope) -> Result<Prepared> {
-    engine.host.refuse(&resolved.window)?;
+    host_terminal::check_target(engine, &resolved)?;
     if mode == Mode::Foreground && resolved.window.on_current_desktop {
         engine.guard.before_input(Some(&resolved.window), call)?;
     } else {

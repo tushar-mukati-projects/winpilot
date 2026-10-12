@@ -9,6 +9,7 @@ mod field_rules;
 pub mod format;
 pub mod geometry;
 pub mod glide_timing;
+pub mod host_marks;
 pub mod ipc;
 pub mod keys;
 mod matching;

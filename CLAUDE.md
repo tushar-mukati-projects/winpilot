@@ -54,7 +54,7 @@ Public APIs live in each crate's `lib.rs`, which only declares modules and re-ex
 | Background mode: refusals and the per-window mode | `crates/worker/src/act/refusal.rs`, `mode.rs`, `append.rs` |
 | Kill switch, user yield, deny lists, actor lock | `crates/worker/src/guard.rs`, `kill_switch.rs` |
 | OCR text matching and `ocr:` targets | `crates/core/src/ocr.rs`, `crates/worker/src/ocr_read.rs`, `ocr_target.rs`, `wait/ocr_look.rs` |
-| The agent's own terminal | `crates/worker/src/host.rs` |
+| The agent's own terminal | `crates/worker/src/host.rs`, partial hosts in `host_terminal.rs`, ids in `crates/core/src/host_marks.rs` |
 | Recording encoder | `crates/capture/src/recorder/` |
 | Virtual desktops | `crates/desktop/src/virtual_desktops.rs`, `desktop_ids.rs` |
 | Overlay | `crates/desktop/src/overlay/` |

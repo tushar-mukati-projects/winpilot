@@ -41,6 +41,7 @@ pub struct GuardConfig {
     pub yield_ms: u64,
     pub yield_timeout_ms: u64,
     pub kill_hotkey: String,
+    pub partial_hosts: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -51,6 +52,7 @@ struct GuardFile {
     yield_ms: u64,
     yield_timeout_ms: u64,
     kill_hotkey: String,
+    partial_hosts: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,6 +111,8 @@ pub struct LogConfig {
     pub retention_days: u32,
 }
 
+const CLAUDE_DECK: &str = "claude-deck";
+
 const PASSWORD_MANAGERS: [&str; 6] =
     ["KeePass.exe", "KeePassXC.exe", "1Password.exe", "Bitwarden.exe", "Dashlane.exe", "Enpass.exe"];
 
@@ -124,14 +128,15 @@ impl Default for GuardConfig {
             yield_ms: 600,
             yield_timeout_ms: 5000,
             kill_hotkey: "ctrl+alt+escape".to_string(),
+            partial_hosts: vec![CLAUDE_DECK.to_string()],
         }
     }
 }
 
 impl Default for GuardFile {
     fn default() -> Self {
-        let GuardConfig { yield_ms, yield_timeout_ms, kill_hotkey, .. } = GuardConfig::default();
-        Self { deny: Vec::new(), deny_paths: Vec::new(), yield_ms, yield_timeout_ms, kill_hotkey }
+        let GuardConfig { yield_ms, yield_timeout_ms, kill_hotkey, partial_hosts, .. } = GuardConfig::default();
+        Self { deny: Vec::new(), deny_paths: Vec::new(), yield_ms, yield_timeout_ms, kill_hotkey, partial_hosts }
     }
 }
 
@@ -144,6 +149,7 @@ impl From<GuardFile> for GuardConfig {
             yield_ms: file.yield_ms,
             yield_timeout_ms: file.yield_timeout_ms,
             kill_hotkey: file.kill_hotkey,
+            partial_hosts: file.partial_hosts,
         }
     }
 }
@@ -247,6 +253,10 @@ impl DenyRule {
 }
 
 impl GuardConfig {
+    pub fn allows_partial_host(&self, process: &str) -> bool {
+        self.partial_hosts.iter().any(|host| !host.trim().is_empty() && contains_folded(process, host))
+    }
+
     pub fn denies_window(&self, process: &str, title: &str) -> bool {
         self.deny.iter().any(|rule| rule.matches(process, title))
     }
@@ -268,6 +278,18 @@ impl GuardConfig {
 mod tests {
     use super::*;
     use crate::error::ErrorCode;
+
+    #[test]
+    fn partial_hosts_default_to_claude_deck_and_can_be_turned_off() {
+        let guard = GuardConfig::default();
+        assert!(guard.allows_partial_host("claude-deck.exe"));
+        assert!(guard.allows_partial_host("Claude-Deck.corrupt.exe"));
+        assert!(!guard.allows_partial_host("WindowsTerminal.exe"));
+        let off: Config = serde_json::from_str(r#"{"guard":{"partial_hosts":[]}}"#).unwrap();
+        assert!(!off.guard.allows_partial_host("claude-deck.exe"));
+        let blank: Config = serde_json::from_str(r#"{"guard":{"partial_hosts":[" "]}}"#).unwrap();
+        assert!(!blank.guard.allows_partial_host("claude-deck.exe"));
+    }
 
     fn guard() -> GuardConfig {
         let mut guard = GuardConfig::default();

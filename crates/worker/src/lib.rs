@@ -13,6 +13,7 @@ mod epoch;
 mod frames;
 mod guard;
 mod host;
+mod host_terminal;
 mod images;
 mod in_flight;
 mod kill_switch;

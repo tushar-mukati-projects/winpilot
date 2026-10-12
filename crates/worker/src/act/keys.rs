@@ -11,7 +11,7 @@ use super::{
     settle,
     target::Prepared,
 };
-use crate::{call_scope::CallScope, engine::Engine, overlay};
+use crate::{call_scope::CallScope, engine::Engine, host_terminal, overlay};
 
 const HELD: &str = "held until a key up step or the end of the call";
 
@@ -28,6 +28,9 @@ pub(crate) fn step(
     call: &CallScope,
 ) -> Result<Done> {
     let chords = parse_keys(request.keys)?;
+    if let Some(prepared) = target {
+        host_terminal::refuse_keys(engine, &prepared.window)?;
+    }
     match request.action {
         KeyAction::Up => release(engine, &chords, call),
         KeyAction::Down => {
