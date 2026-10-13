@@ -98,7 +98,7 @@ mod tests {
         assert_eq!(terminal.code, ErrorCode::Denied);
         assert!(terminal.message.contains("winpilot-protected-terminal-tm2"), "{}", terminal.message);
         let window =
-            crate::test_fixture::window(7, "claude-deck.exe", "Claude Deck", winpilot_core::Rect::new(0, 0, 9, 9));
+            crate::test_fixture::window(7, "agent-deck.exe", "Agent Deck", winpilot_core::Rect::new(0, 0, 9, 9));
         let whole = whole_window(&window);
         assert!(whole.message.starts_with("w7 is the agent's own app"), "{}", whole.message);
         let hidden = hidden_spot(&window, Point::new(3, 4));

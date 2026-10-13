@@ -58,7 +58,7 @@ Windows on other virtual desktops always use the background path.
 - **User first:** foreground steps wait while the user is typing or moving the mouse.
 - **One actor:** a machine-wide lock means only one agent drives the mouse at a time.
 - **Off limits:** the agent's own terminal, deny-listed apps and paths, elevated windows, UAC.
-- **Partial hosts:** an app that holds many sessions (Claude Deck) can opt in with `winpilot-protects-terminals`. Its buttons become usable, but every `winpilot-protected-*` terminal stays refused.
+- **Partial hosts:** an app that holds many sessions (Agent Deck) can opt in with `winpilot-protects-terminals`. Its buttons become usable, but every `winpilot-protected-*` terminal stays refused.
 - **Privacy:** typed text never shows in the overlay or the log, and denied windows are blacked out in captures.
 
 ## Overlay

@@ -111,7 +111,7 @@ pub struct LogConfig {
     pub retention_days: u32,
 }
 
-const CLAUDE_DECK: &str = "claude-deck";
+const AGENT_DECK: &str = "agent-deck";
 
 const PASSWORD_MANAGERS: [&str; 6] =
     ["KeePass.exe", "KeePassXC.exe", "1Password.exe", "Bitwarden.exe", "Dashlane.exe", "Enpass.exe"];
@@ -128,7 +128,7 @@ impl Default for GuardConfig {
             yield_ms: 600,
             yield_timeout_ms: 5000,
             kill_hotkey: "ctrl+alt+escape".to_string(),
-            partial_hosts: vec![CLAUDE_DECK.to_string()],
+            partial_hosts: vec![AGENT_DECK.to_string()],
         }
     }
 }
@@ -280,15 +280,15 @@ mod tests {
     use crate::error::ErrorCode;
 
     #[test]
-    fn partial_hosts_default_to_claude_deck_and_can_be_turned_off() {
+    fn partial_hosts_default_to_agent_deck_and_can_be_turned_off() {
         let guard = GuardConfig::default();
-        assert!(guard.allows_partial_host("claude-deck.exe"));
-        assert!(guard.allows_partial_host("Claude-Deck.corrupt.exe"));
+        assert!(guard.allows_partial_host("agent-deck.exe"));
+        assert!(guard.allows_partial_host("Agent-Deck.corrupt.exe"));
         assert!(!guard.allows_partial_host("WindowsTerminal.exe"));
         let off: Config = serde_json::from_str(r#"{"guard":{"partial_hosts":[]}}"#).unwrap();
-        assert!(!off.guard.allows_partial_host("claude-deck.exe"));
+        assert!(!off.guard.allows_partial_host("agent-deck.exe"));
         let blank: Config = serde_json::from_str(r#"{"guard":{"partial_hosts":[" "]}}"#).unwrap();
-        assert!(!blank.guard.allows_partial_host("claude-deck.exe"));
+        assert!(!blank.guard.allows_partial_host("agent-deck.exe"));
     }
 
     fn guard() -> GuardConfig {
