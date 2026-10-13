@@ -69,7 +69,7 @@ mod tests {
         let _own = monitor.wait_change(Some(std::process::id()), started, Duration::from_millis(50));
         assert!(started.elapsed() < Duration::from_millis(1500));
         let _opened = second.windows_opened_since(started);
-        assert!(!monitor.wait_quiet(1, Duration::from_millis(50), Duration::from_millis(10)));
+        assert!(!monitor.wait_quiet(1, Duration::from_secs(10), Duration::from_millis(10)));
         drop(second);
         drop(monitor);
         assert!(RUNNING.lock().upgrade().is_none());
