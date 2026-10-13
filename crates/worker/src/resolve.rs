@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{
+use winpilot_core::{
     Element, ElementRef, Error, ErrorCode, ImageRef, Point, Result, Target, WindowInfo, format::window_line,
     selector::Selector,
 };
@@ -82,7 +82,7 @@ impl Resolved {
 pub(crate) fn window(engine: &Engine, spec: Option<&str>) -> Result<WindowInfo> {
     let Some(spec) = spec.map(str::trim).filter(|spec| !spec.is_empty()) else { return default_window(engine) };
     let window = match window_spec::parse(spec)? {
-        WindowSpec::Handle(hwnd) => deckhand_desktop::window(hwnd)?,
+        WindowSpec::Handle(hwnd) => winpilot_desktop::window(hwnd)?,
         WindowSpec::Element(id) => element_window(engine, id)?,
         spec => first_matching(engine, &spec)?,
     };
@@ -92,7 +92,7 @@ pub(crate) fn window(engine: &Engine, spec: Option<&str>) -> Result<WindowInfo> 
 
 pub(crate) fn windows_matching(engine: &Engine, spec: &str) -> Result<Vec<WindowInfo>> {
     match window_spec::parse(spec)? {
-        WindowSpec::Handle(hwnd) => Ok(vec![deckhand_desktop::window(hwnd)?]),
+        WindowSpec::Handle(hwnd) => Ok(vec![winpilot_desktop::window(hwnd)?]),
         WindowSpec::Element(id) => Ok(vec![element_window(engine, id)?]),
         spec => Ok(app_windows(engine)?.into_iter().filter(|window| window_spec::matches(&spec, window)).collect()),
     }
@@ -100,7 +100,7 @@ pub(crate) fn windows_matching(engine: &Engine, spec: &str) -> Result<Vec<Window
 
 pub(crate) fn element_window(engine: &Engine, id: ElementRef) -> Result<WindowInfo> {
     let hwnd = engine.uia.run(move |uia| uia.window_of(id))?;
-    deckhand_desktop::window(hwnd)
+    winpilot_desktop::window(hwnd)
 }
 
 pub(crate) fn ambiguous<'a>(spec: &str, windows: impl ExactSizeIterator<Item = &'a WindowInfo>, hint: &str) -> Error {
@@ -127,7 +127,7 @@ pub(crate) fn target(engine: &Engine, target: &Target, call: &CallScope) -> Resu
 pub(crate) fn target_with(engine: &Engine, target: &Target, call: &CallScope, covering: Cover) -> Result<Resolved> {
     match target {
         Target::Element(id) => resolve_element(engine, *id),
-        Target::Window(hwnd) => resolve_window(engine, deckhand_desktop::window(*hwnd)?),
+        Target::Window(hwnd) => resolve_window(engine, winpilot_desktop::window(*hwnd)?),
         Target::Selector(selector) => wait_for_selector(engine, selector, call),
         Target::Point { point, image } => resolve_point(engine, *point, *image, covering),
     }
@@ -252,14 +252,14 @@ fn shot_window(engine: &Engine, record: &ImageRecord, hit: &WindowInfo, covering
         record.check_hit_window(hit.hwnd, |source| cover::window_covers(engine, source, hit.hwnd))?;
     }
     match record.window.filter(|source| *source != hit.hwnd) {
-        Some(source) => deckhand_desktop::window(source),
+        Some(source) => winpilot_desktop::window(source),
         None => Ok(hit.clone()),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Rect, Role};
+    use winpilot_core::{Rect, Role};
 
     use super::*;
     use crate::test_fixture::{element, window};

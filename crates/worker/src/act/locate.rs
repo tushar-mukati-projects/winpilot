@@ -1,4 +1,4 @@
-use deckhand_core::{Element, ElementRef, Error, ErrorCode, Point, Result, WindowInfo};
+use winpilot_core::{Element, ElementRef, Error, ErrorCode, Point, Result, WindowInfo};
 
 use super::{foreground::bring_forward, settle, target::Prepared};
 use crate::{call_scope::CallScope, engine::Engine, on_screen::clickable_point, resolve::Reach};
@@ -16,7 +16,7 @@ pub(crate) fn locate_in_front(engine: &Engine, prepared: &Prepared, call: &CallS
 }
 
 pub(crate) fn locate_in_place(engine: &Engine, prepared: &Prepared, call: &CallScope) -> Result<Located> {
-    let window = deckhand_desktop::window(prepared.window.hwnd)?;
+    let window = winpilot_desktop::window(prepared.window.hwnd)?;
     locate(engine, prepared, window, call)
 }
 

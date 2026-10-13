@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use deckhand_core::{Error, ErrorCode, Result};
+use winpilot_core::{Error, ErrorCode, Result};
 
 pub(crate) fn check_launch_args(args: &str, check: impl Fn(&Path) -> Result<PathBuf>) -> Result<()> {
     let words = split_args(args);
@@ -69,7 +69,7 @@ fn in_args(error: &Error) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::config::GuardConfig;
+    use winpilot_core::config::GuardConfig;
 
     use super::*;
 

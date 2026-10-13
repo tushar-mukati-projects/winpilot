@@ -1,4 +1,4 @@
-use deckhand_core::Rect;
+use winpilot_core::Rect;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Perimeter {

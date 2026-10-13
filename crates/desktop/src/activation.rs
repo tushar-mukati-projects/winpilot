@@ -1,7 +1,7 @@
-use deckhand_core::WindowState;
 use windows::Win32::UI::WindowsAndMessaging::{
     SHOW_WINDOW_CMD, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOWMINNOACTIVE, SW_SHOWNOACTIVATE, SW_SHOWNORMAL,
 };
+use winpilot_core::WindowState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Activation {

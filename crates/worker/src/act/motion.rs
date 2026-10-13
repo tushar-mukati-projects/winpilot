@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Error, ErrorCode, Point, Result, glide_timing::MAX_GLIDE_MS};
+use winpilot_core::{Error, ErrorCode, Point, Result, glide_timing::MAX_GLIDE_MS};
 
 use super::{
     hit::{confirm_hit, hit_point},
@@ -10,7 +10,7 @@ use super::{
 use crate::{call_scope::CallScope, engine::Engine, overlay};
 
 const INTERRUPTED: &str =
-    "the user moved the mouse or typed while Deckhand was moving the pointer, so it stopped; try again once they stop";
+    "the user moved the mouse or typed while WinPilot was moving the pointer, so it stopped; try again once they stop";
 
 pub(crate) struct Motion<'a> {
     engine: &'a Engine,
@@ -38,12 +38,12 @@ impl<'a> Motion<'a> {
     pub(crate) fn glide_to(&self, to: Point, glide_ms: Option<u64>) -> Result<()> {
         self.check()?;
         let duration = self.glide_duration(glide_ms);
-        let from = deckhand_input::cursor_position().unwrap_or(to);
+        let from = winpilot_input::cursor_position().unwrap_or(to);
         overlay::glide(self.engine, self.call, from, to, duration);
         if duration.is_zero() || from == to {
-            return deckhand_input::move_to(to);
+            return winpilot_input::move_to(to);
         }
-        deckhand_input::glide_to_guarded(to, duration, || self.check())
+        winpilot_input::glide_to_guarded(to, duration, || self.check())
     }
 
     pub(crate) fn approach(&self, prepared: &Prepared, located: &Located, glide_ms: Option<u64>) -> Result<Point> {

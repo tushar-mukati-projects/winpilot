@@ -12,7 +12,7 @@ mod window_watch;
 
 use std::time::Duration;
 
-use deckhand_core::{
+use winpilot_core::{
     Result,
     protocol::{RecordAction, RecordReport, RecordRequest},
 };

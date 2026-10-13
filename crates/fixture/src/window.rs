@@ -18,7 +18,7 @@ use crate::options::Options;
 use crate::params::high_word;
 use crate::window_proc::window_proc;
 
-const CLASS_NAME: PCWSTR = w!("DeckhandFixtureWindow");
+const CLASS_NAME: PCWSTR = w!("WinPilotFixtureWindow");
 const STYLE: WINDOW_STYLE =
     WINDOW_STYLE(WS_OVERLAPPED.0 | WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_CLIPCHILDREN.0);
 const EXTENDED_STYLE: WINDOW_EX_STYLE = WS_EX_CONTROLPARENT;

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use deckhand_core::{Error, ErrorCode, Result, WindowInfo};
+use winpilot_core::{Error, ErrorCode, Result, WindowInfo};
 
 use crate::{
     process_tree::{Ancestor, ProcessTable},
@@ -28,7 +28,7 @@ pub(crate) struct HostProcesses(HashSet<u32>);
 impl HostProcesses {
     pub(crate) fn detect() -> Self {
         let Ok(table) = ProcessTable::read() else { return Self::default() };
-        let windowed: HashSet<u32> = deckhand_desktop::windows()
+        let windowed: HashSet<u32> = winpilot_desktop::windows()
             .map(|windows| windows.iter().map(|window| window.pid).collect())
             .unwrap_or_default();
         Self(host_set(&table.ancestors(std::process::id()), &windowed))
@@ -44,7 +44,7 @@ impl HostProcesses {
         }
         Err(Error::new(
             ErrorCode::Denied,
-            format!("{} is the agent's own terminal; Deckhand won't act on it", window.hwnd),
+            format!("{} is the agent's own terminal; WinPilot won't act on it", window.hwnd),
         ))
     }
 }
@@ -69,7 +69,7 @@ fn is_shell_or_system(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;
@@ -84,21 +84,21 @@ mod tests {
 
     #[test]
     fn the_host_ends_at_the_first_windowed_ancestor() {
-        let walk = chain(&[(1, "deckhand.exe"), (2, "claude.exe"), (3, "notes.exe"), (4, "explorer.exe")]);
+        let walk = chain(&[(1, "winpilot.exe"), (2, "claude.exe"), (3, "notes.exe"), (4, "explorer.exe")]);
         assert_eq!(host_set(&walk, &set(&[3, 4])), set(&[1, 2, 3]));
     }
 
     #[test]
     fn explorer_and_system_processes_are_never_the_host() {
-        let walk = chain(&[(1, "deckhand.exe"), (2, "claude.exe"), (4, "Explorer.EXE")]);
+        let walk = chain(&[(1, "winpilot.exe"), (2, "claude.exe"), (4, "Explorer.EXE")]);
         assert!(host_set(&walk, &set(&[4])).is_empty());
-        let service = chain(&[(1, "deckhand.exe"), (5, "svchost.exe"), (6, "terminal.exe")]);
+        let service = chain(&[(1, "winpilot.exe"), (5, "svchost.exe"), (6, "terminal.exe")]);
         assert!(host_set(&service, &set(&[6])).is_empty());
     }
 
     #[test]
     fn without_a_windowed_ancestor_there_is_no_host() {
-        let walk = chain(&[(1, "deckhand.exe"), (2, "claude.exe")]);
+        let walk = chain(&[(1, "winpilot.exe"), (2, "claude.exe")]);
         assert!(host_set(&walk, &set(&[99])).is_empty());
         assert!(host_set(&[], &set(&[1])).is_empty());
     }
@@ -109,7 +109,7 @@ mod tests {
         let mut window = WindowInfo { pid: 7, ..window(42, "notes.exe", "Claude", Rect::new(0, 0, 10, 10)) };
         let error = host.refuse(&window).unwrap_err();
         assert_eq!(error.code, ErrorCode::Denied);
-        assert_eq!(error.message, "w42 is the agent's own terminal; Deckhand won't act on it");
+        assert_eq!(error.message, "w42 is the agent's own terminal; WinPilot won't act on it");
         window.pid = 8;
         assert!(host.refuse(&window).is_ok());
     }

@@ -5,12 +5,12 @@ use std::{
     time::Duration,
 };
 
-use deckhand_core::{
+use parking_lot::Mutex;
+use winpilot_core::{
     Context, Error, Result,
     ipc::{FromWorker, ToWorker, read_frame, write_frame},
     protocol::{Call, Reply},
 };
-use parking_lot::Mutex;
 
 use crate::{com::ComApartment, engine::Engine, in_flight::InFlight};
 
@@ -25,7 +25,7 @@ struct Request {
 }
 
 pub fn run(build: &str) -> Result<()> {
-    deckhand_desktop::enable_dpi_awareness()?;
+    winpilot_desktop::enable_dpi_awareness()?;
     let _com = ComApartment::enter_any()?;
     let mut inbox = BufReader::new(io::stdin().lock());
     let outbox: Outbox = Arc::new(Mutex::new(BufWriter::new(io::stdout())));
@@ -35,15 +35,15 @@ pub fn run(build: &str) -> Result<()> {
     };
     let engine = Arc::new(Engine::start(config, epoch, &agent)?);
     if let Err(error) = engine.guard.release_inputs_a_crash_left_held() {
-        eprintln!("deckhand worker: {error}");
+        eprintln!("winpilot worker: {error}");
     }
-    send(&outbox, &FromWorker::Ready { version: deckhand_core::VERSION.to_string(), build: build.to_string() })?;
+    send(&outbox, &FromWorker::Ready { version: winpilot_core::VERSION.to_string(), build: build.to_string() })?;
     let in_flight = Arc::new(InFlight::default());
     let served = serve(&mut inbox, &engine, &outbox, &in_flight);
     engine.begin_shut_down();
     let unfinished = in_flight.cancel_all_and_wait(SHUTDOWN_PATIENCE);
     if unfinished > 0 {
-        eprintln!("deckhand worker: {unfinished} call(s) were still running at shutdown");
+        eprintln!("winpilot worker: {unfinished} call(s) were still running at shutdown");
     }
     engine.shut_down();
     served
@@ -58,7 +58,7 @@ fn serve(inbox: &mut impl io::Read, engine: &Arc<Engine>, outbox: &Outbox, in_fl
             }
             ToWorker::Cancel { id } => in_flight.cancel(id),
             ToWorker::Agent { name } => engine.rename_agent(&name),
-            ToWorker::Init { .. } => eprintln!("deckhand worker: ignoring a repeated init message"),
+            ToWorker::Init { .. } => eprintln!("winpilot worker: ignoring a repeated init message"),
         }
     }
     Ok(())
@@ -70,7 +70,7 @@ fn start_call(request: Request, engine: &Arc<Engine>, outbox: &Outbox, in_flight
     let engine = Arc::clone(engine);
     let thread_outbox = Arc::clone(outbox);
     let thread_in_flight = Arc::clone(in_flight);
-    let spawned = thread::Builder::new().name(format!("deckhand-call-{id}")).spawn(move || {
+    let spawned = thread::Builder::new().name(format!("winpilot-call-{id}")).spawn(move || {
         let result = ComApartment::enter_any().and_then(|_com| engine.handle(&call, &cancel, budget));
         thread_in_flight.finished(id);
         reply(&thread_outbox, id, result);
@@ -86,10 +86,10 @@ fn start_call(request: Request, engine: &Arc<Engine>, outbox: &Outbox, in_flight
 
 fn reply(outbox: &Outbox, id: u64, result: Result<Reply>) {
     let Err(error) = send(outbox, &FromWorker::Reply { id, result: Box::new(result) }) else { return };
-    eprintln!("deckhand worker: could not send a reply: {error}");
+    eprintln!("winpilot worker: could not send a reply: {error}");
     let unsendable = Error::internal(format!("the reply could not be sent to the server: {}", error.message));
     if let Err(again) = send(outbox, &FromWorker::Reply { id, result: Box::new(Err(unsendable)) }) {
-        eprintln!("deckhand worker: could not send the failure either: {again}");
+        eprintln!("winpilot worker: could not send the failure either: {again}");
     }
 }
 

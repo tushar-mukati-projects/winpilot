@@ -1,6 +1,6 @@
 use std::{thread, time::Duration};
 
-use deckhand_core::{Point, Result, protocol::MouseButton};
+use winpilot_core::{Point, Result, protocol::MouseButton};
 
 use crate::{
     event::InputEvent,
@@ -68,7 +68,7 @@ fn perform_drag(
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Error, ErrorCode};
+    use winpilot_core::{Error, ErrorCode};
 
     use super::*;
 

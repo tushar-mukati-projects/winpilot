@@ -1,7 +1,7 @@
 use std::{thread, time::Duration};
 
-use deckhand_core::{ElementRef, Result};
 use windows::Win32::UI::Accessibility::{IUIAutomationTogglePattern, ToggleState, ToggleState_On, UIA_TogglePatternId};
+use winpilot_core::{ElementRef, Result};
 
 use crate::{automation::Uia, failure::UiaResult};
 

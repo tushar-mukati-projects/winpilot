@@ -8,8 +8,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_fixture::{FixtureProcess, Placement};
 use serde_json::{Value, json};
+use winpilot_fixture::{FixtureProcess, Placement};
 
 struct Mcp {
     child: Child,
@@ -36,7 +36,7 @@ impl Drop for TempDir {
 
 impl TempDir {
     fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("deckhand-e2e-{name}-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("winpilot-e2e-{name}-{}", std::process::id()));
         fs::create_dir_all(&path).unwrap();
         Self(path)
     }
@@ -45,7 +45,7 @@ impl TempDir {
 impl Mcp {
     fn start() -> Self {
         let home = TempDir::new("home");
-        let mut child = Command::new(env!("CARGO_BIN_EXE_deckhand"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_winpilot"))
             .arg("mcp")
             .env("APPDATA", home.0.join("roaming"))
             .env("LOCALAPPDATA", home.0.join("local"))
@@ -62,7 +62,7 @@ impl Mcp {
             &json!({
                 "protocolVersion": "2025-06-18",
                 "capabilities": {},
-                "clientInfo": { "name": "deckhand-e2e", "version": "0" }
+                "clientInfo": { "name": "winpilot-e2e", "version": "0" }
             }),
         );
         mcp.notify("notifications/initialized");
@@ -143,11 +143,11 @@ struct Fixture {
 
 impl Fixture {
     fn launch(tag: &str) -> Option<Self> {
-        let Some(exe) = deckhand_fixture::fixture_exe() else {
-            eprintln!("skipping: build the fixture first (cargo build -p deckhand-fixture)");
+        let Some(exe) = winpilot_fixture::fixture_exe() else {
+            eprintln!("skipping: build the fixture first (cargo build -p winpilot-fixture)");
             return None;
         };
-        let title = format!("Deckhand Fixture {tag} {}", std::process::id());
+        let title = format!("WinPilot Fixture {tag} {}", std::process::id());
         let process = FixtureProcess::launch(&exe, &title, Placement::OnScreen)?;
         Some(Self { _process: process, title })
     }

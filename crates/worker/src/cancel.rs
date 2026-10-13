@@ -3,7 +3,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use deckhand_core::{Error, ErrorCode, Result};
+use winpilot_core::{Error, ErrorCode, Result};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Cancel(Arc<AtomicBool>);

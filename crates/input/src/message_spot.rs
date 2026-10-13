@@ -1,6 +1,5 @@
 use std::{ffi::c_void, mem::size_of, ptr};
 
-use deckhand_core::{Error, Point, Result, WindowRef};
 use windows::Win32::{
     Foundation::{HWND, POINT},
     Graphics::Gdi::ScreenToClient,
@@ -9,6 +8,7 @@ use windows::Win32::{
         GetWindowThreadProcessId, IsChild, IsWindow,
     },
 };
+use winpilot_core::{Error, Point, Result, WindowRef};
 
 const MAX_DEPTH: usize = 32;
 

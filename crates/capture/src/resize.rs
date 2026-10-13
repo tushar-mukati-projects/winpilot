@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 
-use deckhand_core::{Context, Result};
 use fast_image_resize::images::{Image, ImageRef};
 use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer};
+use winpilot_core::{Context, Result};
 
 use crate::frame::Frame;
 
@@ -89,7 +89,7 @@ pub(crate) fn resize_bgra(source: &[u8], from: (u32, u32), to: (u32, u32)) -> Re
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ImageMapping, Point};
+    use winpilot_core::{ImageMapping, Point};
 
     use super::*;
 

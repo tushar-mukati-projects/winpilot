@@ -1,4 +1,4 @@
-use deckhand_core::{Result, protocol::SetChange};
+use winpilot_core::{Result, protocol::SetChange};
 
 use super::{
     done::Done,

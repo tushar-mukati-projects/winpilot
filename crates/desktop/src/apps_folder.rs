@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use deckhand_core::{Context, Result};
 use windows::Win32::{
     System::Com::IBindCtx,
     UI::Shell::{
@@ -8,6 +7,7 @@ use windows::Win32::{
         SIGDN_NORMALDISPLAY, SIGDN_PARENTRELATIVEPARSING,
     },
 };
+use winpilot_core::{Context, Result};
 
 use crate::{
     apps::{AppEntry, AppKind},

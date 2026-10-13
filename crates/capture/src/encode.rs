@@ -1,4 +1,4 @@
-use deckhand_core::{Context, Error, ImageMapping, Result, protocol::ImageFormat};
+use winpilot_core::{Context, Error, ImageMapping, Result, protocol::ImageFormat};
 
 use crate::canvas::Canvas;
 use crate::frame::Frame;
@@ -83,7 +83,7 @@ fn bgra_to_rgb(bgra: &[u8]) -> Vec<u8> {
 mod tests {
     use std::time::Instant;
 
-    use deckhand_core::{ErrorCode, Point, Rect};
+    use winpilot_core::{ErrorCode, Point, Rect};
 
     use super::*;
 

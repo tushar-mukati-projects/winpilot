@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use candle_core::{DType, Device};
 use candle_nn::VarBuilder;
 use candle_transformers::models::whisper::{Config, model::Whisper};
-use deckhand_core::{Error, Result};
+use winpilot_core::{Error, Result};
 
 use crate::audio::to_whisper_input;
 use crate::decoder::SpeechModel;
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn missing_model_names_the_install_command() {
-        let error = Transcriber::load(Path::new(r"Z:\deckhand-speech-test\ggml-none.bin")).err().unwrap();
+        let error = Transcriber::load(Path::new(r"Z:\winpilot-speech-test\ggml-none.bin")).err().unwrap();
         assert!(error.message.contains("-SpeechModel"));
     }
 
@@ -177,12 +177,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs the speech model and DECKHAND_SPEECH_SAMPLE"]
+    #[ignore = "needs the speech model and WINPILOT_SPEECH_SAMPLE"]
     fn transcribes_the_sample_named_in_the_environment() {
-        let Some(sample) = std::env::var_os("DECKHAND_SPEECH_SAMPLE") else { return };
+        let Some(sample) = std::env::var_os("WINPILOT_SPEECH_SAMPLE") else { return };
         let Some(transcriber) = installed() else { return };
         let (samples, rate, channels) = crate::media::decode_media(Path::new(&sample)).unwrap();
-        let language = std::env::var("DECKHAND_SPEECH_LANGUAGE").ok();
+        let language = std::env::var("WINPILOT_SPEECH_LANGUAGE").ok();
         let options = TranscribeOptions { language, ..TranscribeOptions::default() };
         let started = std::time::Instant::now();
         let transcript = transcriber.transcribe(&samples, rate, channels, &options).unwrap();

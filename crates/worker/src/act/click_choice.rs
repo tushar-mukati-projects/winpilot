@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     Element, Error, Patterns, Result,
     keys::{Modifiers, parse_chord},
     protocol::{ClickHow, MouseButton},
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn background_clicks_use_a_pattern_only_for_plain_clicks_on_operable_elements() {
-        use deckhand_core::Role;
+        use winpilot_core::Role;
 
         use crate::test_fixture::element;
 

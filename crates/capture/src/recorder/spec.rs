@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use deckhand_core::{
+use winpilot_core::{
     Rect, WindowRef,
     protocol::{Quality, VideoFormat},
 };

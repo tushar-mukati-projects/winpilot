@@ -4,7 +4,6 @@ use std::path::Path;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use deckhand_fixture::{FixtureProcess, Placement};
 use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::UI::HiDpi::{
     AreDpiAwarenessContextsEqual, DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForWindow,
@@ -17,8 +16,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_COMMAND, WM_GETFONT, WM_KEYDOWN,
 };
 use windows::core::Result;
+use winpilot_fixture::{FixtureProcess, Placement};
 
-const FIXTURE_EXE: &str = env!("CARGO_BIN_EXE_deckhand-fixture");
+const FIXTURE_EXE: &str = env!("CARGO_BIN_EXE_winpilot-fixture");
 const PATIENCE: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(25);
 const SEND_TIMEOUT_MS: u32 = 5000;
@@ -72,7 +72,7 @@ struct Fixture {
 
 impl Fixture {
     fn launch_without_activation() -> Self {
-        let title = format!("Deckhand Fixture Test {}", std::process::id());
+        let title = format!("WinPilot Fixture Test {}", std::process::id());
         let Some(process) = FixtureProcess::launch(Path::new(FIXTURE_EXE), &title, Placement::OffScreen) else {
             panic!("fixture window not found")
         };

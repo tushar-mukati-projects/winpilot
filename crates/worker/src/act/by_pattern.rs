@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use deckhand_core::{Result, WindowInfo, WindowRef};
+use winpilot_core::{Result, WindowInfo, WindowRef};
 
 use super::{foreground::require_no_dialog_on_top, settle};
 use crate::{call_scope::CallScope, engine::Engine, guard::Guard};
@@ -29,7 +29,7 @@ pub(crate) fn by_pattern<T>(
 
 impl<'a> KeptForeground<'a> {
     pub(crate) fn record(guard: &'a Guard) -> Self {
-        Self { guard, previous: deckhand_desktop::foreground_window(), since: Instant::now() }
+        Self { guard, previous: winpilot_desktop::foreground_window(), since: Instant::now() }
     }
 
     pub(crate) fn was_in(&self, windows: &[WindowRef]) -> bool {
@@ -42,26 +42,26 @@ impl<'a> KeptForeground<'a> {
 
     pub(crate) fn hand_back_from(&self, taken: impl Fn(WindowRef) -> bool) -> Option<String> {
         let previous = self.previous?;
-        let front = deckhand_desktop::foreground_window()?;
+        let front = winpilot_desktop::foreground_window()?;
         if front == previous || !taken(front) || self.guard.physical_press_since(self.since) {
             return None;
         }
-        Some(handed_back_note(front, previous, deckhand_desktop::focus_window(previous)))
+        Some(handed_back_note(front, previous, winpilot_desktop::focus_window(previous)))
     }
 }
 
 fn handed_back_note(target: WindowRef, previous: WindowRef, handed_back: Result<()>) -> String {
     match handed_back {
-        Ok(()) => format!("{target} took the foreground, so Deckhand gave it back to {previous}"),
+        Ok(()) => format!("{target} took the foreground, so WinPilot gave it back to {previous}"),
         Err(error) => {
-            format!("{target} took the foreground and Deckhand could not give it back to {previous}: {}", error.message)
+            format!("{target} took the foreground and WinPilot could not give it back to {previous}: {}", error.message)
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Error, ErrorCode};
+    use winpilot_core::{Error, ErrorCode};
 
     use super::*;
     use crate::test_fixture::engine;
@@ -70,12 +70,12 @@ mod tests {
     fn the_note_says_whether_the_foreground_was_given_back() {
         assert_eq!(
             handed_back_note(WindowRef(5), WindowRef(9), Ok(())),
-            "w5 took the foreground, so Deckhand gave it back to w9"
+            "w5 took the foreground, so WinPilot gave it back to w9"
         );
         let refused = Err(Error::new(ErrorCode::NeedsUser, "Windows refused"));
         assert_eq!(
             handed_back_note(WindowRef(5), WindowRef(9), refused),
-            "w5 took the foreground and Deckhand could not give it back to w9: Windows refused"
+            "w5 took the foreground and WinPilot could not give it back to w9: Windows refused"
         );
     }
 

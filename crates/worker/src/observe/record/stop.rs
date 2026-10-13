@@ -1,7 +1,7 @@
 use std::thread;
 use std::time::{Duration, Instant};
 
-use deckhand_core::protocol::{RecordReport, RecordState};
+use winpilot_core::protocol::{RecordReport, RecordState};
 
 use crate::engine::Engine;
 

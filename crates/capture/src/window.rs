@@ -1,7 +1,7 @@
-use deckhand_core::{Context, Error, ErrorCode, Rect, Result, WindowRef};
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsIconic, IsWindow};
+use winpilot_core::{Context, Error, ErrorCode, Rect, Result, WindowRef};
 
 use crate::capture_area::CaptureArea;
 use crate::convert::{hwnd_from_ref, rect_from_win32};

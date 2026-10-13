@@ -1,7 +1,7 @@
-use deckhand_core::{Point, Rect};
 use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
 use windows::Win32::UI::WindowsAndMessaging::{IsChild, IsIconic, IsWindowVisible, WindowFromPoint};
+use winpilot_core::{Point, Rect};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Presence {

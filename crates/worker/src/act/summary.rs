@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     TargetSpec,
     protocol::{KeyAction, MouseAction, MouseButton, SetChange, Step, Until, WaitArgs, WindowAction},
 };
@@ -85,7 +85,7 @@ fn key_summary(keys: &str, target: Option<&TargetSpec>, repeat: u32, action: Key
     format!("{verb} {}{inside}{times}", clipped(keys.trim(), TARGET_LIMIT))
 }
 
-fn scroll_summary(direction: Option<deckhand_core::protocol::Direction>, amount: u32, place: &str) -> String {
+fn scroll_summary(direction: Option<winpilot_core::protocol::Direction>, amount: u32, place: &str) -> String {
     let direction = direction.map_or("", |direction| direction.name());
     format!("scroll {direction} {amount}{place}")
 }

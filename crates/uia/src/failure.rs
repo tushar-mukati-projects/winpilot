@@ -1,4 +1,3 @@
-use deckhand_core::{Error, ErrorCode, Result};
 use windows::Win32::{
     Foundation::{CO_E_OBJNOTCONNECTED, E_ACCESSDENIED, E_NOINTERFACE, RPC_E_DISCONNECTED},
     UI::Accessibility::{
@@ -7,6 +6,7 @@ use windows::Win32::{
     },
 };
 use windows_core::HRESULT;
+use winpilot_core::{Error, ErrorCode, Result};
 
 const RPC_SERVER_UNAVAILABLE: u32 = 0x8007_06BA;
 const DISCONNECTED: u32 = RPC_E_DISCONNECTED.0 as u32;

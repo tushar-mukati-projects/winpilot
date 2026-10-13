@@ -1,6 +1,6 @@
-use deckhand_core::{Error, Result};
 use windows::Win32::Media::Audio::{IAudioClient, WAVEFORMATEX, WAVEFORMATEXTENSIBLE};
 use windows::Win32::System::Com::CoTaskMemFree;
+use winpilot_core::{Error, Result};
 
 use super::device::{Endpoint, audio_error};
 use super::pcm::AudioFormat;

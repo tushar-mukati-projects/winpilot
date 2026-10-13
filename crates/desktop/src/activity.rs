@@ -3,8 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::WindowRef;
 use parking_lot::{Condvar, Mutex};
+use winpilot_core::WindowRef;
 
 use crate::timeouts::later;
 

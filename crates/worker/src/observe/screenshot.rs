@@ -1,6 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use deckhand_capture::{EncodeOptions, Frame, FrameSource, Mark, encode};
-use deckhand_core::{
+use winpilot_capture::{EncodeOptions, Frame, FrameSource, Mark, encode};
+use winpilot_core::{
     Error, ImageMapping, Rect, Result, Snapshot, Target, WindowInfo,
     format::window_line,
     protocol::{ImageFormat, ScreenshotReport, ScreenshotRequest},
@@ -49,7 +49,7 @@ pub(crate) fn run(engine: &Engine, args: &ScreenshotRequest, call: &CallScope) -
 }
 
 pub(crate) fn of_window(engine: &Engine, window: &WindowInfo) -> Result<ScreenshotReport> {
-    let window = deckhand_desktop::window(window.hwnd)?;
+    let window = winpilot_desktop::window(window.hwnd)?;
     let shot = window_shot(engine, window)?;
     let quality = screenshot_quality(&ScreenshotRequest::default(), &engine.config.screenshot);
     report(engine, &shot, &encode_options(quality, ImageFormat::default()), &[])
@@ -158,7 +158,7 @@ fn monitor_label(index: usize, frame: &Frame) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ElementRef, ErrorCode, Point, Role, refs::looks_like_window_ref};
+    use winpilot_core::{ElementRef, ErrorCode, Point, Role, refs::looks_like_window_ref};
 
     use super::*;
     use crate::test_fixture::{FixtureApp, element, engine, snapshot};
@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn encode_options_clamp_the_width_and_keep_a_tall_limit() {
-        let config = deckhand_core::Config::default();
+        let config = winpilot_core::Config::default();
         let default = encode_options(screenshot_quality(&args(), &config.screenshot), ImageFormat::Jpeg);
         assert_eq!((default.max_width, default.max_height, default.quality), (1280, 1568, 80));
         let narrow = ImageQuality { max_width: Some(10), quality: 80 };
@@ -232,8 +232,8 @@ mod tests {
 
     #[test]
     fn the_max_preset_keeps_native_resolution_up_to_8000_px_per_side() {
-        let config = deckhand_core::Config::default();
-        let max = ScreenshotRequest { preset: Some(deckhand_core::protocol::Quality::Max), ..args() };
+        let config = winpilot_core::Config::default();
+        let max = ScreenshotRequest { preset: Some(winpilot_core::protocol::Quality::Max), ..args() };
         let options = encode_options(screenshot_quality(&max, &config.screenshot), ImageFormat::Jpeg);
         assert_eq!((options.max_width, options.max_height, options.quality), (8000, 8000, 95));
     }
@@ -302,15 +302,15 @@ mod tests {
     fn presets_change_the_size_and_quality_of_a_monitor_shot() {
         let primary = engine().capturer.monitor_rects().unwrap()[0];
         let preset = |quality| ScreenshotRequest { monitor: Some(0), preset: Some(quality), ..args() };
-        let low = shoot(&preset(deckhand_core::protocol::Quality::Low)).unwrap();
+        let low = shoot(&preset(winpilot_core::protocol::Quality::Low)).unwrap();
         assert!(low.width <= 960 && low.quality == Some(60), "{}x{} {:?}", low.width, low.height, low.quality);
-        let max = shoot(&preset(deckhand_core::protocol::Quality::Max)).unwrap();
+        let max = shoot(&preset(winpilot_core::protocol::Quality::Max)).unwrap();
         assert_eq!((max.width, max.height, max.quality), (primary.width as u32, primary.height as u32, Some(95)));
         assert_round_trips(&max);
         let overridden = ScreenshotRequest {
             max_width: Some(640),
             quality: Some(30),
-            ..preset(deckhand_core::protocol::Quality::Max)
+            ..preset(winpilot_core::protocol::Quality::Max)
         };
         let small = shoot(&overridden).unwrap();
         assert!(small.width <= 640 && small.quality == Some(30));

@@ -4,18 +4,18 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_capture::Capturer;
-use deckhand_core::{
+use parking_lot::Mutex;
+use winpilot_capture::Capturer;
+use winpilot_core::{
     Config, Result, Snapshot, WindowInfo,
     protocol::{Call, Reply, Timing},
 };
-use deckhand_desktop::{
+use winpilot_desktop::{
     Notifier,
     changes::ChangeMonitor,
     overlay::{Overlay, OverlayOptions},
 };
-use deckhand_uia::{SnapshotOptions, UiaHandle, UiaOptions};
-use parking_lot::Mutex;
+use winpilot_uia::{SnapshotOptions, UiaHandle, UiaOptions};
 
 use crate::{
     act::{self, NotifyLimit},

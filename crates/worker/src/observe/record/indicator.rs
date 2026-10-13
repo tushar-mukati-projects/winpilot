@@ -1,5 +1,5 @@
-use deckhand_core::Rect;
-use deckhand_desktop::overlay::Overlay;
+use winpilot_core::Rect;
+use winpilot_desktop::overlay::Overlay;
 
 pub(crate) fn show_recording_indicator(overlay: Option<&Overlay>, recording: Option<Rect>) {
     match (overlay, recording) {

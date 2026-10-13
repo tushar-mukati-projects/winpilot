@@ -1,6 +1,5 @@
 use std::ffi::c_void;
 
-use deckhand_core::{Point, WindowRef};
 use windows::Win32::{
     Foundation::{HWND, POINT},
     UI::WindowsAndMessaging::{
@@ -8,6 +7,7 @@ use windows::Win32::{
         WindowFromPhysicalPoint,
     },
 };
+use winpilot_core::{Point, WindowRef};
 
 const MAX_CLASS_NAME: usize = 256;
 

@@ -1,6 +1,5 @@
 use std::{ffi::c_void, mem::size_of};
 
-use deckhand_core::{Context, Result};
 use windows::{
     Win32::{
         Foundation::{ERROR_CLASS_ALREADY_EXISTS, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
@@ -15,12 +14,13 @@ use windows::{
     },
     core::{PCWSTR, w},
 };
+use winpilot_core::{Context, Result};
 
 use crate::{
     message_thread::ThreadMessages, raw_input::handle_raw_input, raw_input_registration::RawInputRegistration,
 };
 
-const SINK_CLASS: PCWSTR = w!("DeckhandRawInputSink");
+const SINK_CLASS: PCWSTR = w!("WinPilotRawInputSink");
 
 pub(crate) struct RawInputSink {
     _registration: RawInputRegistration,

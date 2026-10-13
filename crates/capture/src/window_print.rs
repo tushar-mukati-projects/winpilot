@@ -1,7 +1,7 @@
-use deckhand_core::{Point, Rect, Result};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
 use windows::Win32::UI::WindowsAndMessaging::{PW_RENDERFULLCONTENT, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_NULL};
+use winpilot_core::{Point, Rect, Result};
 
 use crate::capture_area::CaptureArea;
 use crate::dpi::with_window_dpi;

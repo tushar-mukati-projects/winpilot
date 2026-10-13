@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use deckhand_core::{
+use winpilot_core::{
     Error, ErrorCode, Result,
     protocol::{ActArgs, Step, StepOutcome},
 };

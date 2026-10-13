@@ -1,7 +1,7 @@
 use std::sync::mpsc::TryRecvError;
 use std::time::Instant;
 
-use deckhand_core::Error;
+use winpilot_core::Error;
 
 use super::audio_backlog::{TrackBacklog, TrackSamples};
 use super::audio_lead::{Lead, lead_for};

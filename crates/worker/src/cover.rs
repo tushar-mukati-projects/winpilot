@@ -1,4 +1,4 @@
-use deckhand_core::{Point, WindowInfo, WindowRef};
+use winpilot_core::{Point, WindowInfo, WindowRef};
 
 use crate::{
     engine::Engine,
@@ -56,11 +56,11 @@ pub(crate) fn window_covers(engine: &Engine, target: WindowRef, hit: WindowRef) 
     if target == hit {
         return false;
     }
-    let (Ok(target), Ok(hit)) = (deckhand_desktop::window(target), deckhand_desktop::window(hit)) else {
+    let (Ok(target), Ok(hit)) = (winpilot_desktop::window(target), winpilot_desktop::window(hit)) else {
         return true;
     };
     let relation = Relation {
-        same_program: same_program(target.pid, hit.pid, deckhand_desktop::process_image_path),
+        same_program: same_program(target.pid, hit.pid, winpilot_desktop::process_image_path),
         owned_by_target: owned_by(hit.hwnd, target.hwnd),
         agent_terminal: engine.host.contains(hit.pid),
     };
@@ -78,13 +78,13 @@ pub(crate) fn same_program(target: u32, hit: u32, image_path: impl Fn(u32) -> Op
 }
 
 pub(crate) fn uncovered_at(engine: &Engine, window: &WindowInfo, spot: Point) -> bool {
-    deckhand_desktop::window_at(spot).is_some_and(|hit| !window_covers(engine, window.hwnd, hit))
+    winpilot_desktop::window_at(spot).is_some_and(|hit| !window_covers(engine, window.hwnd, hit))
 }
 
 fn owned_by(window: WindowRef, owner: WindowRef) -> bool {
     let mut current = window;
     for _ in 0..MAX_OWNERS {
-        let Some(next) = deckhand_desktop::owner_of(current) else { return false };
+        let Some(next) = winpilot_desktop::owner_of(current) else { return false };
         if next == owner {
             return true;
         }
@@ -95,7 +95,7 @@ fn owned_by(window: WindowRef, owner: WindowRef) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;

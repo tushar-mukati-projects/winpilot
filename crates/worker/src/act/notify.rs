@@ -1,7 +1,7 @@
 use std::time::Instant;
 
-use deckhand_core::Result;
-use deckhand_desktop::{NotifyOutcome, QuietReason};
+use winpilot_core::Result;
+use winpilot_desktop::{NotifyOutcome, QuietReason};
 
 use super::{done::Done, steps::StepContext};
 use crate::engine::Engine;
@@ -34,7 +34,7 @@ fn quiet_balloon(reason: QuietReason) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_desktop::ToastBlock;
+    use winpilot_desktop::ToastBlock;
 
     use super::*;
 
@@ -51,7 +51,7 @@ mod tests {
     fn blocked_toasts_name_the_setting() {
         assert_eq!(
             outcome_note(NotifyOutcome::Blocked(ToastBlock::ForApplication)),
-            "not shown: notifications from Deckhand are turned off in Settings > System > Notifications"
+            "not shown: notifications from WinPilot are turned off in Settings > System > Notifications"
         );
     }
 

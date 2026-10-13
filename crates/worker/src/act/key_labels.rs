@@ -1,4 +1,4 @@
-use deckhand_core::keys::{Chord, Key, NamedKey};
+use winpilot_core::keys::{Chord, Key, NamedKey};
 
 use crate::overlay::KeyChips;
 
@@ -74,7 +74,7 @@ const fn named_label(key: NamedKey) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::keys::parse_keys;
+    use winpilot_core::keys::parse_keys;
 
     use super::*;
 
@@ -91,8 +91,8 @@ mod tests {
 
     #[test]
     fn chords_read_as_one_word() {
-        assert_eq!(chord_text(&deckhand_core::keys::parse_chord("ctrl+shift+a").unwrap()), "Ctrl+Shift+A");
-        assert_eq!(chord_text(&deckhand_core::keys::parse_chord("shift").unwrap()), "Shift");
+        assert_eq!(chord_text(&winpilot_core::keys::parse_chord("ctrl+shift+a").unwrap()), "Ctrl+Shift+A");
+        assert_eq!(chord_text(&winpilot_core::keys::parse_chord("shift").unwrap()), "Shift");
     }
 
     #[test]

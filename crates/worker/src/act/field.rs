@@ -1,4 +1,4 @@
-use deckhand_core::{Element, ElementRef, Result};
+use winpilot_core::{Element, ElementRef, Result};
 
 use crate::engine::Engine;
 
@@ -16,7 +16,7 @@ pub(crate) fn is_readable(element: &Element) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Role;
+    use winpilot_core::Role;
 
     use super::*;
     use crate::test_fixture::element;

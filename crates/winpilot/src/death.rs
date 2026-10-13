@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use deckhand_core::{Error, ErrorCode};
+use winpilot_core::{Error, ErrorCode};
 
-const SHUTTING_DOWN: &str = "the deckhand server is shutting down";
+const SHUTTING_DOWN: &str = "the winpilot server is shutting down";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Death {

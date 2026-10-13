@@ -1,8 +1,8 @@
-use deckhand_core::{Context, Result};
 use windows::{
     Win32::System::DataExchange::RegisterClipboardFormatW,
     core::{PCWSTR, w},
 };
+use winpilot_core::{Context, Result};
 
 use crate::{clipboard::ClipboardData, global_memory::OwnedGlobal};
 

@@ -1,5 +1,5 @@
-use deckhand_core::protocol::MouseButton;
 use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_SWAPBUTTON};
+use winpilot_core::protocol::MouseButton;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PhysicalButton {

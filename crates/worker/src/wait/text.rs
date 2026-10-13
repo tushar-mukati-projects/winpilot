@@ -1,4 +1,4 @@
-use deckhand_core::{Element, Result, Snapshot, format::window_line, ocr::exposes_no_uia};
+use winpilot_core::{Element, Result, Snapshot, format::window_line, ocr::exposes_no_uia};
 
 use super::{
     check::{Check, Presence, unless_gone},
@@ -61,7 +61,7 @@ fn holds(element: &Element, needle: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Rect, Role};
+    use winpilot_core::{Rect, Role};
 
     use super::*;
     use crate::test_fixture::window;

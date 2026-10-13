@@ -1,6 +1,6 @@
-# Deckhand
+# WinPilot
 
-Deckhand is a fast MCP server, written in Rust, that lets AI agents such as Claude Code, Codex, Cursor or any other MCP client see and operate a Windows desktop.
+WinPilot is a fast MCP server, written in Rust, that lets AI agents such as Claude Code, Codex, Cursor or any other MCP client see and operate a Windows desktop.
 
 It reads a window as a compact list of elements in one UI Automation round trip, acts on those elements by ref or selector, waits on real UI events instead of sleeping, and reports what changed after every batch. A typical window read takes 15–125 ms and the server starts in about 60 ms, against a median of 15 s per read for the Python server it replaces ([numbers](#compared-with-windows-mcp)).
 
@@ -24,7 +24,7 @@ after: window w2033540 notepad.exe "Save as" foreground …
 - **Background mode.** Steps can run without touching your mouse, keyboard or focus, through UI Automation patterns or, for apps without them, window messages, including on windows on other virtual desktops.
 - **Visible agent.** An animated overlay rings the window being driven and names the agent ("Claude is controlling"), with themes, custom colours and a demo mode for screen recorders.
 - **Recording.** Record a window, element, region or monitor to MP4 (H.264, with the PC's sound, the microphone or both) or GIF. Files stay playable even if something crashes.
-- **Notifications.** The agent can send you a Windows toast from "Deckhand" when a long task finishes.
+- **Notifications.** The agent can send you a Windows toast from "WinPilot" when a long task finishes.
 - **Safety rails.** A kill-switch hotkey, yielding to your own input, deny lists with blackout in screenshots and recordings, no control of elevated windows or the agent's own terminal, and an audit log.
 
 ## Requirements
@@ -37,40 +37,40 @@ after: window w2033540 notepad.exe "Save as" foreground …
 ## Install, update and uninstall
 
 ```powershell
-git clone <this repository> deckhand
-cd deckhand
+git clone <this repository> winpilot
+cd winpilot
 .\scripts\install.ps1 -Register
 ```
 
 The script:
 
 1. Builds the release binary (`-SkipBuild` installs an existing build).
-2. Copies it to `%LOCALAPPDATA%\Programs\deckhand\deckhand.exe` and checks that the copy's SHA-256 matches the build. On a mismatch it restores the previous version.
-3. Registers the notification identity `Deckhand.Agent` (name and icon) under `HKCU\Software\Classes\AppUserModelId`, so notifications show as "Deckhand".
-4. With `-Register`, registers the server with Claude Code at user scope: `claude mcp add -s user deckhand -- <exe> mcp`.
+2. Copies it to `%LOCALAPPDATA%\Programs\winpilot\winpilot.exe` and checks that the copy's SHA-256 matches the build. On a mismatch it restores the previous version.
+3. Registers the notification identity `WinPilot.Agent` (name and icon) under `HKCU\Software\Classes\AppUserModelId`, so notifications show as "WinPilot".
+4. With `-Register`, registers the server with Claude Code at user scope: `claude mcp add -s user winpilot -- <exe> mcp`.
 
-Restart open Claude Code sessions to load it. A session still running the previous build says so: its next call fails with "a newer Deckhand was installed …; restart your MCP client to load it".
+Restart open Claude Code sessions to load it. A session still running the previous build says so: its next call fails with "a newer WinPilot was installed …; restart your MCP client to load it".
 
-**Updating.** Pull and run the script again. It works even while sessions are using the old build: the running copy is renamed to `deckhand.old-<time>.exe` and deleted on a later run.
+**Updating.** Pull and run the script again. It works even while sessions are using the old build: the running copy is renamed to `winpilot.old-<time>.exe` and deleted on a later run.
 
-**Uninstalling.** `.\scripts\install.ps1 -Uninstall` removes the MCP registration, the notification identity and the install folder. Your config (`%APPDATA%\deckhand`) and logs and speech models (`%LOCALAPPDATA%\deckhand`) stay unless you add `-Purge`.
+**Uninstalling.** `.\scripts\install.ps1 -Uninstall` removes the MCP registration, the notification identity and the install folder. Your config (`%APPDATA%\winpilot`) and logs and speech models (`%LOCALAPPDATA%\winpilot`) stay unless you add `-Purge`.
 
 ### Other MCP clients
 
-Deckhand is a plain stdio server: run `deckhand.exe mcp`. Most clients take a command and arguments. Here is the common `mcpServers` JSON shape used by Claude Desktop and Cursor; use the full path, because most clients don't expand `%LOCALAPPDATA%`:
+WinPilot is a plain stdio server: run `winpilot.exe mcp`. Most clients take a command and arguments. Here is the common `mcpServers` JSON shape used by Claude Desktop and Cursor; use the full path, because most clients don't expand `%LOCALAPPDATA%`:
 
 ```json
 {
   "mcpServers": {
-    "deckhand": {
-      "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\deckhand\\deckhand.exe",
+    "winpilot": {
+      "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\winpilot\\winpilot.exe",
       "args": ["mcp"]
     }
   }
 }
 ```
 
-Other clients, such as Codex, take the same command and `args` in their own config format. Deckhand reads the client's name from the MCP handshake and shows it on the overlay.
+Other clients, such as Codex, take the same command and `args` in their own config format. WinPilot reads the client's name from the MCP handshake and shows it on the overlay.
 
 ## The two tools
 
@@ -190,10 +190,10 @@ Record a window, then stop:
 
 ```text
 observe {"mode":"record","action":"start","target":"window:\"Notepad\"","fps":15}
-recording to …\Videos\Deckhand\deckhand-20261012-101500.mp4 · 1280x800 @ 15 fps · system audio · stop with observe mode=record action=stop
+recording to …\Videos\WinPilot\winpilot-20261012-101500.mp4 · 1280x800 @ 15 fps · system audio · stop with observe mode=record action=stop
 
 observe {"mode":"record","action":"stop"}
-saved …\Videos\Deckhand\deckhand-20261012-101500.mp4 · 42.3 s · 635 frames · 3.8 MB · system audio
+saved …\Videos\WinPilot\winpilot-20261012-101500.mp4 · 42.3 s · 635 frames · 3.8 MB · system audio
 ```
 
 Launch Notepad, type, and save through the Save dialog in one call:
@@ -312,7 +312,7 @@ Selector terms:
 
 **Apps without UI Automation.** Some apps (CapCut, games, custom-drawn editors) expose only their window to UI Automation. For those, `observe` elements adds the window's OCR lines with their screen rectangles under the note `this app exposes no UI Automation; showing OCR text — target it with ocr:"…"`, and `observe` text with `coords: true` does the same for any window, element or region. Act on that text with `ocr:"…"` targets: `click`, `type`, `key`, `mouse` (`move`, `down`, `up`, `scroll`, `drag` from and to), `set` and `focus` (on the element under the text), `pick`'s `open_with`, and `wait` `appears`/`disappears` all take them. The capture hides the overlay and blacks out denied windows, as screenshots do. Within one `act` call the latest OCR reading is reused while its window keeps its place and raises no change events, until a step other than `wait` or `notify` runs; a target that is still being waited for is read again. `wait` `text`, and `appears`/`disappears` with plain text, fall back to OCR, at most every 400 ms, when the window has no UI Automation content; `ocr:` targets in a `wait` are read at most every 400 ms too.
 
-**The default window.** When a call names no window, Deckhand uses the foreground app window. If that's the terminal hosting the agent, it uses the frontmost other app window that isn't minimized. The default window is always on the current virtual desktop.
+**The default window.** When a call names no window, WinPilot uses the foreground app window. If that's the terminal hosting the agent, it uses the frontmost other app window that isn't minimized. The default window is always on the current virtual desktop.
 
 **Keys.** `keys` is a chord such as `ctrl+s`, `alt+f4` or `ctrl+shift+esc`, or a sequence separated by spaces or commas, such as `ctrl+k ctrl+s`. A chord is any modifiers plus at most one key, so `shift` alone is valid for holding.
 
@@ -322,7 +322,7 @@ Selector terms:
 
 ## Background mode and virtual desktops
 
-Normally Deckhand acts like a careful person at the keyboard: it brings the window forward, glides the real mouse and types with real keystrokes. With `background: true` (per call) or `[act] background = true` (config), steps never touch the real mouse, keyboard or focus. They use UI Automation patterns where the target has them, and otherwise window messages: Deckhand finds the innermost child window of the target window under the point and sends it the mouse, wheel, character and key messages a real click or keystroke would produce (`SendMessageTimeout`, so a hung app fails the step after a second instead of blocking it). The step's method says which: `(invoke)`, `(value)`, `(pattern)` or `(message)`. That is how background mode drives apps with no UI Automation, such as Qt apps like CapCut or canvas editors, through `ocr:` and screenshot-point targets, even while they sit behind other windows.
+Normally WinPilot acts like a careful person at the keyboard: it brings the window forward, glides the real mouse and types with real keystrokes. With `background: true` (per call) or `[act] background = true` (config), steps never touch the real mouse, keyboard or focus. They use UI Automation patterns where the target has them, and otherwise window messages: WinPilot finds the innermost child window of the target window under the point and sends it the mouse, wheel, character and key messages a real click or keystroke would produce (`SendMessageTimeout`, so a hung app fails the step after a second instead of blocking it). The step's method says which: `(invoke)`, `(value)`, `(pattern)` or `(message)`. That is how background mode drives apps with no UI Automation, such as Qt apps like CapCut or canvas editors, through `ocr:` and screenshot-point targets, even while they sit behind other windows.
 
 | Step | In background mode |
 |---|---|
@@ -337,9 +337,9 @@ Normally Deckhand acts like a careful person at the keyboard: it brings the wind
 | `focus`, `mouse` move/down/up, `key` down/up | Always refused with `needs_user`. |
 | `wait`, `clipboard`, `notify` | Unchanged. |
 
-Background steps don't wait for you to stop using the mouse and keyboard, because they never touch them. They still take the actor lock and still respect the kill switch, the deny lists, the elevation check and the agent's own terminal, and they refuse a window that has a modal dialog open, just like real clicks do. Window messages go only to the target app: the child window under the point must belong to the target window's process or program, a message spot must lie inside the target window, and in a partial host app the spot must be visibly the host's and outside every `deckhand-protected` terminal. The window the user is working in (the foreground window) gets no window messages and no point clicks at all, so a bare screen point that lands on the user's window is refused; point at a covered app with the `img` of its window screenshot instead. If an app takes the foreground in reaction to a background step, Deckhand gives it back unless the user clicked during the step. Windows have no way to maximize a window, or to show a newly launched window or file dialog, without first stacking it on top, so those can flash over your window for a moment before Deckhand puts them behind it; an always-on-top window loses that status when it is put behind yours, and nothing is restacked while the desktop or the taskbar is in front.
+Background steps don't wait for you to stop using the mouse and keyboard, because they never touch them. They still take the actor lock and still respect the kill switch, the deny lists, the elevation check and the agent's own terminal, and they refuse a window that has a modal dialog open, just like real clicks do. Window messages go only to the target app: the child window under the point must belong to the target window's process or program, a message spot must lie inside the target window, and in a partial host app the spot must be visibly the host's and outside every `winpilot-protected` terminal. The window the user is working in (the foreground window) gets no window messages and no point clicks at all, so a bare screen point that lands on the user's window is refused; point at a covered app with the `img` of its window screenshot instead. If an app takes the foreground in reaction to a background step, WinPilot gives it back unless the user clicked during the step. Windows have no way to maximize a window, or to show a newly launched window or file dialog, without first stacking it on top, so those can flash over your window for a moment before WinPilot puts them behind it; an always-on-top window loses that status when it is put behind yours, and nothing is restacked while the desktop or the taskbar is in front.
 
-**Virtual desktops.** Window lines show `desktop N`, or `another desktop` when Windows doesn't say which, for windows on other virtual desktops; a hidden window whose desktop can't be looked up counts as on another desktop. The default window is always on the current desktop, and Deckhand never switches your desktop. Real input only reaches the current desktop, so steps aimed at a window on another desktop always get background behaviour; a step that can't be done that way fails with an error that names the desktop. A screenshot of such a window is printed from the window itself and fails, suggesting `mode=text`, when Windows hasn't drawn it. Recording a window on another desktop is refused, and the overlay draws nothing for those windows.
+**Virtual desktops.** Window lines show `desktop N`, or `another desktop` when Windows doesn't say which, for windows on other virtual desktops; a hidden window whose desktop can't be looked up counts as on another desktop. The default window is always on the current desktop, and WinPilot never switches your desktop. Real input only reaches the current desktop, so steps aimed at a window on another desktop always get background behaviour; a step that can't be done that way fails with an error that names the desktop. A screenshot of such a window is printed from the window itself and fails, suggesting `mode=text`, when Windows hasn't drawn it. Recording a window on another desktop is refused, and the overlay draws nothing for those windows.
 
 **Honest limits.**
 
@@ -370,7 +370,7 @@ The spot is the window's centre when a step starts, then each click, scroll, dra
 
 The agent name comes from the MCP client: Claude, Codex, Cursor, Copilot, Windsurf and Gemini are recognised, other clients are shown by their own name, and `[overlay] label` overrides it.
 
-The overlay never takes focus or receives clicks. It is hidden from Deckhand's own screenshots and OCR (in demo mode, if it can't be confirmed hidden in time, the screenshot caption or OCR text says it may appear), and it uses no CPU when idle (under 2% of one core while animating). It draws nothing over minimized windows or windows on other virtual desktops, and it doesn't replace the crimson "Stopped" state while the kill switch is on (pressing it also clears the background pill).
+The overlay never takes focus or receives clicks. It is hidden from WinPilot's own screenshots and OCR (in demo mode, if it can't be confirmed hidden in time, the screenshot caption or OCR text says it may appear), and it uses no CPU when idle (under 2% of one core while animating). It draws nothing over minimized windows or windows on other virtual desktops, and it doesn't replace the crimson "Stopped" state while the kill switch is on (pressing it also clears the background pill).
 
 | Setting | Effect |
 |---|---|
@@ -379,7 +379,7 @@ The overlay never takes focus or receives clicks. It is hidden from Deckhand's o
 | `label = "Assistant"` | The name on the pill and cursor badge. |
 | `animations = false` | Static versions of everything. Turning off Windows' animation effects does the same. |
 | `show_reads = false` | No sweep over windows that are only read. |
-| `capturable = true` | **Demo mode.** Your own screen recorders (OBS, Snipping Tool, Game Bar) record the overlay. Deckhand still hides it for the instant of its own captures. |
+| `capturable = true` | **Demo mode.** Your own screen recorders (OBS, Snipping Tool, Game Bar) record the overlay. WinPilot still hides it for the instant of its own captures. |
 | `enabled = false` | No overlay at all. |
 
 ## Recording
@@ -387,24 +387,24 @@ The overlay never takes focus or receives clicks. It is hidden from Deckhand's o
 `observe mode=record` records the default window, a window or element (cropped to it), a region or a monitor. One recording runs at a time.
 
 - **Formats.** MP4 (H.264 through Media Foundation, on the hardware encoder when there is one, tagged BT.709) or GIF.
-- **Sound.** MP4s carry an AAC track (48 kHz stereo, 160 kbps) of what the PC plays by default; `audio` picks `mic`, `both` (mixed) or `none`. Silence while nothing plays is kept, so sound stays in sync with the picture. If the sound can't start (no playback device, no microphone, or Windows blocking microphone access for desktop apps under Settings > Privacy & security > Microphone), the recording runs without sound and the reply says why; Deckhand never changes that setting. If the device disappears mid-recording, the rest is silent and the report says when sound stopped. The status and stop replies name the sound that was recorded. GIFs are always silent.
-- **Defaults.** 30 fps (GIF at most 20), quality `high`, up to 300 s, cursor shown, scaled to at most 1920 px wide (GIF 960), saved as `deckhand-<date>-<time>.mp4` in `Videos\Deckhand`, wherever OneDrive or a policy moved your Videos folder.
+- **Sound.** MP4s carry an AAC track (48 kHz stereo, 160 kbps) of what the PC plays by default; `audio` picks `mic`, `both` (mixed) or `none`. Silence while nothing plays is kept, so sound stays in sync with the picture. If the sound can't start (no playback device, no microphone, or Windows blocking microphone access for desktop apps under Settings > Privacy & security > Microphone), the recording runs without sound and the reply says why; WinPilot never changes that setting. If the device disappears mid-recording, the rest is silent and the report says when sound stopped. The status and stop replies name the sound that was recorded. GIFs are always silent.
+- **Defaults.** 30 fps (GIF at most 20), quality `high`, up to 300 s, cursor shown, scaled to at most 1920 px wide (GIF 960), saved as `winpilot-<date>-<time>.mp4` in `Videos\WinPilot`, wherever OneDrive or a policy moved your Videos folder.
 - **Quality.** For MP4, `video_quality` sets the bitrate at 0.05, 0.08, 0.12 or 0.2 bits per pixel per frame, within 1–60 Mbps. For GIF it sets how hard the palette is fitted.
 - **Constant frame rate.** When nothing changes, or a frame can't be captured in time, the previous frame is held. A resized window is scaled to the size chosen at the start, with black bars where the shape differs. A monitor that changes resolution or position is followed.
 - **It stops by itself** at `max_seconds`, when you press the kill switch, when the recorded window closes or when the recorded monitor is disconnected. The next `status` or `stop` reports the saved file, and so does the next `start` if the report was never read.
 - **Files are never overwritten.** A default name that is taken gets `-2`, `-3` and so on; an explicit `path` that exists is refused, as is a path under `deny_paths`.
 - **Visible.** Windows draws a yellow border around whatever is being recorded, and the overlay shows the recording pill.
-- **Crash-safe.** MP4s are written as fragmented MP4, so a file always plays up to its last fragment, under a second before the end. When the client ends the session, Deckhand gets a few seconds to finalize the file. Even if the worker has to be killed, the MP4 plays up to its last fragment; a GIF usually keeps the frames written so far.
+- **Crash-safe.** MP4s are written as fragmented MP4, so a file always plays up to its last fragment, under a second before the end. When the client ends the session, WinPilot gets a few seconds to finalize the file. Even if the worker has to be killed, the MP4 plays up to its last fragment; a GIF usually keeps the frames written so far.
 
 ## Notifications
 
-The `notify` step shows a Windows toast from "Deckhand", with its icon. It stays in Notification Center. The step's note says when notifications are turned off for Deckhand, for you or by group policy (`not shown: …`, though the step still succeeds), and when Windows may hold the banner back: during a full-screen app, presentation mode, the lock screen, or the first hour after sign-in. Do Not Disturb can't be detected, so the note never claims you saw it.
+The `notify` step shows a Windows toast from "WinPilot", with its icon. It stays in Notification Center. The step's note says when notifications are turned off for WinPilot, for you or by group policy (`not shown: …`, though the step still succeeds), and when Windows may hold the banner back: during a full-screen app, presentation mode, the lock screen, or the first hour after sign-in. Do Not Disturb can't be detected, so the note never claims you saw it.
 
-Toasts need the app identity `Deckhand.Agent` that the install script registers. Without it, for example when running a dev build straight from `target`, Deckhand falls back to a tray balloon, which Windows may hold back.
+Toasts need the app identity `WinPilot.Agent` that the install script registers. Without it, for example when running a dev build straight from `target`, WinPilot falls back to a tray balloon, which Windows may hold back.
 
 ## Speech
 
-Deckhand can turn speech into text on your PC, so an agent can "listen in" on a call, a video or the microphone, or transcribe a media file. It runs OpenAI's Whisper locally on the CPU, in pure Rust ([candle](https://github.com/huggingface/candle)). Audio never leaves the machine and nothing is sent to a cloud service. The engine lives in the `deckhand-speech` crate and is exposed as `observe mode=listen`:
+WinPilot can turn speech into text on your PC, so an agent can "listen in" on a call, a video or the microphone, or transcribe a media file. It runs OpenAI's Whisper locally on the CPU, in pure Rust ([candle](https://github.com/huggingface/candle)). Audio never leaves the machine and nothing is sent to a cloud service. The engine lives in the `winpilot-speech` crate and is exposed as `observe mode=listen`:
 
 ```jsonc
 {"mode": "listen"}                                            // the next 10 s of what the PC plays
@@ -420,13 +420,13 @@ heard 10 s of system audio · language en
 
 Live listening takes 1 to 90 seconds (default 10) and blocks for that long plus the transcription; for anything longer, record with sound (`mode=record`) and then listen to the file. A file is transcribed up to its first 8 minutes per call, and the reply says when it stopped early. `max_chars` caps the reply. A silent capture says so, which usually means nothing was playing or the mic is muted. The model loads on the first `listen` call (a second or two) and stays loaded in the worker. `path` is checked against `deny_paths` like every other path.
 
-**Install a model once.** Deckhand never downloads anything while it runs. Fetch a multilingual model with the install script:
+**Install a model once.** WinPilot never downloads anything while it runs. Fetch a multilingual model with the install script:
 
 ```powershell
 .\scripts\install.ps1 -SpeechModel base     # or tiny, or small
 ```
 
-This only downloads the model; it doesn't rebuild or reinstall Deckhand. The file comes from the official whisper.cpp repository on Hugging Face (`ggerganov/whisper.cpp`), goes to `%LOCALAPPDATA%\deckhand\models\ggml-<name>.bin` and must match a SHA-256 pinned in the script; a mismatch deletes it and stops. Run the command again to re-check an installed model. `-Uninstall -Purge` removes the models with the logs.
+This only downloads the model; it doesn't rebuild or reinstall WinPilot. The file comes from the official whisper.cpp repository on Hugging Face (`ggerganov/whisper.cpp`), goes to `%LOCALAPPDATA%\winpilot\models\ggml-<name>.bin` and must match a SHA-256 pinned in the script; a mismatch deletes it and stops. Run the command again to re-check an installed model. `-Uninstall -Purge` removes the models with the logs.
 
 | Model | Download | Memory in use | Notes |
 |---|---|---|---|
@@ -444,25 +444,25 @@ When several are installed, `base` is used first, then `small`, then `tiny`.
 
 ## Safety
 
-- **Kill switch.** `Ctrl+Alt+Esc` (configurable) stops all input from every Deckhand session at once; press it again to resume. It works even while Deckhand is holding a key such as Shift, because Deckhand also watches the physical keyboard for the chord. A running batch stops between steps and while waiting, and every `act` call fails with `stopped_by_user` until you resume, in background mode too. The agent cannot undo it and is told to report it rather than retry. Reading the screen keeps working. It also stops and saves any recording, and no new recording starts until you resume.
-- **You keep priority.** If you used the mouse or keyboard in the last 600 ms, input steps wait until you stop, for up to 5 s, then fail with `user_active`. Reads and background steps never wait. Deckhand marks its own input so it never mistakes it for yours.
-- **One actor at a time.** A lock shared by every Deckhand session stops two of them from driving the mouse at once; the second gets `busy`.
-- **The agent's own terminal is off limits.** Deckhand finds the terminal window that hosts it and refuses to act on it; typing without a target never lands there.
-- **Hosts that hold many sessions can open up their chrome.** An app listed in `[guard] partial_hosts` (Claude Deck by default) that puts an element with the HTML/UI Automation id `deckhand-protects-terminals` in its window gets partial access: clicks, `set` and `type` aimed at a specific control are allowed, unless the target sits inside an element whose id starts with `deckhand-protected` (each session's terminal). Whole-window targets, `key` steps and untargeted typing are still refused, and so are window actions on the host. So an agent in one Claude Deck tab can rename or switch tabs, but can never type into, or approve prompts in, any session's terminal. Hosts without the marker stay fully off limits.
+- **Kill switch.** `Ctrl+Alt+Esc` (configurable) stops all input from every WinPilot session at once; press it again to resume. It works even while WinPilot is holding a key such as Shift, because WinPilot also watches the physical keyboard for the chord. A running batch stops between steps and while waiting, and every `act` call fails with `stopped_by_user` until you resume, in background mode too. The agent cannot undo it and is told to report it rather than retry. Reading the screen keeps working. It also stops and saves any recording, and no new recording starts until you resume.
+- **You keep priority.** If you used the mouse or keyboard in the last 600 ms, input steps wait until you stop, for up to 5 s, then fail with `user_active`. Reads and background steps never wait. WinPilot marks its own input so it never mistakes it for yours.
+- **One actor at a time.** A lock shared by every WinPilot session stops two of them from driving the mouse at once; the second gets `busy`.
+- **The agent's own terminal is off limits.** WinPilot finds the terminal window that hosts it and refuses to act on it; typing without a target never lands there.
+- **Hosts that hold many sessions can open up their chrome.** An app listed in `[guard] partial_hosts` (Claude Deck by default) that puts an element with the HTML/UI Automation id `winpilot-protects-terminals` in its window gets partial access: clicks, `set` and `type` aimed at a specific control are allowed, unless the target sits inside an element whose id starts with `winpilot-protected` (each session's terminal). Whole-window targets, `key` steps and untargeted typing are still refused, and so are window actions on the host. So an agent in one Claude Deck tab can rename or switch tabs, but can never type into, or approve prompts in, any session's terminal. Hosts without the marker stay fully off limits.
 - **Deny lists.** The only built-in rules are password managers: KeePass, KeePassXC, 1Password, Bitwarden, Dashlane and Enpass. Add your own by process, window title or both; they extend the built-ins. Denied windows are never read, captured or acted on, and `observe mode=clipboard` refuses clipboard content that a denied app put there or that its app marked private, as password managers do. Process rules are reliable. Title rules are partial protection: they match only what the title bar says, and titles change.
 - **Blackout.** Screenshots and recordings paint denied windows black. Recordings check on every frame, and if the window list can't be read the whole frame is blacked out. A denied window can't be recorded, and a recorded window that becomes denied is blacked out while it stays denied.
 - **Paths.** `pick` paths, recording paths, `launch` exe paths and absolute paths in `launch` arguments are refused under any folder in `deny_paths`, after resolving junctions and symbolic links.
 - **Elevation and the secure desktop.** Windows running as administrator are refused with `elevated_target`. A UAC prompt or the lock screen returns `needs_user`.
-- **It restores what it borrows.** Pasting restores your clipboard unless you copied something new in the meantime, and pasted text is kept out of clipboard history and cloud clipboard. Held keys and buttons are released at the end of every call; if a Deckhand process dies while holding them, the next worker to start, or the next call that acts, releases them.
-- **Audit log.** `%LOCALAPPDATA%\deckhand\logs\YYYY-MM-DD.jsonl` keeps one line per call: time, tool (`observe` or `act`), a short summary (for `observe` it starts with `mode=…`; for `act` it lists the steps), result and duration. Typed and set text, key sequences, chosen list options, waited-for text, clipboard text and launch arguments are logged by length, and file and app paths by name only, unless you set `[log] log_text = true`; notification text is always logged by length, and a window, target or query that names a denied window is logged as `<denied window>`. Logs older than 14 days are deleted. No screenshots are saved.
+- **It restores what it borrows.** Pasting restores your clipboard unless you copied something new in the meantime, and pasted text is kept out of clipboard history and cloud clipboard. Held keys and buttons are released at the end of every call; if a WinPilot process dies while holding them, the next worker to start, or the next call that acts, releases them.
+- **Audit log.** `%LOCALAPPDATA%\winpilot\logs\YYYY-MM-DD.jsonl` keeps one line per call: time, tool (`observe` or `act`), a short summary (for `observe` it starts with `mode=…`; for `act` it lists the steps), result and duration. Typed and set text, key sequences, chosen list options, waited-for text, clipboard text and launch arguments are logged by length, and file and app paths by name only, unless you set `[log] log_text = true`; notification text is always logged by length, and a window, target or query that names a denied window is logged as `<denied window>`. Logs older than 14 days are deleted. No screenshots are saved.
 
 **Recommended Claude Code permissions.** Allow `observe` and keep asking for `act` until you trust it, in `~/.claude/settings.json`:
 
 ```json
 {
   "permissions": {
-    "allow": ["mcp__deckhand__observe"],
-    "ask": ["mcp__deckhand__act"]
+    "allow": ["mcp__winpilot__observe"],
+    "ask": ["mcp__winpilot__act"]
   }
 }
 ```
@@ -471,7 +471,7 @@ Don't combine desktop control with bypass-permissions mode. Note that `observe` 
 
 ## Configuration
 
-`%APPDATA%\deckhand\config.toml` is optional, and every key in it is optional. It is read when the server starts, so restart the session after editing it. Unknown keys are errors: while the file is invalid, every call except `observe mode=status` is refused with a message that names the line.
+`%APPDATA%\winpilot\config.toml` is optional, and every key in it is optional. It is read when the server starts, so restart the session after editing it. Unknown keys are errors: while the file is invalid, every call except `observe mode=status` is refused with a message that names the line.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -500,7 +500,7 @@ Don't combine desktop control with bypass-permissions mode. Note that `observe` 
 | `cursor` | `true` | Show the mouse pointer. |
 | `format` | `"mp4"` | `mp4` or `gif`. |
 | `max_width` | 1920 (GIF 960) | Larger sources are scaled down, keeping their shape. |
-| `folder` | `Videos\Deckhand` | Where default-named recordings go; created if missing. |
+| `folder` | `Videos\WinPilot` | Where default-named recordings go; created if missing. |
 | **`[overlay]`** | | |
 | `enabled` | `true` | Show the overlay. |
 | `animations` | `true` | Animate it; `false` or Windows' animation setting gives static versions. |
@@ -549,9 +549,9 @@ retention_days = 14
 
 ## Compared with Windows-MCP
 
-Deckhand replaces [Windows-MCP](https://github.com/CursorTouch/Windows-MCP). Its tools map like this:
+WinPilot replaces [Windows-MCP](https://github.com/CursorTouch/Windows-MCP). Its tools map like this:
 
-| Windows-MCP | Deckhand |
+| Windows-MCP | WinPilot |
 |---|---|
 | Snapshot | `observe` |
 | Screenshot | `observe mode=screenshot` |
@@ -569,7 +569,7 @@ Deckhand replaces [Windows-MCP](https://github.com/CursorTouch/Windows-MCP). Its
 
 Measured on the author's laptop at 2560×1600:
 
-| Measure | Deckhand | Windows-MCP |
+| Measure | WinPilot | Windows-MCP |
 |---|---|---|
 | Window read (`observe elements`) | 70–125 ms on Chrome; 15–40 ms on small windows | median 15 s |
 | Screenshot | ~30 ms warm GDI capture, plus ~13 ms JPEG encode | — |
@@ -585,33 +585,33 @@ The bigger win is fewer and smaller model turns: batches, diffs instead of full 
 ```powershell
 .\scripts\check.ps1                    # fmt check, clippy -D warnings, tests
 cargo test --workspace                 # safe while you work
-cargo build -p deckhand-fixture        # the test app the e2e and fixture tests drive
-cargo test -p deckhand --test e2e -- --ignored --test-threads=1
+cargo build -p winpilot-fixture        # the test app the e2e and fixture tests drive
+cargo test -p winpilot --test e2e -- --ignored --test-threads=1
 ```
 
 | Crate | Role |
 |---|---|
-| `deckhand-core` | Pure logic and the shared protocol: tool arguments and validation, selectors, keys, diff, output formatting, config, themes, agent names, OCR text matching, IPC framing. No Windows APIs. |
-| `deckhand-uia` | UI Automation on one dedicated thread: snapshots, refs and fingerprints, pattern actions, text. |
-| `deckhand-capture` | Screen and window capture (DXGI, GDI, PrintWindow), resize, JPEG/PNG encoding, marks, OCR, audio capture (WASAPI), and recording to MP4 and GIF. |
-| `deckhand-input` | SendInput mouse, keyboard and text, cursor glide, the user-activity monitor, the kill-switch hotkey. |
-| `deckhand-desktop` | Windows, focus, launch, clipboard, monitors, virtual desktops, change events, the overlay, notifications. |
-| `deckhand-worker` | The engine behind every observe mode and act step. |
-| `deckhand-speech` | Local speech-to-text: Whisper on candle, the ggml model reader, resampling, Media Foundation decoding of media files. |
-| `deckhand` | The binary: MCP server, worker supervisor, audit log. |
-| `deckhand-fixture` | A test-only Win32 app with known controls and file dialogs, plus a small library (`deckhand_fixture::FixtureProcess`) that the tests use to launch and close it. |
+| `winpilot-core` | Pure logic and the shared protocol: tool arguments and validation, selectors, keys, diff, output formatting, config, themes, agent names, OCR text matching, IPC framing. No Windows APIs. |
+| `winpilot-uia` | UI Automation on one dedicated thread: snapshots, refs and fingerprints, pattern actions, text. |
+| `winpilot-capture` | Screen and window capture (DXGI, GDI, PrintWindow), resize, JPEG/PNG encoding, marks, OCR, audio capture (WASAPI), and recording to MP4 and GIF. |
+| `winpilot-input` | SendInput mouse, keyboard and text, cursor glide, the user-activity monitor, the kill-switch hotkey. |
+| `winpilot-desktop` | Windows, focus, launch, clipboard, monitors, virtual desktops, change events, the overlay, notifications. |
+| `winpilot-worker` | The engine behind every observe mode and act step. |
+| `winpilot-speech` | Local speech-to-text: Whisper on candle, the ggml model reader, resampling, Media Foundation decoding of media files. |
+| `winpilot` | The binary: MCP server, worker supervisor, audit log. |
+| `winpilot-fixture` | A test-only Win32 app with known controls and file dialogs, plus a small library (`winpilot_fixture::FixtureProcess`) that the tests use to launch and close it. |
 
 **Tests.** Plain `cargo test --workspace` is safe while you use the PC: it may read the desktop, but never injects input, moves the mouse, changes focus, writes the clipboard, opens windows or leaves files behind. Everything else is `#[ignore]`d with a reason, such as "moves the mouse and keyboard", "opens dialogs / changes focus", "records the screen", "records audio", "shows the overlay", "writes the clipboard" or "shows a notification". Run those with `-- --ignored` only when you can leave the PC alone, and filter by test name to run one group. For example, the recording tests:
 
 ```powershell
-cargo test --release -p deckhand-capture -p deckhand-worker record -- --ignored --test-threads=1
+cargo test --release -p winpilot-capture -p winpilot-worker record -- --ignored --test-threads=1
 ```
 
-Each one writes into its own `%TEMP%\deckhand-record-test-<name>-<pid>-<n>` folder (under `DECKHAND_RECORD_TEST_DIR` when that is set) and removes the whole folder afterwards.
+Each one writes into its own `%TEMP%\winpilot-record-test-<name>-<pid>-<n>` folder (under `WINPILOT_RECORD_TEST_DIR` when that is set) and removes the whole folder afterwards.
 
-**The e2e test** starts `deckhand.exe mcp` with a throwaway config folder, speaks MCP to it over stdio and drives the fixture app with the real mouse and keyboard. Build the fixture first.
+**The e2e test** starts `winpilot.exe mcp` with a throwaway config folder, speaks MCP to it over stdio and drives the fixture app with the real mouse and keyboard. Build the fixture first.
 
-**The icon.** `assets/deckhand.png` and `assets/deckhand.ico` are drawn by `node assets/generate-icon.mjs`, which rewrites both files. `build.rs` embeds the icon, version info and manifest into `deckhand.exe`.
+**The icon.** `assets/winpilot.png` and `assets/winpilot.ico` are drawn by `node assets/generate-icon.mjs`, which rewrites both files. `build.rs` embeds the icon, version info and manifest into `winpilot.exe`.
 
 **Benchmark.** `bench/deskbench` is an optional, standalone, read-only benchmark of the raw techniques: window listing, UIA tree-fetch variants, capture, encoding, OCR and process start-up. It is outside the workspace:
 
@@ -619,9 +619,9 @@ Each one writes into its own `%TEMP%\deckhand-record-test-<name>-<pid>-<n>` fold
 cargo run --release --manifest-path bench/deskbench/Cargo.toml
 ```
 
-`--skip-uia`, `--skip-capture` and `--skip-startup` leave out sections, `--webview-process <exe>` adds a WebView2 app (by process name) to the UI Automation targets, and `--probe` is the child mode the start-up section times. Its privacy guard is on by default: it never prints window titles, it skips windows that match your Deckhand deny list (the built-in rules plus your config's) or a `--deny-title <text>` argument, and it skips the capture sections while such a window is visible.
+`--skip-uia`, `--skip-capture` and `--skip-startup` leave out sections, `--webview-process <exe>` adds a WebView2 app (by process name) to the UI Automation targets, and `--probe` is the child mode the start-up section times. Its privacy guard is on by default: it never prints window titles, it skips windows that match your WinPilot deny list (the built-in rules plus your config's) or a `--deny-title <text>` argument, and it skips the capture sections while such a window is visible.
 
-**Demo video.** `demo/` scripts the promo recording. `node demo/choreography.mjs` drives `demo/demo.html`, a fictional page in Chrome or Edge, through an installed Deckhand (or the `deckhand.exe` that `DECKHAND_EXE` names) with a throwaway config and browser profile. It records a screen region with `observe mode=record`, uploads `demo/spec.pdf` through the `pick` step, and writes `demo/raw.mp4` and `demo/timeline.json`; `--check` rehearses without recording and `--keep` leaves the windows and scratch folder in place. `node demo/build.mjs` then needs `ffmpeg` on the `PATH`: it adds the title cards and captions and writes `demo/deckhand-demo.mp4`, `deckhand-demo.gif` and `poster.png` (`--raw`, `--timeline` and `--edit` pick other inputs, `--placeholder` builds from a stand-in clip, and `--skip-cards`, `--skip-gif` and `--keep-work` save time). Everything it writes is git-ignored.
+**Demo video.** `demo/` scripts the promo recording. `node demo/choreography.mjs` drives `demo/demo.html`, a fictional page in Chrome or Edge, through an installed WinPilot (or the `winpilot.exe` that `WINPILOT_EXE` names) with a throwaway config and browser profile. It records a screen region with `observe mode=record`, uploads `demo/spec.pdf` through the `pick` step, and writes `demo/raw.mp4` and `demo/timeline.json`; `--check` rehearses without recording and `--keep` leaves the windows and scratch folder in place. `node demo/build.mjs` then needs `ffmpeg` on the `PATH`: it adds the title cards and captions and writes `demo/winpilot-demo.mp4`, `winpilot-demo.gif` and `poster.png` (`--raw`, `--timeline` and `--edit` pick other inputs, `--placeholder` builds from a stand-in clip, and `--skip-cards`, `--skip-gif` and `--keep-work` save time). Everything it writes is git-ignored.
 
 The code rules (no comments, small functions, no `unwrap`, RAII handles, actor threads for COM) are in [CLAUDE.md](CLAUDE.md). The design is in [docs/DESIGN.md](docs/DESIGN.md).
 

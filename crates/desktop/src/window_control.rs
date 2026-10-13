@@ -1,12 +1,12 @@
 use std::time::Duration;
 
-use deckhand_core::{Context, Result, WindowRef, WindowState};
 use windows::Win32::{
     Foundation::{LPARAM, WPARAM},
     UI::WindowsAndMessaging::{
         PostMessageW, SMTO_ABORTIFHUNG, SendMessageTimeoutW, ShowWindowAsync, WM_CLOSE, WM_NULL,
     },
 };
+use winpilot_core::{Context, Result, WindowRef, WindowState};
 
 use crate::{
     activation::Activation,

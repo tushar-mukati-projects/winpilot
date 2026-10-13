@@ -1,4 +1,3 @@
-use deckhand_core::{Context, Result};
 use windows::Win32::{
     Foundation::{FreeLibrary, HINSTANCE, HMODULE},
     System::LibraryLoader::{GetProcAddress, LoadLibraryW},
@@ -8,6 +7,7 @@ use windows::Win32::{
     },
 };
 use windows::core::{HRESULT, PCWSTR, s, w};
+use winpilot_core::{Context, Result};
 
 use crate::module_instance::module_instance;
 

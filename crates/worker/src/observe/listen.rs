@@ -1,12 +1,12 @@
 use std::{path::Path, sync::Arc, time::Duration};
 
-use deckhand_capture::{AudioSource, Pcm, capture_audio};
-use deckhand_core::{
+use parking_lot::Mutex;
+use winpilot_capture::{AudioSource, Pcm, capture_audio};
+use winpilot_core::{
     Result,
     protocol::{HeardSegment, Hearing, ListenReport, ListenRequest, ListenSource},
 };
-use deckhand_speech::{Segment, TranscribeOptions, Transcriber, clock, decode_media, installed_model_path};
-use parking_lot::Mutex;
+use winpilot_speech::{Segment, TranscribeOptions, Transcriber, clock, decode_media, installed_model_path};
 
 use crate::{call_scope::CallScope, engine::Engine};
 

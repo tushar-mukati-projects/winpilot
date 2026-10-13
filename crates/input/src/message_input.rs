@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use deckhand_core::{
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_RETURN;
+use winpilot_core::{
     Point, Result, WindowRef,
     keys::Chord,
     protocol::{Direction, MouseButton},
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::VK_RETURN;
 
 use crate::{
     layout::SystemLayout,

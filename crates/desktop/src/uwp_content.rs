@@ -1,6 +1,5 @@
 use std::ptr;
 
-use deckhand_core::WindowRef;
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM},
@@ -8,6 +7,7 @@ use windows::{
     },
     core::BOOL,
 };
+use winpilot_core::WindowRef;
 
 use crate::window_identity::{class_name, live_hwnd, owning_pid};
 

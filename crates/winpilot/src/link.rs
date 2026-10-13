@@ -9,13 +9,13 @@ use std::{
     time::Duration,
 };
 
-use deckhand_core::{
+use parking_lot::Mutex;
+use tokio::sync::oneshot;
+use winpilot_core::{
     Context, Error, Result,
     ipc::{FromWorker, ToWorker, read_frame, write_frame},
     protocol::Reply,
 };
-use parking_lot::Mutex;
-use tokio::sync::oneshot;
 
 use crate::death::{Death, stopped_error};
 
@@ -66,8 +66,8 @@ impl Link {
         let (ready, announced) = oneshot::channel();
         let writer = Arc::downgrade(&link);
         let reader = Arc::downgrade(&link);
-        spawn_named("deckhand-worker-writer", move || write_frames(&writer, pipes.stdin, &outbox))?;
-        spawn_named("deckhand-worker-reader", move || read_frames(&reader, pipes.stdout, ready))?;
+        spawn_named("winpilot-worker-writer", move || write_frames(&writer, pipes.stdin, &outbox))?;
+        spawn_named("winpilot-worker-reader", move || read_frames(&reader, pipes.stdout, ready))?;
         Ok((link, announced))
     }
 

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use deckhand_core::protocol::StatusReport;
+use winpilot_core::protocol::StatusReport;
 
 pub fn server_report(uptime: Duration, kill_hotkey: &str, restarts: u32) -> StatusReport {
     StatusReport {
@@ -20,7 +20,7 @@ pub fn server_report(uptime: Duration, kill_hotkey: &str, restarts: u32) -> Stat
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::format;
+    use winpilot_core::format;
 
     use super::*;
 

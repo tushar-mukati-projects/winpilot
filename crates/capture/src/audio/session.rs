@@ -1,7 +1,7 @@
 use std::time::Instant;
 
-use deckhand_core::Result;
 use windows::Win32::Foundation::HANDLE;
+use winpilot_core::Result;
 
 use super::device::Endpoint;
 use super::feed::{Catch, Feed};

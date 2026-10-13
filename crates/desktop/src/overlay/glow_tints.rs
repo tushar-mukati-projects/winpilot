@@ -99,7 +99,7 @@ fn ignite_gain(along: f32, perimeter: &Perimeter, progress: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
 

@@ -1,6 +1,6 @@
-use deckhand_core::{Context, Error, Result};
 use fast_image_resize::images::{Image, ImageRef};
 use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer};
+use winpilot_core::{Context, Error, Result};
 
 use super::layout::{Placement, Size, letterbox};
 use crate::pixels::BYTES_PER_PIXEL;

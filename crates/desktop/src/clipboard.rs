@@ -1,6 +1,5 @@
 use std::{marker::PhantomData, thread, time::Duration};
 
-use deckhand_core::{Context, Error, ErrorCode, Result};
 use windows::Win32::{
     Foundation::{GetLastError, HANDLE, HGLOBAL, NO_ERROR},
     System::{
@@ -11,6 +10,7 @@ use windows::Win32::{
         Ole::{CF_LOCALE, CF_OEMTEXT, CF_TEXT, CF_UNICODETEXT},
     },
 };
+use winpilot_core::{Context, Error, ErrorCode, Result};
 
 use crate::{
     clipboard_history::{PrivacyFormats, history_exclusion_markers},
@@ -207,8 +207,8 @@ mod tests {
     #[ignore = "writes the clipboard"]
     fn set_then_get_round_trips() {
         let saved = get_text().unwrap();
-        set_text("deckhand ✓ test").unwrap();
-        assert_eq!(get_text().unwrap().as_deref(), Some("deckhand ✓ test"));
+        set_text("winpilot ✓ test").unwrap();
+        assert_eq!(get_text().unwrap().as_deref(), Some("winpilot ✓ test"));
         assert!(holds_only_text().unwrap());
         set_text(saved.as_deref().unwrap_or_default()).unwrap();
     }
@@ -217,8 +217,8 @@ mod tests {
     #[ignore = "writes the clipboard"]
     fn transient_text_round_trips_with_history_markers() {
         let saved = get_text().unwrap();
-        set_text_transient("deckhand transient").unwrap();
-        assert_eq!(get_text().unwrap().as_deref(), Some("deckhand transient"));
+        set_text_transient("winpilot transient").unwrap();
+        assert_eq!(get_text().unwrap().as_deref(), Some("winpilot transient"));
         assert!(!holds_only_text().unwrap());
         let private = read().unwrap();
         assert!(private.marked_private && private.text.is_none());

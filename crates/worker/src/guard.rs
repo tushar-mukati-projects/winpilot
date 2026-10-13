@@ -5,25 +5,25 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_capture::StopCheck;
-use deckhand_core::{Context, Error, ErrorCode, Result, WindowInfo, config::GuardConfig};
-use deckhand_desktop::{
+use winpilot_capture::StopCheck;
+use winpilot_core::{Context, Error, ErrorCode, Result, WindowInfo, config::GuardConfig};
+use winpilot_desktop::{
     overlay::Overlay,
     sync::{NamedEvent, NamedMutex, NamedMutexGuard},
 };
-use deckhand_input::ActivityMonitor;
+use winpilot_input::ActivityMonitor;
 
 use crate::{
     call_scope::CallScope,
     kill_switch::{KillSwitch, warn},
 };
 
-const STOP_EVENT: &str = "Local\\deckhand-stopped";
-const ACTOR_MUTEX: &str = "Local\\deckhand-actor";
+const STOP_EVENT: &str = "Local\\winpilot-stopped";
+const ACTOR_MUTEX: &str = "Local\\winpilot-actor";
 const ACTOR_WAIT: Duration = Duration::from_secs(10);
 const YIELD_POLL: Duration = Duration::from_millis(50);
-const BUSY: &str = "another Deckhand call or agent session is controlling the desktop";
-const RELEASING_STUCK_INPUTS: &str = "releasing keys and buttons that a crashed Deckhand call left held down";
+const BUSY: &str = "another WinPilot call or agent session is controlling the desktop";
+const RELEASING_STUCK_INPUTS: &str = "releasing keys and buttons that a crashed WinPilot call left held down";
 
 pub(crate) struct Guard {
     config: GuardConfig,
@@ -40,7 +40,7 @@ impl Guard {
         let actor = NamedMutex::create(ACTOR_MUTEX)?;
         let activity = ActivityMonitor::spawn().inspect_err(|error| warn("user-activity monitor", error)).ok();
         let kill_switch = KillSwitch::spawn(&config.kill_hotkey, &stop, overlay);
-        let elevated = deckhand_desktop::own_process_elevated();
+        let elevated = winpilot_desktop::own_process_elevated();
         Ok(Self { config: config.clone(), stop, actor, activity, kill_switch, elevated })
     }
 
@@ -95,7 +95,7 @@ impl Guard {
         if self.denies(window) {
             return Err(Error::new(
                 ErrorCode::Denied,
-                format!("{} ({}) is on Deckhand's deny list", window.hwnd, window.process),
+                format!("{} ({}) is on WinPilot's deny list", window.hwnd, window.process),
             ));
         }
         Ok(())
@@ -114,14 +114,14 @@ impl Guard {
         let Some(actor) = self.actor.lock(wait)? else { return Err(busy(wait < ACTOR_WAIT)) };
         call.note_acting();
         if actor.was_abandoned() {
-            deckhand_input::release_stuck_inputs().context(RELEASING_STUCK_INPUTS)?;
+            winpilot_input::release_stuck_inputs().context(RELEASING_STUCK_INPUTS)?;
         }
         Ok(actor)
     }
 
     pub(crate) fn release_inputs_a_crash_left_held(&self) -> Result<()> {
         let Some(_recovering) = self.actor.try_lock_abandoned()? else { return Ok(()) };
-        deckhand_input::release_stuck_inputs().context(RELEASING_STUCK_INPUTS)
+        winpilot_input::release_stuck_inputs().context(RELEASING_STUCK_INPUTS)
     }
 
     pub(crate) fn check_running(&self, call: &CallScope) -> Result<()> {
@@ -143,7 +143,7 @@ impl Guard {
     fn stopped(&self) -> Error {
         Error::new(
             ErrorCode::StoppedByUser,
-            format!("Deckhand is stopped by the kill hotkey; the user can press {} to resume", self.config.kill_hotkey),
+            format!("WinPilot is stopped by the kill hotkey; the user can press {} to resume", self.config.kill_hotkey),
         )
     }
 
@@ -154,7 +154,7 @@ impl Guard {
 
     pub(crate) fn before_patterns(&self, window: Option<&WindowInfo>, call: &CallScope) -> Result<()> {
         self.check_running(call)?;
-        if deckhand_desktop::secure_desktop_active() {
+        if winpilot_desktop::secure_desktop_active() {
             return Err(Error::new(
                 ErrorCode::NeedsUser,
                 "a UAC prompt or the lock screen is active; the user must handle it",
@@ -171,7 +171,7 @@ impl Guard {
         if window.elevated && !self.elevated {
             return Err(Error::new(
                 ErrorCode::ElevatedTarget,
-                format!("{} ({}) runs as administrator; Deckhand cannot control it", window.hwnd, window.process),
+                format!("{} ({}) runs as administrator; WinPilot cannot control it", window.hwnd, window.process),
             ));
         }
         Ok(())
@@ -213,7 +213,7 @@ mod tests {
     fn busy_names_both_kinds_of_holder() {
         let busy_now = busy(false);
         assert_eq!(busy_now.code, ErrorCode::Busy);
-        assert!(busy_now.message.starts_with("another Deckhand call or agent session"), "{}", busy_now.message);
+        assert!(busy_now.message.starts_with("another WinPilot call or agent session"), "{}", busy_now.message);
         assert_eq!(busy(true).code, ErrorCode::Timeout);
     }
 }

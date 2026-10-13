@@ -1,5 +1,5 @@
-use deckhand_core::Result;
-use deckhand_desktop::clipboard;
+use winpilot_core::Result;
+use winpilot_desktop::clipboard;
 
 use super::{
     done::Done,

@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::Result;
+use winpilot_core::Result;
 
 use crate::{call_scope::CallScope, engine::Engine, watch::Watch};
 

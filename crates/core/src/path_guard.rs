@@ -11,7 +11,7 @@ const FORBIDDEN_CHARS: [char; 7] = ['<', '>', '"', '|', '?', '*', ':'];
 pub(crate) fn checked_path(path: &Path, protected: &[PathBuf]) -> Result<PathBuf> {
     let clean = plain_absolute(path)?;
     if protected.iter().any(|root| is_inside(&clean, root)) {
-        let message = format!("'{}' is inside a folder Deckhand is configured to protect", clean.display());
+        let message = format!("'{}' is inside a folder WinPilot is configured to protect", clean.display());
         return Err(Error::new(ErrorCode::Denied, message));
     }
     Ok(clean)
@@ -212,7 +212,7 @@ mod tests {
             let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
             let temp = fs::canonicalize(std::env::temp_dir()).unwrap();
             let temp = temp.to_str().unwrap().strip_prefix(VERBATIM_PREFIX).unwrap().to_string();
-            let base = PathBuf::from(temp).join(format!("deckhand-core-guard-{}-{nanos}", std::process::id()));
+            let base = PathBuf::from(temp).join(format!("winpilot-core-guard-{}-{nanos}", std::process::id()));
             fs::create_dir_all(base.join("Protected").join("Inner")).unwrap();
             fs::create_dir_all(base.join("Open")).unwrap();
             Self(base)
@@ -280,7 +280,7 @@ mod tests {
     fn empty_and_relative_roots_protect_nothing_by_accident() {
         let roots = [PathBuf::new()];
         assert!(checked_path(Path::new(r"C:\Users\me\a.txt"), &roots).is_ok());
-        let relative = [PathBuf::from("deckhand-no-such-folder")];
+        let relative = [PathBuf::from("winpilot-no-such-folder")];
         assert!(checked_path(Path::new(r"C:\Users\me\a.txt"), &relative).is_ok());
     }
 }

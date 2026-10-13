@@ -7,7 +7,7 @@ mod selection;
 
 use std::{collections::HashSet, path::Path, time::Duration};
 
-use deckhand_core::{
+use winpilot_core::{
     ElementRef, Error, ErrorCode, Result, TargetSpec, WindowInfo, WindowRef,
     protocol::{Step, pick_wait},
 };
@@ -257,7 +257,7 @@ fn confirm(
             answer(engine, decline)?;
             Err(Error::new(
                 ErrorCode::NeedsUser,
-                format!("the file dialog asked: {text}; Deckhand declined, so nothing was picked"),
+                format!("the file dialog asked: {text}; WinPilot declined, so nothing was picked"),
             ))
         }
         Prompt::Message { text, dismiss } => {
@@ -287,7 +287,7 @@ fn await_outcome(
 ) -> Result<Option<Outcome>> {
     let hwnd = dialog.window.hwnd;
     until(engine, call, CLOSE_WAIT, &Watch::window(&dialog.window), || {
-        if !deckhand_desktop::is_window(hwnd) {
+        if !winpilot_desktop::is_window(hwnd) {
             return Ok(Some(Outcome::Closed));
         }
         Ok(new_prompt(engine, hwnd, answered)?.map(Outcome::Prompt))
@@ -296,13 +296,13 @@ fn await_outcome(
 
 fn new_prompt(engine: &Engine, owner: WindowRef, answered: Option<WindowRef>) -> Result<Option<WindowInfo>> {
     let mut prompts = dialog_windows(engine)?.into_iter().filter(|window| Some(window.hwnd) != answered);
-    Ok(prompts.find(|window| deckhand_desktop::owner_of(window.hwnd) == Some(owner)))
+    Ok(prompts.find(|window| winpilot_desktop::owner_of(window.hwnd) == Some(owner)))
 }
 
 fn abandon(engine: &Engine, dialog: &FileDialog) {
-    let Some(cancel) = dialog.cancel.filter(|_| deckhand_desktop::is_window(dialog.window.hwnd)) else { return };
+    let Some(cancel) = dialog.cancel.filter(|_| winpilot_desktop::is_window(dialog.window.hwnd)) else { return };
     if let Err(error) = press(engine, cancel) {
-        eprintln!("deckhand worker: could not cancel the file dialog Deckhand opened: {error}");
+        eprintln!("winpilot worker: could not cancel the file dialog WinPilot opened: {error}");
     }
 }
 
@@ -344,7 +344,7 @@ mod tests {
     }
 
     fn assert_user_kept(front: Option<WindowRef>, app: &FixtureApp) {
-        let now = deckhand_desktop::foreground_window();
+        let now = winpilot_desktop::foreground_window();
         assert!(now != Some(app.hwnd()), "the fixture took the foreground");
         assert_eq!(now, front, "the user's foreground window changed");
     }
@@ -368,7 +368,7 @@ mod tests {
 
     #[test]
     fn a_dialog_belongs_to_its_own_window_and_its_owners_only() {
-        let dialog = crate::test_fixture::window(0, "app.exe", "Open", deckhand_core::Rect::default());
+        let dialog = crate::test_fixture::window(0, "app.exe", "Open", winpilot_core::Rect::default());
         assert!(belongs_to(&dialog, WindowRef(0)));
         assert!(!belongs_to(&dialog, WindowRef(77)));
     }
@@ -447,13 +447,13 @@ mod tests {
         let file = temp_file("behind.txt");
         let _cleanup = TempFiles(vec![file.clone()]);
         let Some(app) = FixtureApp::launch_on_screen() else { return };
-        let front = deckhand_desktop::foreground_window();
-        let cursor = deckhand_input::cursor_position().unwrap();
+        let front = winpilot_desktop::foreground_window();
+        let cursor = winpilot_input::cursor_position().unwrap();
         let done = pick_behind(&app, 2011, vec![text(&file)], false).unwrap();
         assert!(done.note.unwrap().starts_with("picked 1 file in the Open dialog"));
         let opened = app.settled_text(2012, |shown| shown.contains(&text(&file)));
         assert!(opened.contains(&text(&file)), "{opened}");
-        assert_eq!(deckhand_input::cursor_position().unwrap(), cursor, "background pick moved the mouse");
+        assert_eq!(winpilot_input::cursor_position().unwrap(), cursor, "background pick moved the mouse");
         assert_user_kept(front, &app);
     }
 
@@ -463,7 +463,7 @@ mod tests {
         let existing = temp_file("behind-replace.txt");
         let _cleanup = TempFiles(vec![existing.clone()]);
         let Some(app) = FixtureApp::launch_on_screen() else { return };
-        let front = deckhand_desktop::foreground_window();
+        let front = winpilot_desktop::foreground_window();
         pick_behind(&app, 2013, vec![text(&existing)], true).unwrap();
         let saved = app.settled_text(2014, |shown| shown.contains(&text(&existing)));
         assert!(saved.contains(&text(&existing)), "{saved}");
@@ -476,7 +476,7 @@ mod tests {
         let existing = temp_file("behind-existing.txt");
         let _cleanup = TempFiles(vec![existing.clone()]);
         let Some(app) = FixtureApp::launch_on_screen() else { return };
-        let front = deckhand_desktop::foreground_window();
+        let front = winpilot_desktop::foreground_window();
         let error = pick_behind(&app, 2013, vec![text(&existing)], false).unwrap_err();
         assert_eq!(error.code, ErrorCode::NeedsUser);
         assert_user_kept(front, &app);

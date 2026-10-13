@@ -1,4 +1,4 @@
-use deckhand_core::{Element, Error, Result};
+use winpilot_core::{Element, Error, Result};
 
 use super::clip::{NOTE_LIMIT, quoted};
 
@@ -74,7 +74,7 @@ fn value_note(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ErrorCode, Role};
+    use winpilot_core::{ErrorCode, Role};
 
     use super::*;
 

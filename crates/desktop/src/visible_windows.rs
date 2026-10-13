@@ -1,5 +1,5 @@
-use deckhand_core::{Rect, Result, WindowRef};
 use windows::Win32::Foundation::HWND;
+use winpilot_core::{Rect, Result, WindowRef};
 
 use crate::{
     process::ProcessLookup,
@@ -54,7 +54,7 @@ mod tests {
         assert!(all.iter().all(|window| !window.rect.is_empty()));
         let apps = windows().unwrap();
         let shown =
-            apps.iter().filter(|app| app.state != deckhand_core::WindowState::Minimized && app.on_current_desktop);
+            apps.iter().filter(|app| app.state != winpilot_core::WindowState::Minimized && app.on_current_desktop);
         let missing = shown.filter(|app| all.iter().all(|window| window.hwnd != app.hwnd)).count();
         assert!(missing <= 1, "{missing} app windows are missing from the visible list");
     }

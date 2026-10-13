@@ -1,4 +1,4 @@
-use deckhand_core::{Element, ElementRef, Error, ErrorCode, Result, WindowInfo};
+use winpilot_core::{Element, ElementRef, Error, ErrorCode, Result, WindowInfo};
 
 use super::{
     click_choice::ClickOptions,
@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn points_and_ocr_text_are_focused_by_clicking_them() {
-        use deckhand_core::{Point, Rect, Role};
+        use winpilot_core::{Point, Rect, Role};
 
         use crate::test_fixture::{element, window};
 

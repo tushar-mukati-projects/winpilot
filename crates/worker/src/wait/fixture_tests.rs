@@ -1,6 +1,6 @@
 use std::{thread, time::Duration};
 
-use deckhand_core::{
+use winpilot_core::{
     Result,
     protocol::{Until, WaitArgs},
 };
@@ -91,7 +91,7 @@ fn a_cancelled_wait_stops() {
         ..condition(Until::Appears, &fixture)
     };
     let error = run(engine(), &appears, &cancelled).unwrap_err();
-    assert_eq!(error.code, deckhand_core::ErrorCode::Cancelled);
+    assert_eq!(error.code, winpilot_core::ErrorCode::Cancelled);
 }
 
 #[test]

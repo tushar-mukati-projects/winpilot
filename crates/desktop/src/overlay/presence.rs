@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::Rect;
+use winpilot_core::Rect;
 
 use super::{
     driving::Driving,

@@ -1,6 +1,6 @@
 use std::mem;
 
-use deckhand_core::ElementRef;
+use winpilot_core::ElementRef;
 
 use super::{Entry, Registry};
 use crate::fingerprint::{self, Fingerprint};
@@ -175,7 +175,7 @@ mod tests {
         let fresh = registry.record(sighting(2, 2, "Save"), generation, now);
         let other = registry.record(sighting(3, 3, "Save"), generation, now);
         assert!(!registry.adopt_replacement(fresh, other, first_ref_of_rewalk));
-        assert!(!registry.adopt_replacement(stale, deckhand_core::ElementRef(999), first_ref_of_rewalk));
+        assert!(!registry.adopt_replacement(stale, winpilot_core::ElementRef(999), first_ref_of_rewalk));
         assert!(registry.resolve(fresh, now).is_ok());
         assert!(registry.resolve(other, now).is_ok());
     }

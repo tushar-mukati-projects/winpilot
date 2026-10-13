@@ -1,4 +1,3 @@
-use deckhand_core::{Context, Rect, Result};
 use windows::Win32::Foundation::{LPARAM, RECT};
 use windows::Win32::Graphics::Gdi::{
     DEVMODEW, ENUM_CURRENT_SETTINGS, ENUM_DISPLAY_SETTINGS_FLAGS, EnumDisplayMonitors, EnumDisplaySettingsExW,
@@ -6,6 +5,7 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::WindowsAndMessaging::MONITORINFOF_PRIMARY;
 use windows_core::{BOOL, PCWSTR};
+use winpilot_core::{Context, Rect, Result};
 
 use crate::convert::rect_from_win32;
 
@@ -64,7 +64,7 @@ fn orientation_of(device: &[u16; 32]) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Point;
+    use winpilot_core::Point;
 
     use super::*;
 

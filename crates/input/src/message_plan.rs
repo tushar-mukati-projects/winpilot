@@ -1,13 +1,13 @@
 use std::time::Duration;
 
-use deckhand_core::{
-    Error, ErrorCode, Point, Result,
-    keys::{Chord, Key, NamedKey},
-    protocol::{Direction, MouseButton},
-};
 use windows::Win32::UI::{
     Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_BACK, VK_ESCAPE, VK_RETURN, VK_TAB},
     WindowsAndMessaging::{WM_CHAR, WM_KEYDOWN, WM_KEYUP, WM_MOUSEMOVE},
+};
+use winpilot_core::{
+    Error, ErrorCode, Point, Result,
+    keys::{Chord, Key, NamedKey},
+    protocol::{Direction, MouseButton},
 };
 
 use crate::{
@@ -192,13 +192,13 @@ fn between(from: Point, to: Point, step: u32) -> Point {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::keys::{Modifiers, parse_keys};
     use windows::Win32::UI::{
         Input::KeyboardAndMouse::{VK_BACK, VK_END, VK_LEFT},
         WindowsAndMessaging::{
             WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_RBUTTONUP,
         },
     };
+    use winpilot_core::keys::{Modifiers, parse_keys};
 
     use super::*;
     use crate::test_layout::FakeLayout;

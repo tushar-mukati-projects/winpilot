@@ -1,5 +1,5 @@
-use deckhand_core::Result;
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_RETURN, VK_TAB};
+use winpilot_core::Result;
 
 use crate::{
     event::InputEvent,

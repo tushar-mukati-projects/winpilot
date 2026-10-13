@@ -19,7 +19,7 @@ use windows::{
     core::{HSTRING, Owned, PCWSTR, PWSTR, w},
 };
 
-const CLASS_NAME: PCWSTR = w!("DeckhandFixtureWindow");
+const CLASS_NAME: PCWSTR = w!("WinPilotFixtureWindow");
 const PATIENCE: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(25);
 const EXIT_WAIT_MS: u32 = 5000;
@@ -76,7 +76,7 @@ impl Drop for FixtureProcess {
 }
 
 pub fn fixture_exe() -> Option<PathBuf> {
-    let exe = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/deckhand-fixture.exe");
+    let exe = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/debug/winpilot-fixture.exe");
     exe.exists().then_some(exe)
 }
 

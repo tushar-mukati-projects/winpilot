@@ -1,9 +1,9 @@
-use deckhand_core::{
+use serde_json::{Value, json};
+use winpilot_core::{
     ErrorCode, TargetSpec,
     diff::Change,
     protocol::{ActArgs, ActReport, After, AfterMode, Step},
 };
-use serde_json::{Value, json};
 
 use super::{after::Baseline, mode::Mode, run, select::select_by_pattern, target::prepare};
 use crate::{
@@ -37,7 +37,7 @@ fn assert_all_ok(report: &ActReport) {
 }
 
 fn assert_background(fixture: &FixtureApp) {
-    assert!(deckhand_desktop::foreground_window() != Some(fixture.hwnd()), "the fixture kept the foreground");
+    assert!(winpilot_desktop::foreground_window() != Some(fixture.hwnd()), "the fixture kept the foreground");
 }
 
 fn step_note(note: Option<&str>) -> Option<String> {
@@ -79,12 +79,12 @@ fn auto_click_on_a_background_window_uses_the_pattern() {
 fn set_value_writes_the_edit_through_its_pattern() {
     let engine = engine();
     let Some(fixture) = FixtureApp::launch() else { return };
-    let set = step(json!({ "do": "set", "target": fixture.selector("id:2001"), "value": "hello deckhand" }));
+    let set = step(json!({ "do": "set", "target": fixture.selector("id:2001"), "value": "hello winpilot" }));
     let report = act(engine, vec![set], true);
     assert_all_ok(&report);
     assert_eq!(report.steps[0].method.as_deref(), Some("value"));
     assert_eq!(step_note(report.steps[0].note.as_deref()), None);
-    assert_eq!(fixture.text(2001), "hello deckhand");
+    assert_eq!(fixture.text(2001), "hello winpilot");
     assert_background(&fixture);
 }
 
@@ -225,7 +225,7 @@ fn without_stop_on_error_the_rest_still_runs() {
 fn background_mode_clicks_types_and_checks_through_patterns_only() {
     let engine = engine();
     let Some(fixture) = FixtureApp::launch() else { return };
-    let cursor = deckhand_input::cursor_position().unwrap();
+    let cursor = winpilot_input::cursor_position().unwrap();
     let steps = vec![
         click(&fixture, "id:2003", "auto"),
         step(json!({ "do": "set", "target": fixture.selector("id:2001"), "value": "Ada" })),
@@ -239,7 +239,7 @@ fn background_mode_clicks_types_and_checks_through_patterns_only() {
     assert!(fixture.wait_for_text(2004, "Clicks: 1"), "click count is {:?}", fixture.text(2004));
     assert_eq!(fixture.text(2001), "Ada Lovelace");
     toggled(&act_with(engine, vec![checked(&fixture, true)], true, true), &fixture, "on");
-    assert_eq!(deckhand_input::cursor_position().unwrap(), cursor, "background mode moved the mouse");
+    assert_eq!(winpilot_input::cursor_position().unwrap(), cursor, "background mode moved the mouse");
     assert_background(&fixture);
 }
 

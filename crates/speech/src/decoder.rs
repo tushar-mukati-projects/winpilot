@@ -1,6 +1,6 @@
 use candle_core::Tensor;
 use candle_transformers::models::whisper::model::Whisper;
-use deckhand_core::{Context, Error, Result};
+use winpilot_core::{Context, Error, Result};
 
 use crate::logits::{apply_rules, greedy, log_sum_exp};
 use crate::text_decoder::{CachedDecoder, last_position};

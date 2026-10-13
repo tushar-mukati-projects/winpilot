@@ -1,6 +1,5 @@
 use std::{sync::mpsc::Receiver, time::Instant};
 
-use deckhand_core::{Point, Rect, Result};
 use windows::Win32::{
     Graphics::Dwm::DwmFlush,
     UI::{
@@ -8,6 +7,7 @@ use windows::Win32::{
         WindowsAndMessaging::{MSG, WM_APP},
     },
 };
+use winpilot_core::{Point, Rect, Result};
 
 use super::{
     activity::Activity,

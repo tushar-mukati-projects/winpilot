@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     Error, ErrorCode, Point, Result, WindowInfo,
     host_marks::{is_opt_in_marker, is_protected_id},
 };
@@ -73,7 +73,7 @@ fn hidden_spot(window: &WindowInfo, point: Point) -> Error {
     Error::new(
         ErrorCode::Denied,
         format!(
-            "{},{} in {} is covered by another window, so Deckhand can't confirm it is outside the agent's session terminals",
+            "{},{} in {} is covered by another window, so WinPilot can't confirm it is outside the agent's session terminals",
             point.x, point.y, window.hwnd
         ),
     )
@@ -83,7 +83,7 @@ fn inside_terminal(protected: &str) -> Error {
     Error::new(
         ErrorCode::Denied,
         format!(
-            "that spot is inside {protected}, a session terminal of the agent's own app; Deckhand never clicks or types there"
+            "that spot is inside {protected}, a session terminal of the agent's own app; WinPilot never clicks or types there"
         ),
     )
 }
@@ -94,11 +94,11 @@ mod tests {
 
     #[test]
     fn refusals_name_the_terminal_and_point_to_a_way_out() {
-        let terminal = inside_terminal("deckhand-protected-terminal-tm2");
+        let terminal = inside_terminal("winpilot-protected-terminal-tm2");
         assert_eq!(terminal.code, ErrorCode::Denied);
-        assert!(terminal.message.contains("deckhand-protected-terminal-tm2"), "{}", terminal.message);
+        assert!(terminal.message.contains("winpilot-protected-terminal-tm2"), "{}", terminal.message);
         let window =
-            crate::test_fixture::window(7, "claude-deck.exe", "Claude Deck", deckhand_core::Rect::new(0, 0, 9, 9));
+            crate::test_fixture::window(7, "claude-deck.exe", "Claude Deck", winpilot_core::Rect::new(0, 0, 9, 9));
         let whole = whole_window(&window);
         assert!(whole.message.starts_with("w7 is the agent's own app"), "{}", whole.message);
         let hidden = hidden_spot(&window, Point::new(3, 4));

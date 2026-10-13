@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Error, ErrorCode, Result};
+use winpilot_core::{Error, ErrorCode, Result};
 
 pub(crate) const MAX_PER_CALL: usize = 3;
 const GAP_BETWEEN_CALLS: Duration = Duration::from_secs(5);

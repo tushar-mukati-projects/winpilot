@@ -56,7 +56,7 @@ mod tests {
 
     impl Folder {
         fn new(name: &str) -> Self {
-            let folder = std::env::temp_dir().join(format!("deckhand-output-file-{name}-{}", std::process::id()));
+            let folder = std::env::temp_dir().join(format!("winpilot-output-file-{name}-{}", std::process::id()));
             fs::create_dir_all(&folder).unwrap();
             Self(folder)
         }

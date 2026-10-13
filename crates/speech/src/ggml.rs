@@ -4,7 +4,7 @@ use std::io::{BufReader, ErrorKind, Read};
 use std::path::Path;
 
 use candle_core::{DType, Device, Tensor};
-use deckhand_core::{Context, Error, Result};
+use winpilot_core::{Context, Error, Result};
 
 use crate::tensor_names::candle_name;
 

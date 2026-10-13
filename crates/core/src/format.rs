@@ -1541,7 +1541,7 @@ transcribed the first 8:00"
     fn recording(state: RecordState) -> RecordReport {
         RecordReport {
             state,
-            path: Some("C:\\Videos\\Deckhand\\deckhand-20261011-101500.mp4".to_string()),
+            path: Some("C:\\Videos\\WinPilot\\winpilot-20261011-101500.mp4".to_string()),
             seconds: 0.0,
             frames: 0,
             bytes: 0,
@@ -1562,7 +1562,7 @@ transcribed the first 8:00"
         );
         assert_eq!(
             record(&recording(RecordState::Recording)),
-            "recording to C:\\Videos\\Deckhand\\deckhand-20261011-101500.mp4 · 1920x1200 @ 30 fps · stop with observe mode=record action=stop"
+            "recording to C:\\Videos\\WinPilot\\winpilot-20261011-101500.mp4 · 1920x1200 @ 30 fps · stop with observe mode=record action=stop"
         );
         let running = RecordReport { seconds: 4.25, frames: 128, ..recording(RecordState::Recording) };
         let text = record(&running);
@@ -1591,7 +1591,7 @@ transcribed the first 8:00"
         let running = RecordReport { audio: Some(RecordAudio::System), ..recording(RecordState::Recording) };
         assert_eq!(
             record(&running),
-            "recording to C:\\Videos\\Deckhand\\deckhand-20261011-101500.mp4 · 1920x1200 @ 30 fps · system audio · stop with observe mode=record action=stop"
+            "recording to C:\\Videos\\WinPilot\\winpilot-20261011-101500.mp4 · 1920x1200 @ 30 fps · system audio · stop with observe mode=record action=stop"
         );
         let saved = RecordReport {
             seconds: 3.0,
@@ -1603,7 +1603,7 @@ transcribed the first 8:00"
         };
         assert_eq!(
             record(&saved),
-            "saved C:\\Videos\\Deckhand\\deckhand-20261011-101500.mp4 · 3.0 s · 90 frames · 2 KB · system and mic audio\nrecorded without sound: no microphone is available"
+            "saved C:\\Videos\\WinPilot\\winpilot-20261011-101500.mp4 · 3.0 s · 90 frames · 2 KB · system and mic audio\nrecorded without sound: no microphone is available"
         );
     }
 

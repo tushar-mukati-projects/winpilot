@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use deckhand_capture::{AudioSource, Recorder, RecordingSpec, Redactor, Started, VideoSettings};
-use deckhand_core::{
+use winpilot_capture::{AudioSource, Recorder, RecordingSpec, Redactor, Started, VideoSettings};
+use winpilot_core::{
     Result,
     config::GuardConfig,
     protocol::{RecordAudio, RecordReport, RecordRequest},
@@ -113,8 +113,8 @@ const fn audio_source(audio: RecordAudio) -> Option<AudioSource> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_capture::AudioTrack;
-    use deckhand_core::protocol::RecordState;
+    use winpilot_capture::AudioTrack;
+    use winpilot_core::protocol::RecordState;
 
     use super::*;
 

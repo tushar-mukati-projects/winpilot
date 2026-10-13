@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use deckhand_core::{Point, Rect};
+use winpilot_core::{Point, Rect};
 
 use super::{
     chip_text::ChipText, driving::Driving, focus_outline::FocusLook, glow_tints::GlowLook, presence::Tone,

@@ -1,6 +1,6 @@
 use candle_core::{Device, Tensor};
 use candle_transformers::models::whisper::{Config, HOP_LENGTH, N_FRAMES, N_SAMPLES, audio::pcm_to_mel};
-use deckhand_core::{Context, Result};
+use winpilot_core::{Context, Result};
 
 use crate::decoder::{SpeechModel, WindowTokens};
 use crate::languages::language_code;

@@ -1,4 +1,4 @@
-use deckhand_core::{Element, ElementRef, ErrorCode, Result};
+use winpilot_core::{Element, ElementRef, ErrorCode, Result};
 
 use super::click_choice::{PatternAction, pattern_actions};
 use crate::engine::Engine;

@@ -1,4 +1,4 @@
-use deckhand_core::{Error, Result, WindowInfo, WindowRef, WindowState};
+use winpilot_core::{Error, Result, WindowInfo, WindowRef, WindowState};
 
 use crate::{app_windows::app_windows, engine::Engine};
 
@@ -13,12 +13,12 @@ pub(crate) fn default_window(engine: &Engine) -> Result<WindowInfo> {
     let candidates = app_windows(engine)?
         .into_iter()
         .map(|window| Candidate {
-            topmost: deckhand_desktop::is_topmost(window.hwnd),
+            topmost: winpilot_desktop::is_topmost(window.hwnd),
             host: engine.host.contains(window.pid),
             window,
         })
         .collect();
-    choose(candidates, deckhand_desktop::foreground_window())
+    choose(candidates, winpilot_desktop::foreground_window())
         .ok_or_else(|| Error::not_found("no app window is open besides the agent's own terminal"))
 }
 
@@ -38,7 +38,7 @@ fn is_usable(candidate: &Candidate) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;

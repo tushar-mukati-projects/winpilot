@@ -1,8 +1,8 @@
-use deckhand_core::{
+use winpilot_core::{
     Result,
     protocol::{AppInfo, AppKind, AppsReport, AppsRequest},
 };
-use deckhand_desktop::apps::{self, AppEntry};
+use winpilot_desktop::apps::{self, AppEntry};
 
 use crate::{
     app_catalog::{FRESH_LISTING, RECENT_LISTING},
@@ -58,7 +58,7 @@ fn app_info(app: &AppEntry) -> AppInfo {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::format;
+    use winpilot_core::format;
 
     use super::*;
     use crate::test_fixture::engine;

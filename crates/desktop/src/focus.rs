@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Error, ErrorCode, Result, WindowRef};
 use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::SetForegroundWindow};
+use winpilot_core::{Error, ErrorCode, Result, WindowRef};
 
 use crate::{
     foreground_unlock::send_foreground_unlock,

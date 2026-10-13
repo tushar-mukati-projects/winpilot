@@ -1,4 +1,3 @@
-use deckhand_core::keys::Modifiers;
 use windows::Win32::{
     Foundation::HWND,
     UI::{
@@ -8,6 +7,7 @@ use windows::Win32::{
         WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
     },
 };
+use winpilot_core::keys::Modifiers;
 
 const SHIFT_STATE_SHIFT: u8 = 1;
 const SHIFT_STATE_CTRL: u8 = 2;

@@ -11,14 +11,14 @@ publish = false
 license = "MIT"
 
 [workspace.dependencies]
-deckhand-core = { path = "crates/core" }
-deckhand-uia = { path = "crates/uia" }
-deckhand-capture = { path = "crates/capture" }
-deckhand-input = { path = "crates/input" }
-deckhand-desktop = { path = "crates/desktop" }
-deckhand-worker = { path = "crates/worker" }
-deckhand-fixture = { path = "crates/fixture" }
-deckhand-speech = { path = "crates/speech" }
+winpilot-core = { path = "crates/core" }
+winpilot-uia = { path = "crates/uia" }
+winpilot-capture = { path = "crates/capture" }
+winpilot-input = { path = "crates/input" }
+winpilot-desktop = { path = "crates/desktop" }
+winpilot-worker = { path = "crates/worker" }
+winpilot-fixture = { path = "crates/fixture" }
+winpilot-speech = { path = "crates/speech" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = "1"
@@ -123,7 +123,7 @@ unimplemented = "warn"
 [profile.dev.package."*"]
 opt-level = 2
 
-[profile.dev.package.deckhand-capture]
+[profile.dev.package.winpilot-capture]
 opt-level = 2
 
 [profile.release]

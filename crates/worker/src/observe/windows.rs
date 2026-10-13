@@ -1,4 +1,4 @@
-use deckhand_core::{Result, protocol::WindowsReport};
+use winpilot_core::{Result, protocol::WindowsReport};
 
 use crate::{app_windows::app_windows, engine::Engine};
 
@@ -8,7 +8,7 @@ pub(crate) fn list(engine: &Engine) -> Result<WindowsReport> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::format;
+    use winpilot_core::format;
 
     use super::*;
     use crate::test_fixture::engine;

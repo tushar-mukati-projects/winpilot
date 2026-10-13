@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use deckhand_core::{
+use winpilot_core::{
     ErrorCode, Rect,
     protocol::{RecordAction, RecordReport, RecordRequest, RecordState, VideoFormat},
 };
@@ -12,7 +12,7 @@ use deckhand_core::{
 use super::run;
 use crate::{call_scope::CallScope, test_fixture::engine};
 
-const OUTPUT_FOLDER_VARIABLE: &str = "DECKHAND_RECORD_TEST_DIR";
+const OUTPUT_FOLDER_VARIABLE: &str = "WINPILOT_RECORD_TEST_DIR";
 
 static NEXT_SCRATCH: AtomicUsize = AtomicUsize::new(0);
 
@@ -22,7 +22,7 @@ impl Scratch {
     fn new(name: &str) -> Self {
         let root = std::env::var_os(OUTPUT_FOLDER_VARIABLE).map_or_else(std::env::temp_dir, PathBuf::from);
         let serial = NEXT_SCRATCH.fetch_add(1, Ordering::Relaxed);
-        let folder = root.join(format!("deckhand-record-test-{name}-{}-{serial}", std::process::id()));
+        let folder = root.join(format!("winpilot-record-test-{name}-{}-{serial}", std::process::id()));
         fs::create_dir_all(&folder).unwrap();
         Self(folder)
     }
@@ -38,7 +38,7 @@ impl Drop for Scratch {
     }
 }
 
-fn record(args: &RecordRequest) -> deckhand_core::Result<RecordReport> {
+fn record(args: &RecordRequest) -> winpilot_core::Result<RecordReport> {
     run(engine(), args, &CallScope::relaxed())
 }
 

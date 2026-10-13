@@ -1,6 +1,5 @@
 use std::{thread, time::Duration};
 
-use deckhand_core::{ElementRef, Error, Result, Role};
 use windows::Win32::UI::Accessibility::{
     ExpandCollapseState, ExpandCollapseState_Collapsed, ExpandCollapseState_Expanded,
     ExpandCollapseState_PartiallyExpanded, IUIAutomationElement, IUIAutomationExpandCollapsePattern,
@@ -8,6 +7,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_ExpandCollapsePatternId, UIA_InvokePatternId, UIA_IsSelectionItemPatternAvailablePropertyId,
     UIA_ListItemControlTypeId, UIA_MenuItemControlTypeId, UIA_SelectionItemPatternId, UIA_TreeItemControlTypeId,
 };
+use winpilot_core::{ElementRef, Error, Result, Role};
 
 use crate::{
     automation::Uia,
@@ -159,7 +159,7 @@ fn describe_options(names: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
     use crate::{SnapshotOptions, test_support::launch_fixture};
@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "acts on the deckhand fixture app"]
+    #[ignore = "acts on the winpilot fixture app"]
     fn picks_combobox_options_by_name() {
         let Some(fixture) = launch_fixture() else { return };
         let window = fixture.window.clone();

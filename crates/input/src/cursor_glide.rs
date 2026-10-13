@@ -1,6 +1,6 @@
 use std::{thread, time::Duration};
 
-use deckhand_core::{Point, Result};
+use winpilot_core::{Point, Result};
 
 use crate::{
     mouse::cursor_position,

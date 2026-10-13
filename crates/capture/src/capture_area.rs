@@ -1,4 +1,4 @@
-use deckhand_core::{Error, Rect, Result};
+use winpilot_core::{Error, Rect, Result};
 
 use crate::frame::overlap;
 
@@ -36,7 +36,7 @@ impl CaptureArea {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
 

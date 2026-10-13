@@ -3,8 +3,8 @@ use std::{
     time::Duration,
 };
 
-use deckhand_core::{Error, ErrorCode, Result, WindowInfo, WindowRef, config::GuardConfig, format::window_line};
-use deckhand_desktop::{
+use winpilot_core::{Error, ErrorCode, Result, WindowInfo, WindowRef, config::GuardConfig, format::window_line};
+use winpilot_desktop::{
     Activation,
     apps::{self, AppEntry, AppLaunch},
 };
@@ -76,7 +76,7 @@ pub(crate) fn launch(engine: &Engine, app: &str, args: Option<&str>, mode: Mode,
     };
     overlay::begin(engine, &window, call);
     settle(engine, &window, call);
-    let window = deckhand_desktop::window(window.hwnd)?;
+    let window = winpilot_desktop::window(window.hwnd)?;
     let settled = kept_behind.and_then(|kept_behind| kept_behind.once_settled(&window));
     Ok(Done::noting(format!("launched {}", window_line(&window))).with_note(placed).with_note(settled))
 }
@@ -169,15 +169,15 @@ fn start(plan: Plan, activation: Activation) -> Result<Started> {
 }
 
 fn before_launch() -> Result<Before> {
-    let windows = deckhand_desktop::windows()?;
+    let windows = winpilot_desktop::windows()?;
     Ok(Before {
         windows: windows.iter().map(|window| window.hwnd).collect(),
-        foreground: deckhand_desktop::foreground_window(),
+        foreground: winpilot_desktop::foreground_window(),
     })
 }
 
 fn launched_window(before: &Before, started: &Started) -> Result<Option<WindowInfo>> {
-    let windows = deckhand_desktop::windows()?;
+    let windows = winpilot_desktop::windows()?;
     let candidates: Vec<&WindowInfo> =
         windows.iter().filter(|window| is_fresh(window, before) || switched_to(window, before)).collect();
     let lineage = lineage_for(started, &candidates);
@@ -200,16 +200,16 @@ fn facts_of<'a>(window: &'a WindowInfo, started: &Started, lineage: Option<&Proc
     if !started.expected.identity.needs_packages() {
         return base;
     }
-    let content = is_frame_host(window).then(|| deckhand_desktop::uwp_content_pid(window.hwnd)).flatten();
+    let content = is_frame_host(window).then(|| winpilot_desktop::uwp_content_pid(window.hwnd)).flatten();
     WindowFacts {
-        package: deckhand_desktop::package_family(window.pid),
-        content_package: content.and_then(deckhand_desktop::package_family),
+        package: winpilot_desktop::package_family(window.pid),
+        content_package: content.and_then(winpilot_desktop::package_family),
         ..base
     }
 }
 
 fn bring_to_front(window: &WindowInfo) -> Option<String> {
-    if !needs_bringing_forward(window, deckhand_desktop::foreground_window()) {
+    if !needs_bringing_forward(window, winpilot_desktop::foreground_window()) {
         return None;
     }
     let refused = bring_forward(window).err()?;
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn missing_and_relative_paths_fail_before_launching() {
-        let missing = std::env::temp_dir().join("deckhand-no-such-app-7f3a.exe");
+        let missing = std::env::temp_dir().join("winpilot-no-such-app-7f3a.exe");
         let error = launch_target(engine(), &missing.to_string_lossy()).unwrap_err();
         assert_eq!(error.code, ErrorCode::NotFound);
         assert_eq!(launch_target(engine(), "tools\\app.exe").unwrap_err().code, ErrorCode::InvalidArgument);
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn shortcut_paths_are_refused_before_launching() {
-        let shortcut = std::env::temp_dir().join("deckhand-no-such-app-7f3a.lnk");
+        let shortcut = std::env::temp_dir().join("winpilot-no-such-app-7f3a.lnk");
         let error = launch_target(engine(), &shortcut.to_string_lossy()).unwrap_err();
         assert_eq!(error.code, ErrorCode::InvalidArgument);
         assert!(error.message.ends_with(LAUNCH_INSTEAD), "{}", error.message);
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn a_launched_window_behind_another_is_brought_forward_on_this_desktop_only() {
-        let window = crate::test_fixture::window(5, "app.exe", "App", deckhand_core::Rect::new(0, 0, 10, 10));
+        let window = crate::test_fixture::window(5, "app.exe", "App", winpilot_core::Rect::new(0, 0, 10, 10));
         assert!(needs_bringing_forward(&window, Some(WindowRef(9))));
         assert!(needs_bringing_forward(&window, None));
         assert!(!needs_bringing_forward(&window, Some(WindowRef(5))));
@@ -323,7 +323,7 @@ mod tests {
             expected: Expected { identity: AppIdentity::Unknown, pid: Some(40), hints: LaunchHints::default() },
             since: 0,
         };
-        let own = crate::test_fixture::window(5, "app.exe", "App", deckhand_core::Rect::new(0, 0, 10, 10));
+        let own = crate::test_fixture::window(5, "app.exe", "App", winpilot_core::Rect::new(0, 0, 10, 10));
         let own = WindowInfo { pid: 40, ..own };
         assert!(lineage_for(&started, &[&own]).is_none());
         assert!(lineage_for(&started, &[]).is_none());

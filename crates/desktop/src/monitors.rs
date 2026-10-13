@@ -1,6 +1,5 @@
 use std::mem::size_of;
 
-use deckhand_core::{Error, Rect, Result};
 use windows::{
     Win32::{
         Foundation::{LPARAM, RECT},
@@ -15,6 +14,7 @@ use windows::{
     },
     core::BOOL,
 };
+use winpilot_core::{Error, Rect, Result};
 
 use crate::frame::rect_from_win32;
 
@@ -98,7 +98,7 @@ fn sort_and_index(monitors: &mut [Monitor]) {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Point;
+    use winpilot_core::Point;
 
     use super::*;
 

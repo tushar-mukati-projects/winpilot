@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use deckhand_core::WindowRef;
+use winpilot_core::WindowRef;
 
 #[derive(Default)]
 pub(crate) struct Warmed {

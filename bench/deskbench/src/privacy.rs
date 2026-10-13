@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use deckhand_core::config::{Config, DenyRule, GuardConfig};
+use winpilot_core::config::{Config, DenyRule, GuardConfig};
 
 use crate::enumwin::WinInfo;
 
-const CONFIG_RELATIVE: [&str; 2] = ["deckhand", "config.toml"];
+const CONFIG_RELATIVE: [&str; 2] = ["winpilot", "config.toml"];
 
 pub struct PrivacyGuard {
     guard: GuardConfig,
@@ -15,7 +15,7 @@ impl PrivacyGuard {
     pub fn load(args: &[String]) -> Result<Self, String> {
         let (mut guard, origin) = match config_path() {
             Some(path) if path.exists() => (read_guard(&path)?, format!("the deny list in {}", path.display())),
-            _ => (GuardConfig::default(), "Deckhand's built-in deny list (no config file found)".to_string()),
+            _ => (GuardConfig::default(), "WinPilot's built-in deny list (no config file found)".to_string()),
         };
         let extra = extra_titles(args);
         let origin = if extra.is_empty() { origin } else { format!("{origin} plus {} --deny-title", extra.len()) };

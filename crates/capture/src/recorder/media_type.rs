@@ -1,4 +1,3 @@
-use deckhand_core::{Context, Result};
 use windows::Win32::Media::MediaFoundation::{
     IMFMediaType, MF_MT_AVG_BITRATE, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_INTERLACE_MODE,
     MF_MT_MAJOR_TYPE, MF_MT_MPEG2_PROFILE, MF_MT_PIXEL_ASPECT_RATIO, MF_MT_SUBTYPE, MF_MT_TRANSFER_FUNCTION,
@@ -7,6 +6,7 @@ use windows::Win32::Media::MediaFoundation::{
     MFVideoPrimaries_BT709, MFVideoTransFunc_709, MFVideoTransferMatrix_BT709, eAVEncH264VProfile_High,
 };
 use windows_core::GUID;
+use winpilot_core::{Context, Result};
 
 use super::layout::Size;
 

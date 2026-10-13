@@ -1,11 +1,5 @@
 use std::time::Instant;
 
-use deckhand_core::{
-    Context, ErrorCode, Result,
-    config::GuardConfig,
-    format::ObserveFormat,
-    protocol::{ActArgs, Call, ObserveArgs, Reply},
-};
 use rmcp::{
     ErrorData, RoleServer, ServerHandler, ServiceExt,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -15,6 +9,12 @@ use rmcp::{
     },
     service::RequestContext,
     tool, tool_handler, tool_router,
+};
+use winpilot_core::{
+    Context, ErrorCode, Result,
+    config::GuardConfig,
+    format::ObserveFormat,
+    protocol::{ActArgs, Call, ObserveArgs, Reply},
 };
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
     supervisor::Supervisor,
 };
 
-const SERVER_NAME: &str = "deckhand";
+const SERVER_NAME: &str = "winpilot";
 const ALWAYS_LOAD: &str = "anthropic/alwaysLoad";
 
 const OBSERVE: &str = "See the desktop. mode: elements (default: a window as element lines with refs like e12; \
@@ -42,7 +42,7 @@ dialogs), wait (ms, or until appears/disappears/window/window_opens/window_close
 (e12, w123), selectors like role:button name:\"Save\" or ocr:\"Export\" (OCR), or \
 {\"x\":..,\"y\":..,\"img\":\"i3\"}. background:true never uses the real mouse, keyboard or focus.";
 
-const INSTRUCTIONS: &str = "Deckhand controls the Windows desktop through UI Automation with two tools, observe and act.\n\
+const INSTRUCTIONS: &str = "WinPilot controls the Windows desktop through UI Automation with two tools, observe and act.\n\
 - observe mode=elements (the default) lists a window as lines with refs (e12); mode=text reads it whole. Other modes: screenshot, record, windows, monitors, apps, clipboard, status.\n\
 - act runs several steps per call by ref (e12) or selector (role:button name:\"Save\") and returns a diff, so observe again only when you need the full list.\n\
 - When you know the app, act by selector without observing first; observe all_windows with a query finds elements in every window.\n\
@@ -71,7 +71,7 @@ impl Settings {
     }
 }
 
-pub struct DeckhandServer {
+pub struct WinPilotServer {
     supervisor: Supervisor,
     audit: Audit,
     settings: Settings,
@@ -91,13 +91,13 @@ impl Answer {
     }
 }
 
-pub async fn serve_stdio(server: DeckhandServer) -> Result<()> {
+pub async fn serve_stdio(server: WinPilotServer) -> Result<()> {
     let running = server.serve(rmcp::transport::stdio()).await.context("starting the MCP session")?;
     running.waiting().await.context("running the MCP session")?;
     Ok(())
 }
 
-impl DeckhandServer {
+impl WinPilotServer {
     pub fn new(supervisor: Supervisor, audit: Audit, settings: Settings) -> Self {
         let instructions = INSTRUCTIONS.replace("{hotkey}", &settings.guard.kill_hotkey);
         let started = Instant::now();
@@ -156,7 +156,7 @@ impl DeckhandServer {
 }
 
 #[tool_router]
-impl DeckhandServer {
+impl WinPilotServer {
     #[tool(
         description = OBSERVE,
         annotations(read_only_hint = false, destructive_hint = false, open_world_hint = false),
@@ -179,7 +179,7 @@ impl DeckhandServer {
 
 #[tool_handler(router = self.tool_router)]
 #[expect(clippy::unused_async_trait_impl)]
-impl ServerHandler for DeckhandServer {
+impl ServerHandler for WinPilotServer {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(SERVER_NAME, crate::VERSION))
@@ -214,10 +214,10 @@ fn always_load() -> MetaObject {
 mod tests {
     use std::{collections::BTreeSet, time::Duration};
 
-    use deckhand_core::Config;
     use rmcp::model::Tool;
     use serde_json::{Value, json};
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream, Lines, ReadHalf, WriteHalf};
+    use winpilot_core::Config;
 
     use super::*;
     use crate::testing::{FakeSpawner, FakeWorker, echo_worker};
@@ -229,17 +229,17 @@ mod tests {
         Settings { log_text: false, config_problem: None, guard: GuardConfig::default() }
     }
 
-    fn server() -> (DeckhandServer, FakeSpawner) {
+    fn server() -> (WinPilotServer, FakeSpawner) {
         server_with(settings(), echo_worker)
     }
 
     fn server_with(
         settings: Settings,
         behaviour: impl Fn(FakeWorker) + Send + Sync + 'static,
-    ) -> (DeckhandServer, FakeSpawner) {
+    ) -> (WinPilotServer, FakeSpawner) {
         let spawner = FakeSpawner::new(move |_, worker| behaviour(worker));
         let supervisor = Supervisor::new(Box::new(spawner.clone()), Config::default());
-        (DeckhandServer::new(supervisor, Audit::disabled(), settings), spawner)
+        (WinPilotServer::new(supervisor, Audit::disabled(), settings), spawner)
     }
 
     fn text_of(response: &Value) -> &str {
@@ -247,7 +247,7 @@ mod tests {
     }
 
     fn tools() -> Vec<Tool> {
-        DeckhandServer::tool_router().list_all()
+        WinPilotServer::tool_router().list_all()
     }
 
     fn tool(name: &str) -> Tool {
@@ -361,7 +361,7 @@ mod tests {
         let instructions = info.instructions.unwrap();
         assert!(instructions.lines().count() <= 12);
         assert!(instructions.contains("ctrl+alt+escape"));
-        assert_eq!(info.server_info.name, "deckhand");
+        assert_eq!(info.server_info.name, "winpilot");
         assert_eq!(info.server_info.version, crate::VERSION);
         assert!(info.capabilities.tools.is_some());
     }
@@ -372,7 +372,7 @@ mod tests {
     }
 
     impl RawClient {
-        fn connect(server: DeckhandServer) -> Self {
+        fn connect(server: WinPilotServer) -> Self {
             let (client, transport) = tokio::io::duplex(1 << 20);
             tokio::spawn(async move {
                 if let Ok(running) = server.serve(transport).await {
@@ -406,7 +406,7 @@ mod tests {
             let params = json!({
                 "protocolVersion": "2025-06-18",
                 "capabilities": {},
-                "clientInfo": {"name": "deckhand-test", "version": "0"}
+                "clientInfo": {"name": "winpilot-test", "version": "0"}
             });
             let response = self.request(1, "initialize", params).await;
             self.send(&json!({"jsonrpc": "2.0", "method": "notifications/initialized"})).await;
@@ -420,7 +420,7 @@ mod tests {
         let mut client = RawClient::connect(server);
         let response = client.initialize().await;
         let result = &response["result"];
-        assert_eq!(result["serverInfo"]["name"], "deckhand");
+        assert_eq!(result["serverInfo"]["name"], "winpilot");
         assert_eq!(result["serverInfo"]["version"], crate::VERSION);
         assert!(result["capabilities"]["tools"].is_object());
         let instructions = result["instructions"].as_str().unwrap();

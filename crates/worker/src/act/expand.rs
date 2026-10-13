@@ -1,4 +1,4 @@
-use deckhand_core::Result;
+use winpilot_core::Result;
 
 use super::{by_pattern::by_pattern, done::Done, target::Prepared};
 use crate::{call_scope::CallScope, engine::Engine};

@@ -3,11 +3,11 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use deckhand_core::{Result, keys::Chord};
 use windows::Win32::UI::{
     Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey},
     WindowsAndMessaging::{MSG, WM_HOTKEY, WM_TIMER},
 };
+use winpilot_core::{Result, keys::Chord};
 
 use crate::{
     hotkey_binding::{HotkeyBinding, hotkey_binding},
@@ -30,7 +30,7 @@ impl HotkeyListener {
         let binding = hotkey_binding(&chord, &SystemLayout::of_foreground_window())?;
         let registered = Arc::new(AtomicBool::new(false));
         let shared = Arc::clone(&registered);
-        let (thread, ()) = MessageThread::spawn("deckhand-hotkey", move || {
+        let (thread, ()) = MessageThread::spawn("winpilot-hotkey", move || {
             HotkeyLoop::start(binding, shared, on_press).map(|state| (state, ()))
         })?;
         Ok(Self { registered, _thread: thread })
@@ -116,7 +116,7 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use deckhand_core::{
+    use winpilot_core::{
         config::GuardConfig,
         keys::{Key, Modifiers, parse_chord},
     };

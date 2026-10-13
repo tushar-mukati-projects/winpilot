@@ -1,7 +1,7 @@
-use deckhand_core::{Context, Result, WindowRef};
 use windows::Win32::UI::WindowsAndMessaging::{
     SET_WINDOW_POS_FLAGS, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
 };
+use winpilot_core::{Context, Result, WindowRef};
 
 use crate::{window_identity::live_hwnd, window_restore::ensure_responsive};
 
@@ -18,8 +18,8 @@ pub fn place_below(hwnd: WindowRef, above: WindowRef) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
     use windows::Win32::UI::WindowsAndMessaging::SWP_NOOWNERZORDER;
+    use winpilot_core::ErrorCode;
 
     use super::*;
 

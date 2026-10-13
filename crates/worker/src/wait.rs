@@ -11,7 +11,7 @@ mod fixture_tests;
 
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Result, protocol::WaitCondition};
+use winpilot_core::{Result, protocol::WaitCondition};
 
 use self::{
     check::{Check, appears, disappears, target_label},

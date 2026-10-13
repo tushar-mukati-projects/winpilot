@@ -3,10 +3,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Error, keys::parse_chord};
-use deckhand_desktop::{overlay::Overlay, sync::NamedEvent};
-use deckhand_input::{HotkeyListener, PhysicalHotkey};
 use parking_lot::Mutex;
+use winpilot_core::{Error, keys::parse_chord};
+use winpilot_desktop::{overlay::Overlay, sync::NamedEvent};
+use winpilot_input::{HotkeyListener, PhysicalHotkey};
 
 const SAME_PRESS: Duration = Duration::from_millis(500);
 
@@ -74,7 +74,7 @@ fn announce(overlay: Option<&Overlay>, stopping: bool) {
 }
 
 pub(crate) fn warn(what: &str, error: &Error) {
-    eprintln!("deckhand worker: {what} unavailable: {error}");
+    eprintln!("winpilot worker: {what} unavailable: {error}");
 }
 
 #[cfg(test)]
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn an_empty_hotkey_watches_nothing() {
-        let stop = Arc::new(NamedEvent::create("Local\\deckhand-kill-switch-test").unwrap());
+        let stop = Arc::new(NamedEvent::create("Local\\winpilot-kill-switch-test").unwrap());
         let switch = KillSwitch::spawn("", &stop, None);
         assert!(switch.hotkey.is_none() && !switch.registered());
     }

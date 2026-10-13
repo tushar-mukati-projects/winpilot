@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use deckhand_core::{
+use winpilot_core::{
     Error, Result,
     protocol::{WaitArgs, WaitCondition},
 };
@@ -58,7 +58,7 @@ fn held_input(call: &CallScope) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ErrorCode, protocol::MouseButton};
+    use winpilot_core::{ErrorCode, protocol::MouseButton};
 
     use super::*;
 
@@ -112,8 +112,8 @@ mod tests {
     #[test]
     fn held_input_is_named_for_the_refusal() {
         let call = CallScope::relaxed();
-        call.note_held_keys(deckhand_core::keys::parse_chord("shift").unwrap());
-        call.note_held(MouseButton::Left, deckhand_core::Point::new(1, 2));
+        call.note_held_keys(winpilot_core::keys::parse_chord("shift").unwrap());
+        call.note_held(MouseButton::Left, winpilot_core::Point::new(1, 2));
         assert_eq!(held_input(&call), vec!["Shift".to_string(), "the left mouse button".to_string()]);
     }
 }

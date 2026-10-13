@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Result, WindowInfo, ocr::find_matches};
+use winpilot_core::{Result, WindowInfo, ocr::find_matches};
 
 use super::check::{Presence, Shown, unless_gone};
 use crate::{
@@ -81,7 +81,7 @@ fn position(nth: Option<u32>) -> usize {
 mod tests {
     use std::cell::Cell;
 
-    use deckhand_core::Error;
+    use winpilot_core::Error;
 
     use super::*;
 

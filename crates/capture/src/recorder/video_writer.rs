@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use deckhand_core::{
+use winpilot_core::{
     Result,
     protocol::{Quality, VideoFormat},
 };

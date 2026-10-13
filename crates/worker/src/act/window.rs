@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use deckhand_core::{
+use winpilot_core::{
     Error, ErrorCode, Rect, Result, TargetSpec, WindowInfo, WindowState,
     format::window_line,
     protocol::{Step, WindowAction},
 };
-use deckhand_desktop::Activation;
+use winpilot_desktop::Activation;
 
 use super::{
     done::Done,
@@ -63,7 +63,7 @@ pub(crate) fn step(
         }
         Mode::Background | Mode::Foreground => perform(engine, request, &window, call)?,
     };
-    let after = deckhand_desktop::window(window.hwnd).ok();
+    let after = winpilot_desktop::window(window.hwnd).ok();
     if let Some(after) = after.filter(|after| after.state != WindowState::Minimized) {
         overlay::begin(engine, &after, call);
     }
@@ -107,7 +107,7 @@ fn require_app_window(window: &WindowInfo, listed: &[WindowInfo]) -> Result<()> 
     }
     if listed.iter().all(|app| app.hwnd != window.hwnd) {
         return Err(Error::not_found(format!(
-            "{} is not an app window Deckhand lists (observe mode=windows shows them)",
+            "{} is not an app window WinPilot lists (observe mode=windows shows them)",
             window.hwnd
         )));
     }
@@ -115,10 +115,10 @@ fn require_app_window(window: &WindowInfo, listed: &[WindowInfo]) -> Result<()> 
 }
 
 fn close(engine: &Engine, window: &WindowInfo, call: &CallScope) -> Result<Done> {
-    deckhand_desktop::close_window(window.hwnd)?;
+    winpilot_desktop::close_window(window.hwnd)?;
     let hwnd = window.hwnd;
     let closed = until(engine, call, CLOSE_WAIT, &Watch::window(window), || {
-        Ok((!deckhand_desktop::is_window(hwnd)).then_some(()))
+        Ok((!winpilot_desktop::is_window(hwnd)).then_some(()))
     })?;
     if closed.is_some() {
         return Ok(Done::noting(format!("closed {}", window_line(window))));
@@ -127,9 +127,9 @@ fn close(engine: &Engine, window: &WindowInfo, call: &CallScope) -> Result<Done>
 }
 
 fn change_state(engine: &Engine, window: &WindowInfo, state: WindowState, call: &CallScope) -> Result<Done> {
-    deckhand_desktop::set_window_state(window.hwnd, state, Activation::Activate)?;
+    winpilot_desktop::set_window_state(window.hwnd, state, Activation::Activate)?;
     settle(engine, window, call);
-    let after = deckhand_desktop::window(window.hwnd)?;
+    let after = winpilot_desktop::window(window.hwnd)?;
     Ok(Done::noting(format!("{} {}", state_word(state), window_line(&after))))
 }
 
@@ -142,9 +142,9 @@ pub(crate) const fn state_word(state: WindowState) -> &'static str {
 }
 
 fn move_to(engine: &Engine, window: &WindowInfo, rect: Rect, call: &CallScope) -> Result<Done> {
-    deckhand_desktop::move_window(window.hwnd, rect, Activation::Activate)?;
+    winpilot_desktop::move_window(window.hwnd, rect, Activation::Activate)?;
     settle(engine, window, call);
-    let after = deckhand_desktop::window(window.hwnd)?;
+    let after = winpilot_desktop::window(window.hwnd)?;
     Ok(Done::noting(format!("moved {}", window_line(&after))))
 }
 
@@ -159,7 +159,7 @@ fn single_window(spec: &str, found: Vec<WindowInfo>) -> Result<WindowInfo> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::WindowRef;
+    use winpilot_core::WindowRef;
 
     use super::*;
     use crate::test_fixture::window;
@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn a_window_must_be_one_deckhand_lists() {
+    fn a_window_must_be_one_winpilot_lists() {
         let app = of_class(3, "Notepad");
         assert!(require_app_window(&app, std::slice::from_ref(&app)).is_ok());
         assert_eq!(require_app_window(&app, &[of_class(4, "Notepad")]).unwrap_err().code, ErrorCode::NotFound);

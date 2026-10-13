@@ -1,10 +1,10 @@
 use std::{ffi::c_void, mem::ManuallyDrop};
 
-use deckhand_core::{Context, Error, Result};
 use windows::Win32::{
     Foundation::{GlobalFree, HGLOBAL},
     System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock},
 };
+use winpilot_core::{Context, Error, Result};
 
 pub(crate) struct OwnedGlobal(HGLOBAL);
 

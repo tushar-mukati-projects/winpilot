@@ -1,6 +1,5 @@
 use std::mem::size_of;
 
-use deckhand_core::{Error, Result};
 use windows::Win32::{
     Foundation::HWND,
     UI::Shell::{
@@ -9,6 +8,7 @@ use windows::Win32::{
         Shell_NotifyIconW,
     },
 };
+use winpilot_core::{Error, Result};
 
 use crate::{
     app_icon::OwnedIcon,
@@ -16,7 +16,7 @@ use crate::{
 };
 
 const ICON_ID: u32 = 1;
-const TOOLTIP: &str = "Deckhand";
+const TOOLTIP: &str = "WinPilot";
 
 #[derive(Debug)]
 pub(crate) struct TrayIcon {
@@ -31,7 +31,7 @@ impl TrayIcon {
         data.uCallbackMessage = callback_message;
         data.hIcon = image.handle();
         data.szTip = wide_buffer("tooltip", TOOLTIP)?;
-        tell_shell(NIM_ADD, &data, "adding the Deckhand notification icon")?;
+        tell_shell(NIM_ADD, &data, "adding the WinPilot notification icon")?;
         let icon = Self { hwnd, _image: image };
         data.Anonymous.uVersion = NOTIFYICON_VERSION_4;
         tell_shell(NIM_SETVERSION, &data, "setting the notification icon version")?;

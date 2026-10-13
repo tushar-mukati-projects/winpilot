@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use deckhand_core::{Error, Result};
 use windows::Win32::UI::WindowsAndMessaging::MSG;
+use winpilot_core::{Error, Result};
 
 use crate::{
     balloon_text::BalloonText,

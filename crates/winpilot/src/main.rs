@@ -18,17 +18,17 @@ mod testing;
 
 use std::{process::ExitCode, time::Duration};
 
-use deckhand_core::{Context, Result, VERSION};
+use winpilot_core::{Context, Result, VERSION};
 
 use crate::{
     audit::Audit,
-    mcp::{DeckhandServer, Settings},
+    mcp::{Settings, WinPilotServer},
     spawn::ProcessSpawner,
     supervisor::Supervisor,
 };
 
-const BUILD_ID: &str = env!("DECKHAND_BUILD_ID");
-const USAGE: &str = "usage: deckhand [mcp | worker | --version]
+const BUILD_ID: &str = env!("WINPILOT_BUILD_ID");
+const USAGE: &str = "usage: winpilot [mcp | worker | --version]
   mcp        run the MCP server on stdio (the default)
   worker     run the desktop worker (the server starts it)
   --version  print the version";
@@ -46,9 +46,9 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match parse_mode(&args) {
         Mode::Server => exit_with(serve()),
-        Mode::Worker => exit_with(deckhand_worker::run(BUILD_ID)),
+        Mode::Worker => exit_with(winpilot_worker::run(BUILD_ID)),
         Mode::Version => {
-            eprintln!("deckhand {VERSION} (build {BUILD_ID})");
+            eprintln!("winpilot {VERSION} (build {BUILD_ID})");
             ExitCode::SUCCESS
         }
         Mode::Usage => {
@@ -75,7 +75,7 @@ fn exit_with(outcome: Result<()>) -> ExitCode {
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("deckhand: {error}");
+            eprintln!("winpilot: {error}");
             ExitCode::FAILURE
         }
     }
@@ -84,7 +84,7 @@ fn exit_with(outcome: Result<()>) -> ExitCode {
 fn serve() -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
-        .thread_name("deckhand-mcp")
+        .thread_name("winpilot-mcp")
         .enable_all()
         .build()
         .context("starting the async runtime")?;
@@ -102,7 +102,7 @@ async fn run_server() -> Result<()> {
     let settings = Settings::new(&loaded);
     let supervisor = Supervisor::new(Box::new(ProcessSpawner), loaded.config);
     let shutdown = supervisor.shutdown_handle();
-    let served = mcp::serve_stdio(DeckhandServer::new(supervisor, audit, settings)).await;
+    let served = mcp::serve_stdio(WinPilotServer::new(supervisor, audit, settings)).await;
     shutdown.shut_down();
     served
 }

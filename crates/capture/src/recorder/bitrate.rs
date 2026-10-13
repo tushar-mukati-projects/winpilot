@@ -1,4 +1,4 @@
-use deckhand_core::protocol::Quality;
+use winpilot_core::protocol::Quality;
 
 const MIN_BITRATE: f64 = 1_000_000.0;
 const MAX_BITRATE: f64 = 60_000_000.0;

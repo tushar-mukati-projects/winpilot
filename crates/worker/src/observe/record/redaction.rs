@@ -1,8 +1,8 @@
 use std::time::Instant;
 
-use deckhand_capture::{CoverHold, Frame, Redact};
-use deckhand_core::{Rect, Result, config::GuardConfig};
-use deckhand_desktop::VisibleWindow;
+use winpilot_capture::{CoverHold, Frame, Redact};
+use winpilot_core::{Rect, Result, config::GuardConfig};
+use winpilot_desktop::VisibleWindow;
 
 use crate::blackout;
 
@@ -38,7 +38,7 @@ impl DeniedWindows {
 
 impl Redact for DeniedWindows {
     fn refresh(&mut self) -> bool {
-        self.update(deckhand_desktop::all_visible_windows(), Instant::now())
+        self.update(winpilot_desktop::all_visible_windows(), Instant::now())
     }
 
     fn cover(&self, frame: &mut Frame) {
@@ -55,8 +55,8 @@ impl Redact for DeniedWindows {
 mod tests {
     use std::time::Duration;
 
-    use deckhand_capture::{COVER_HOLD, FrameSource};
-    use deckhand_core::{Error, Point, WindowRef};
+    use winpilot_capture::{COVER_HOLD, FrameSource};
+    use winpilot_core::{Error, Point, WindowRef};
 
     use super::*;
 

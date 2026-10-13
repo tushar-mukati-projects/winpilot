@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use deckhand_core::{Error, Result};
+use winpilot_core::{Error, Result};
 
 const SHORTCUT_EXTENSIONS: [&str; 3] = ["lnk", "url", "library-ms"];
 
@@ -18,7 +18,7 @@ fn is_shortcut(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
 

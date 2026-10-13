@@ -1,4 +1,3 @@
-use deckhand_core::{Error, Result};
 use windows::Win32::{
     Foundation::HWND,
     UI::{
@@ -11,6 +10,7 @@ use windows::Win32::{
         },
     },
 };
+use winpilot_core::{Error, Result};
 
 use crate::{
     activity::ChangeEvent,

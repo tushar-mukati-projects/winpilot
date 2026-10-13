@@ -1,4 +1,4 @@
-use deckhand_core::{Element, Error, Role};
+use winpilot_core::{Element, Error, Role};
 
 use super::clip::clipped;
 
@@ -74,7 +74,7 @@ fn label(element: &Element) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
     use crate::test_fixture::element;

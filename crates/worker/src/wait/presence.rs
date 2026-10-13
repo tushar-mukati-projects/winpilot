@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     Element, ElementRef, Error, Result, Target, WindowInfo, WindowRef, WindowState, ocr::exposes_no_uia,
     selector::Selector,
 };
@@ -21,7 +21,7 @@ pub(crate) fn locate(engine: &Engine, target: &Target, scope: Option<&str>, ocr:
 pub(crate) fn watch(engine: &Engine, target: &Target, scope: Option<&str>) -> Watch {
     let windows = match target {
         Target::Element(id) => resolve::element_window(engine, *id).map(|window| vec![window]),
-        Target::Window(hwnd) => deckhand_desktop::window(*hwnd).map(|window| vec![window]),
+        Target::Window(hwnd) => winpilot_desktop::window(*hwnd).map(|window| vec![window]),
         Target::Selector(selector) => scope_windows(engine, selector, scope),
         Target::Point { .. } => Ok(Vec::new()),
     };
@@ -42,7 +42,7 @@ fn element(engine: &Engine, id: ElementRef) -> Result<Presence> {
 }
 
 fn window(hwnd: WindowRef) -> Result<Presence> {
-    let found = unless_gone(deckhand_desktop::window(hwnd))?;
+    let found = unless_gone(winpilot_desktop::window(hwnd))?;
     Ok(Presence::certain(found.filter(is_open).map(Shown::Window)))
 }
 
@@ -86,7 +86,7 @@ fn scope_windows(engine: &Engine, selector: &Selector, scope: Option<&str>) -> R
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Rect, Role};
+    use winpilot_core::{Rect, Role};
 
     use super::*;
 

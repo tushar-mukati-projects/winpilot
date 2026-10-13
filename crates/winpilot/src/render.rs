@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use deckhand_core::{
+use rmcp::model::{CallToolResult, ContentBlock};
+use winpilot_core::{
     Error, Result,
     format::{self, ObserveFormat},
     protocol::{ActReport, After, Reply, ScreenshotReport, StatusReport},
 };
-use rmcp::model::{CallToolResult, ContentBlock};
 
 use crate::config;
 
@@ -89,7 +89,7 @@ fn captioned(caption: String, shot: ScreenshotReport) -> Vec<ContentBlock> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Point, geometry::ImageMapping, refs::ImageRef};
+    use winpilot_core::{Point, geometry::ImageMapping, refs::ImageRef};
 
     use super::*;
     use crate::testing::status_report;

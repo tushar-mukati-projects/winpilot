@@ -1,10 +1,10 @@
 use std::{ffi::c_void, mem::size_of, ptr};
 
-use deckhand_core::{Context, Error, Result};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject,
     HBITMAP, HDC, HFONT, HGDIOBJ, SelectObject,
 };
+use winpilot_core::{Context, Error, Result};
 
 pub(crate) struct MemoryDc(HDC);
 

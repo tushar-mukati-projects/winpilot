@@ -1,4 +1,3 @@
-use deckhand_core::{Context, Result};
 use windows::{
     Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
@@ -13,10 +12,11 @@ use windows::{
     },
     core::{PCWSTR, w},
 };
+use winpilot_core::{Context, Result};
 
 use crate::{module_instance::module_instance, window_class::register_window_class};
 
-const BALLOON_CLASS: PCWSTR = w!("DeckhandNotification");
+const BALLOON_CLASS: PCWSTR = w!("WinPilotNotification");
 const EVENT_MASK: isize = 0xFFFF;
 
 pub(crate) const BALLOON_CALLBACK: u32 = WM_APP + 1;

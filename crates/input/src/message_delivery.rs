@@ -1,10 +1,10 @@
 use std::thread;
 
-use deckhand_core::{Error, ErrorCode, Result, WindowRef};
 use windows::Win32::{
     Foundation::{ERROR_ACCESS_DENIED, ERROR_TIMEOUT, GetLastError, HWND, LPARAM, WIN32_ERROR, WPARAM},
     UI::WindowsAndMessaging::{SMTO_ABORTIFHUNG, SendMessageTimeoutW},
 };
+use winpilot_core::{Error, ErrorCode, Result, WindowRef};
 
 use crate::message_plan::Sent;
 

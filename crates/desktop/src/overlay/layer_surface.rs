@@ -1,5 +1,5 @@
-use deckhand_core::{Error, Result};
 use windows::Win32::Graphics::Gdi::{HDC, HGDIOBJ};
+use winpilot_core::{Error, Result};
 
 use super::{
     canvas::Canvas,

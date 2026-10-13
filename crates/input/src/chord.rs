@@ -1,8 +1,8 @@
-use deckhand_core::{
+use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
+use winpilot_core::{
     Error, Result,
     keys::{Chord, Key, Modifiers},
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
 
 use crate::{
     batch::{Batch, with_modifiers_held},
@@ -59,11 +59,11 @@ fn unicode_batch(c: char) -> Batch {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ErrorCode, keys::NamedKey};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, VK_CONTROL, VK_F5, VK_LEFT,
         VK_LWIN, VK_MENU, VK_SHIFT,
     };
+    use winpilot_core::{ErrorCode, keys::NamedKey};
 
     use super::*;
     use crate::{

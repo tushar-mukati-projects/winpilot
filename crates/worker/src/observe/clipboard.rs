@@ -1,14 +1,14 @@
-use deckhand_core::{
+use winpilot_core::{
     Error, ErrorCode, Result,
     protocol::{ClipboardReport, ClipboardRequest},
     text_limit::truncated,
 };
-use deckhand_desktop::clipboard::{self, ClipboardRead};
+use winpilot_desktop::clipboard::{self, ClipboardRead};
 
 use crate::{engine::Engine, guard::Guard};
 
 const MARKED_PRIVATE: &str =
-    "the app that filled the clipboard marked it private (as password managers do), so Deckhand won't read it";
+    "the app that filled the clipboard marked it private (as password managers do), so WinPilot won't read it";
 
 pub(crate) fn read(engine: &Engine, request: ClipboardRequest) -> Result<ClipboardReport> {
     let read = clipboard::read()?;
@@ -26,7 +26,7 @@ fn check_allowed(guard: &Guard, read: &ClipboardRead) -> Result<()> {
     if guard.denies_titled(&owner.process, &owner.title) {
         return Err(Error::new(
             ErrorCode::Denied,
-            format!("the clipboard was filled by {}, which is on Deckhand's deny list", owner.process),
+            format!("the clipboard was filled by {}, which is on WinPilot's deny list", owner.process),
         ));
     }
     Ok(())
@@ -34,7 +34,7 @@ fn check_allowed(guard: &Guard, read: &ClipboardRead) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_desktop::clipboard::ClipboardOwner;
+    use winpilot_desktop::clipboard::ClipboardOwner;
 
     use super::*;
     use crate::test_fixture::engine;

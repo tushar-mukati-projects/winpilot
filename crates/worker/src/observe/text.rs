@@ -1,5 +1,5 @@
-use deckhand_capture::ocr;
-use deckhand_core::{
+use winpilot_capture::ocr;
+use winpilot_core::{
     Element, ElementRef, Error, Rect, Result, Role, Snapshot, Target, WindowInfo,
     object_marks::readable_lines,
     ocr::{OcrLine, line_with_coords},
@@ -211,7 +211,7 @@ fn ocr_capture(captured: &Captured) -> Result<Reading> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
     use crate::test_fixture::{FixtureApp, element, engine, snapshot};
@@ -277,11 +277,11 @@ mod tests {
     }
 
     fn visible_chrome_window() -> Option<WindowInfo> {
-        deckhand_desktop::windows()
+        winpilot_desktop::windows()
             .ok()?
             .into_iter()
             .filter(|window| window.process.eq_ignore_ascii_case("chrome.exe"))
-            .filter(|window| window.state != deckhand_core::WindowState::Minimized)
+            .filter(|window| window.state != winpilot_core::WindowState::Minimized)
             .filter(|window| !engine().guard.denies(window))
             .max_by_key(|window| window.rect.area())
     }
@@ -296,7 +296,7 @@ mod tests {
         let chosen = main_text_element(&snapshot).expect("a Chrome window with a document picks it");
         let page = snapshot.elements.iter().find(|element| element.id == chosen).unwrap();
         assert_eq!(page.role, Role::Document);
-        let text = snapshot_text(engine(), &snapshot, deckhand_core::text_limit::DEFAULT_MAX_CHARS).unwrap();
+        let text = snapshot_text(engine(), &snapshot, winpilot_core::text_limit::DEFAULT_MAX_CHARS).unwrap();
         let address = page.value.as_deref().unwrap_or_default().trim();
         assert!(
             address.is_empty() || text.trim() != address,

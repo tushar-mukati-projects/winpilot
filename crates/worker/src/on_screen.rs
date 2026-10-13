@@ -1,4 +1,4 @@
-use deckhand_core::{Element, Point, Rect, WindowInfo};
+use winpilot_core::{Element, Point, Rect, WindowInfo};
 
 pub(crate) fn visible_part(element: &Element, window: &WindowInfo) -> Option<Rect> {
     if !element.is_visible() {
@@ -13,7 +13,7 @@ pub(crate) fn clickable_point(element: &Element, window: &WindowInfo) -> Option<
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Role;
+    use winpilot_core::Role;
 
     use super::*;
     use crate::test_fixture::{element, window};

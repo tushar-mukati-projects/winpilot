@@ -1,6 +1,6 @@
-use deckhand_core::{Element, Error, Result};
 use windows::Win32::UI::Accessibility::{IUIAutomationElement, UIA_PATTERN_ID};
 use windows_core::Interface;
+use winpilot_core::{Element, Error, Result};
 
 use crate::{pattern::current_pattern, text::truncate_chars};
 
@@ -39,7 +39,7 @@ pub(crate) fn describe(info: &Element) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ElementRef, ElementState, Patterns, Rect, Role};
+    use winpilot_core::{ElementRef, ElementState, Patterns, Rect, Role};
 
     use super::*;
 

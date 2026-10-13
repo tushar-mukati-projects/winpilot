@@ -1,11 +1,11 @@
 use std::ffi::c_void;
 
-use deckhand_core::{Context, Error, Point, Result};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, GdiFlush,
     GetDC, HBITMAP, HDC, HGDIOBJ, ReleaseDC, SelectObject,
 };
 use windows_core::Owned;
+use winpilot_core::{Context, Error, Point, Result};
 
 use crate::frame::{Frame, FrameSource};
 use crate::pixels::{BYTES_PER_PIXEL, Pixels};

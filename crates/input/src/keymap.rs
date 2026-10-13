@@ -1,12 +1,12 @@
-use deckhand_core::{
-    Error, Result,
-    keys::{Key, Modifiers, NamedKey},
-};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     VIRTUAL_KEY, VK_APPS, VK_BACK, VK_BROWSER_BACK, VK_BROWSER_FORWARD, VK_CAPITAL, VK_CONTROL, VK_DELETE, VK_DOWN,
     VK_END, VK_ESCAPE, VK_F1, VK_HOME, VK_INSERT, VK_LEFT, VK_LWIN, VK_MEDIA_NEXT_TRACK, VK_MEDIA_PLAY_PAUSE,
     VK_MEDIA_PREV_TRACK, VK_MENU, VK_NEXT, VK_NUMLOCK, VK_PAUSE, VK_PRIOR, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_RMENU,
     VK_RWIN, VK_SCROLL, VK_SHIFT, VK_SNAPSHOT, VK_SPACE, VK_TAB, VK_UP, VK_VOLUME_DOWN, VK_VOLUME_MUTE, VK_VOLUME_UP,
+};
+use winpilot_core::{
+    Error, Result,
+    keys::{Key, Modifiers, NamedKey},
 };
 
 use crate::layout::{KeyboardLayout, LayoutKey};
@@ -129,8 +129,8 @@ fn named_key_vk(key: NamedKey) -> VIRTUAL_KEY {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
     use windows::Win32::UI::Input::KeyboardAndMouse::{VK_F5, VK_F12, VK_F24};
+    use winpilot_core::ErrorCode;
 
     use super::*;
     use crate::test_layout::FakeLayout;

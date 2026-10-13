@@ -1,11 +1,11 @@
 use std::mem::size_of;
 
-use deckhand_core::{Error, Point, Rect, Result};
 use windows::Win32::{
     Foundation::{COLORREF, HWND, POINT, SIZE},
     Graphics::Gdi::{AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION, HDC},
     UI::WindowsAndMessaging::{ULW_ALPHA, UPDATELAYEREDWINDOWINFO, UpdateLayeredWindow, UpdateLayeredWindowIndirect},
 };
+use winpilot_core::{Error, Point, Rect, Result};
 
 const MAX_LAYER_SIDE: i32 = 32_767;
 const MAX_LAYER_PIXELS: i64 = 1 << 22;

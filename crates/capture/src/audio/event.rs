@@ -1,7 +1,7 @@
-use deckhand_core::{Context, Error, Result};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_FAILED};
 use windows::Win32::System::Threading::{CreateEventW, WaitForMultipleObjects};
 use windows_core::PCWSTR;
+use winpilot_core::{Context, Error, Result};
 
 pub(crate) struct AudioEvent(HANDLE);
 

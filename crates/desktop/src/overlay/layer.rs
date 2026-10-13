@@ -1,5 +1,5 @@
-use deckhand_core::{Point, Rect, Result};
 use windows::Win32::{Foundation::HINSTANCE, UI::WindowsAndMessaging::MSG};
+use winpilot_core::{Point, Rect, Result};
 
 use super::{
     canvas::Canvas,

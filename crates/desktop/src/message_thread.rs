@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use deckhand_core::{Context, Error, Result};
+use winpilot_core::{Context, Error, Result};
 
 use crate::startup_cancel::StartupCancel;
 use windows::Win32::{

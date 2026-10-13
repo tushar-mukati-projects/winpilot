@@ -3,7 +3,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Point, Rect};
 use windows::{
     Win32::{
         Foundation::{CloseHandle, HANDLE, HWND, POINT, RECT},
@@ -20,6 +19,7 @@ use windows::{
     },
     core::w,
 };
+use winpilot_core::{Point, Rect};
 
 use super::{
     activity::{Activity, Cue, OutOfSight},
@@ -39,7 +39,7 @@ fn root_at(point: Point) -> HWND {
 fn visible_overlay_covers(point: Point) -> bool {
     let mut after: Option<HWND> = None;
     loop {
-        let Ok(found) = (unsafe { FindWindowExW(None, after, w!("DeckhandOverlay"), None) }) else { return false };
+        let Ok(found) = (unsafe { FindWindowExW(None, after, w!("WinPilotOverlay"), None) }) else { return false };
         let mut rect = RECT::default();
         let placed = unsafe { GetWindowRect(found, &raw mut rect) }.is_ok();
         let inside = rect.left <= point.x && point.x < rect.right && rect.top <= point.y && point.y < rect.bottom;
@@ -135,10 +135,10 @@ fn hit_tests_and_clicks_pass_through_the_overlay() {
     assert!(visible_overlay_covers(border_point), "the border should be over the border point");
     for (point, expected) in [(probe, below.0), (border_point, below.1)] {
         assert_eq!(root_at(point), expected);
-        assert_ne!(class_name(root_at(point)), "DeckhandOverlay");
+        assert_ne!(class_name(root_at(point)), "WinPilotOverlay");
         let (process, class) = uia_owner_at(point);
         assert_ne!(process, unsafe { GetCurrentProcessId() });
-        assert_ne!(class, "DeckhandOverlay");
+        assert_ne!(class, "WinPilotOverlay");
     }
     overlay.end();
     thread::sleep(Duration::from_millis(300));

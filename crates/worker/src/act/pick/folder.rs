@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use deckhand_core::{Element, ElementRef, Role, Snapshot};
+use winpilot_core::{Element, ElementRef, Role, Snapshot};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Destination {

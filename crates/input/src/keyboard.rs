@@ -1,7 +1,7 @@
-use deckhand_core::keys::Modifiers;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, VIRTUAL_KEY,
 };
+use winpilot_core::keys::Modifiers;
 
 use crate::{
     event::{InputEvent, KeyStroke},

@@ -470,8 +470,8 @@ function writeAssets(folder) {
   mkdirSync(folder, { recursive: true });
   const images = ICO_SIZES.map((size) => ({ size, png: encodePng(renderIcon(size), size) }));
   const large = images.find(({ size }) => size === PNG_SIZE);
-  writeFileSync(join(folder, "deckhand.png"), large.png);
-  writeFileSync(join(folder, "deckhand.ico"), encodeIco(images));
+  writeFileSync(join(folder, "winpilot.png"), large.png);
+  writeFileSync(join(folder, "winpilot.ico"), encodeIco(images));
 }
 
 const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);

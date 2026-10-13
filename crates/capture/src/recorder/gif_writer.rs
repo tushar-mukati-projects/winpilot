@@ -3,8 +3,8 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
-use deckhand_core::{Context, Error, Result, protocol::Quality};
 use gif::{DisposalMethod, Encoder, Frame, Repeat};
+use winpilot_core::{Context, Error, Result, protocol::Quality};
 
 use super::bitrate::gif_speed;
 use super::changed_area::changed_area;
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn a_gif_idle_for_twenty_minutes_keeps_its_exact_length() {
-        let folder = std::env::temp_dir().join(format!("deckhand-gif-idle-{}", std::process::id()));
+        let folder = std::env::temp_dir().join(format!("winpilot-gif-idle-{}", std::process::id()));
         fs::create_dir_all(&folder).unwrap();
         let path = folder.join("idle.gif");
         let output = OutputFile::create_new(&path).unwrap();

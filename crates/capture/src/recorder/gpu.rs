@@ -1,4 +1,3 @@
-use deckhand_core::{Error, Result};
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
@@ -8,6 +7,7 @@ use windows::Win32::Graphics::Direct3D11::{
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::Win32::System::WinRT::Direct3D11::CreateDirect3D11DeviceFromDXGIDevice;
 use windows_core::Interface;
+use winpilot_core::{Error, Result};
 
 pub(crate) struct Gpu {
     pub winrt: IDirect3DDevice,

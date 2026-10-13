@@ -1,4 +1,4 @@
-use deckhand_core::{Error, Result, TargetSpec, protocol::Step};
+use winpilot_core::{Error, Result, TargetSpec, protocol::Step};
 
 use super::{
     click,

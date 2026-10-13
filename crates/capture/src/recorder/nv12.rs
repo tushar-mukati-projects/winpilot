@@ -1,4 +1,4 @@
-use deckhand_core::{Error, Result};
+use winpilot_core::{Error, Result};
 
 use super::layout::Size;
 use crate::pixels::BYTES_PER_PIXEL;

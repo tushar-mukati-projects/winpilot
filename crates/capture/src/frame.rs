@@ -1,4 +1,4 @@
-use deckhand_core::{Error, Point, Rect, Result};
+use winpilot_core::{Error, Point, Rect, Result};
 
 use crate::pixels::{BYTES_PER_PIXEL, Block, Pixels, PixelsMut, copy_block};
 

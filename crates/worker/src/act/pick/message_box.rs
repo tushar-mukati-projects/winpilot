@@ -1,4 +1,4 @@
-use deckhand_core::{ElementRef, Role, Snapshot};
+use winpilot_core::{ElementRef, Role, Snapshot};
 
 use super::{dialog::plain_name, dialog_kind::DialogKind, selection::Requested};
 

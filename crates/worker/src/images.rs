@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use deckhand_core::{Error, ErrorCode, ImageMapping, ImageRef, Point, Result, WindowRef};
+use winpilot_core::{Error, ErrorCode, ImageMapping, ImageRef, Point, Result, WindowRef};
 
 const CAPACITY: usize = 32;
 const COVERED: &str = "that point is covered by another window now; take a new screenshot";

@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Point, Rect};
+use winpilot_core::{Point, Rect};
 
 use super::{
     activity_pill::ActivityPill,

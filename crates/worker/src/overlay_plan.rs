@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use deckhand_core::{Point, Rect, WindowInfo, WindowState};
-use deckhand_desktop::overlay::{Cue, OutOfSight};
+use winpilot_core::{Point, Rect, WindowInfo, WindowState};
+use winpilot_desktop::overlay::{Cue, OutOfSight};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum KeyChips {

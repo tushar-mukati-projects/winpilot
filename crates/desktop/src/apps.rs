@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use deckhand_core::{Error, Result};
+use winpilot_core::{Error, Result};
 
 use crate::{
     activation::Activation,
@@ -96,7 +96,7 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use deckhand_core::WindowRef;
+    use winpilot_core::WindowRef;
 
     use super::*;
     use crate::{close_window, windows};
@@ -179,7 +179,7 @@ mod tests {
         let shell_place =
             Shortcut { target: Some("::{52205FD8-5DFB-447D-801A-D0B52F2E83E1}".to_string()), arguments: None };
         let error = program_launch(&explorer, &shell_place, r"C:\Users").unwrap_err();
-        assert_eq!(error.code, deckhand_core::ErrorCode::Unsupported);
+        assert_eq!(error.code, winpilot_core::ErrorCode::Unsupported);
         assert!(error.message.starts_with("File Explorer can't be given args"), "{}", error.message);
         assert!(program_launch(&explorer, &Shortcut::default(), r"C:\Users").is_err());
     }
@@ -194,7 +194,7 @@ mod tests {
                     assert!(args.ends_with("--probe"), "{args}");
                 }
                 Ok(AppLaunch::AsListed) => panic!("{} would drop its args", app.name),
-                Err(error) => assert_eq!(error.code, deckhand_core::ErrorCode::Unsupported, "{}", error.message),
+                Err(error) => assert_eq!(error.code, winpilot_core::ErrorCode::Unsupported, "{}", error.message),
             }
         }
     }
@@ -231,8 +231,8 @@ mod tests {
     #[test]
     #[ignore = "opens and closes the fixture app"]
     fn launches_an_exe_by_path_with_arguments() {
-        let Some(exe) = deckhand_fixture::fixture_exe() else { return };
-        let title = format!("Deckhand Fixture launch {}", std::process::id());
+        let Some(exe) = winpilot_fixture::fixture_exe() else { return };
+        let title = format!("WinPilot Fixture launch {}", std::process::id());
         let args = format!("--title \"{title}\" --pos 120,120");
         launch_and_close(&title, || {
             launch_path(&exe, Some(&args), Activation::Activate).unwrap();

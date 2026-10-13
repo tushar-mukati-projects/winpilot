@@ -1,10 +1,10 @@
 use std::marker::PhantomData;
 
-use deckhand_core::{Context, Result};
 use windows::Win32::{
     Foundation::RPC_E_CHANGED_MODE,
     System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize},
 };
+use winpilot_core::{Context, Result};
 
 pub(crate) struct ComApartment {
     owns_initialization: bool,

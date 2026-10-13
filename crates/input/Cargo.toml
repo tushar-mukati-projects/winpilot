@@ -1,5 +1,5 @@
 [package]
-name = "deckhand-input"
+name = "winpilot-input"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,7 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
-deckhand-core.workspace = true
+winpilot-core.workspace = true
 windows.workspace = true
 parking_lot.workspace = true
 

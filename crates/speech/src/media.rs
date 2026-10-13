@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use deckhand_core::{Context, Error, Result};
 use windows::Win32::Media::MediaFoundation::{
     IMFAttributes, IMFMediaBuffer, IMFSample, IMFSourceReader, MF_E_INVALIDSTREAMNUMBER,
     MF_E_UNSUPPORTED_BYTESTREAM_TYPE, MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND, MF_MT_MAJOR_TYPE,
@@ -9,6 +8,7 @@ use windows::Win32::Media::MediaFoundation::{
     MFAudioFormat_Float, MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Audio,
 };
 use windows::core::HSTRING;
+use winpilot_core::{Context, Error, Result};
 
 use crate::audio::{MAX_SAMPLE_RATE, MIN_SAMPLE_RATE, WHISPER_SAMPLE_RATE};
 use crate::com::{ComApartment, MediaFoundation};
@@ -171,7 +171,7 @@ impl Drop for LockedBuffer<'_> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
 
@@ -179,7 +179,7 @@ mod tests {
 
     impl TempDir {
         fn new(name: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!("deckhand-speech-test-{name}-{}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!("winpilot-speech-test-{name}-{}", std::process::id()));
             std::fs::create_dir_all(&dir).unwrap();
             Self(dir)
         }
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn a_missing_file_is_not_found() {
-        let error = decode_media(Path::new(r"Z:\deckhand-speech-test\missing.wav")).unwrap_err();
+        let error = decode_media(Path::new(r"Z:\winpilot-speech-test\missing.wav")).unwrap_err();
         assert_eq!(error.code, ErrorCode::NotFound);
     }
 

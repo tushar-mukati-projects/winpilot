@@ -8,14 +8,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{
-    Config, Element, ElementRef, ElementState, Rect, Role, Snapshot, WindowInfo, WindowRef, WindowState,
-};
-use deckhand_fixture::{FixtureProcess, Placement};
 use windows::Win32::{
     Foundation::{LPARAM, WPARAM},
     UI::WindowsAndMessaging::{GetDlgItem, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_GETTEXT},
 };
+use winpilot_core::{
+    Config, Element, ElementRef, ElementState, Rect, Role, Snapshot, WindowInfo, WindowRef, WindowState,
+};
+use winpilot_fixture::{FixtureProcess, Placement};
 
 use crate::engine::Engine;
 
@@ -27,12 +27,12 @@ const SEND_TIMEOUT_MS: u32 = 2000;
 pub(crate) fn engine() -> &'static Engine {
     static ENGINE: OnceLock<Engine> = OnceLock::new();
     ENGINE.get_or_init(|| {
-        let _ = deckhand_desktop::enable_dpi_awareness();
+        let _ = winpilot_desktop::enable_dpi_awareness();
         let mut config = Config::default();
         config.overlay.enabled = false;
         config.guard.kill_hotkey = String::new();
         config.guard.yield_ms = 0;
-        Engine::start(config, 0, "deckhand-test").unwrap()
+        Engine::start(config, 0, "winpilot-test").unwrap()
     })
 }
 
@@ -63,7 +63,7 @@ pub(crate) fn element(id: u32, depth: u16, role: Role, name: &str) -> Element {
         class_name: String::new(),
         rect: Rect::new(10, 10, 50, 20),
         state: ElementState { enabled: true, ..ElementState::default() },
-        patterns: deckhand_core::Patterns::default(),
+        patterns: winpilot_core::Patterns::default(),
     }
 }
 
@@ -77,16 +77,16 @@ pub(crate) fn snapshot(title: &str, elements: Vec<Element>) -> Snapshot {
 }
 
 pub(crate) fn fixture_exe() -> Option<PathBuf> {
-    let found = deckhand_fixture::fixture_exe();
+    let found = winpilot_fixture::fixture_exe();
     if found.is_none() {
-        eprintln!("skipping: deckhand-fixture.exe is not built (cargo build -p deckhand-fixture)");
+        eprintln!("skipping: winpilot-fixture.exe is not built (cargo build -p winpilot-fixture)");
     }
     found
 }
 
 pub(crate) fn unique_title(kind: &str) -> String {
     static NEXT: AtomicU32 = AtomicU32::new(1);
-    format!("Deckhand Fixture {kind} {}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed))
+    format!("WinPilot Fixture {kind} {}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed))
 }
 
 pub(crate) struct TempFiles(pub(crate) Vec<PathBuf>);
@@ -100,12 +100,12 @@ impl Drop for TempFiles {
 }
 
 pub(crate) fn temp_path(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("deckhand-pick-{}-{name}", std::process::id()))
+    std::env::temp_dir().join(format!("winpilot-pick-{}-{name}", std::process::id()))
 }
 
 pub(crate) fn temp_file(name: &str) -> PathBuf {
     let path = temp_path(name);
-    std::fs::write(&path, b"deckhand").unwrap();
+    std::fs::write(&path, b"winpilot").unwrap();
     path
 }
 
@@ -113,9 +113,9 @@ pub(crate) struct ClosesTitled(pub(crate) String);
 
 impl Drop for ClosesTitled {
     fn drop(&mut self) {
-        let Ok(windows) = deckhand_desktop::windows() else { return };
+        let Ok(windows) = winpilot_desktop::windows() else { return };
         for window in windows.iter().filter(|window| window.title == self.0) {
-            let _closed = deckhand_desktop::close_window(window.hwnd);
+            let _closed = winpilot_desktop::close_window(window.hwnd);
         }
     }
 }
@@ -157,7 +157,7 @@ impl FixtureApp {
     }
 
     pub(crate) fn current_window(&self) -> WindowInfo {
-        deckhand_desktop::window(self.hwnd()).unwrap()
+        winpilot_desktop::window(self.hwnd()).unwrap()
     }
 
     pub(crate) fn selector(&self, terms: &str) -> String {
@@ -202,7 +202,7 @@ impl FixtureApp {
 fn wait_for_window(pid: u32, title: &str) -> Option<WindowInfo> {
     let deadline = Instant::now() + PATIENCE;
     while Instant::now() < deadline {
-        let found = deckhand_desktop::windows().ok()?.into_iter().find(|window| window.pid == pid);
+        let found = winpilot_desktop::windows().ok()?.into_iter().find(|window| window.pid == pid);
         if let Some(window) = found.filter(|window| window.title == title) {
             return Some(window);
         }

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use deckhand_core::{
+use parking_lot::Mutex;
+use windows::Win32::UI::Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT};
+use winpilot_core::{
     Result,
     keys::{Chord, Modifiers},
 };
-use parking_lot::Mutex;
-use windows::Win32::UI::Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT};
 
 use crate::{
     activity::ActivityMonitor,
@@ -117,7 +117,7 @@ mod tests {
         let fired = Arc::new(AtomicUsize::new(0));
         let counter = Arc::clone(&fired);
         let binding = hotkey_binding(
-            &deckhand_core::keys::parse_chord("ctrl+alt+escape").unwrap(),
+            &winpilot_core::keys::parse_chord("ctrl+alt+escape").unwrap(),
             &crate::test_layout::FakeLayout,
         )
         .unwrap();

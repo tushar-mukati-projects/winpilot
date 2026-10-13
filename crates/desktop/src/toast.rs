@@ -1,7 +1,7 @@
-use deckhand_core::{Context, Result};
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::UI::Notifications::{NotificationSetting, ToastNotification, ToastNotificationManager};
 use windows::core::HSTRING;
+use winpilot_core::{Context, Result};
 
 use crate::{app_identity::APP_USER_MODEL_ID, com::ComApartment, toast_xml::toast_xml};
 
@@ -22,10 +22,10 @@ pub(crate) enum ToastResult {
 impl ToastBlock {
     pub const fn describe(self) -> &'static str {
         match self {
-            Self::ForApplication => "notifications from Deckhand are turned off in Settings > System > Notifications",
+            Self::ForApplication => "notifications from WinPilot are turned off in Settings > System > Notifications",
             Self::ForUser => "notifications are turned off in Settings > System > Notifications",
             Self::ByGroupPolicy => "notifications are turned off by group policy",
-            Self::ByManifest => "Windows does not allow notifications for Deckhand's app identity",
+            Self::ByManifest => "Windows does not allow notifications for WinPilot's app identity",
         }
     }
 }
@@ -33,8 +33,8 @@ impl ToastBlock {
 pub(crate) fn show_toast(title: &str, message: &str) -> Result<ToastResult> {
     let _apartment = ComApartment::enter_any()?;
     let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_USER_MODEL_ID))
-        .context("creating the Deckhand toast notifier")?;
-    let setting = notifier.Setting().context("reading whether Deckhand may show notifications")?;
+        .context("creating the WinPilot toast notifier")?;
+    let setting = notifier.Setting().context("reading whether WinPilot may show notifications")?;
     if let Some(block) = blocked_by(setting) {
         return Ok(ToastResult::Blocked(block));
     }
@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn blocks_name_where_to_turn_notifications_back_on() {
-        assert!(ToastBlock::ForApplication.describe().contains("Deckhand"));
+        assert!(ToastBlock::ForApplication.describe().contains("WinPilot"));
         assert!(ToastBlock::ForUser.describe().contains("Settings > System > Notifications"));
         assert_eq!(ToastBlock::ByGroupPolicy.describe(), "notifications are turned off by group policy");
     }

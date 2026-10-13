@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     Element, ElementRef, Error, ErrorCode, Point, Rect, Result, WindowInfo, WindowRef, format::element_line,
 };
 
@@ -131,7 +131,7 @@ fn window_covered(hwnd: WindowRef, point: Point) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Role;
+    use winpilot_core::Role;
 
     use super::*;
     use crate::{
@@ -206,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    fn related_elements_that_deckhand_files_under_another_window_still_reach_the_target() {
+    fn related_elements_that_winpilot_files_under_another_window_still_reach_the_target() {
         let hosted = HitRelation { hit_contains_target: true, ..HitRelation::default() };
         assert_eq!(judge_hit(hosted), HitVerdict::OnTarget);
         assert_eq!(judge_hit(HitRelation { same: true, ..HitRelation::default() }), HitVerdict::OnTarget);

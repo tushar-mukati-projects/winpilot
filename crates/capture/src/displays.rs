@@ -1,5 +1,5 @@
-use deckhand_core::{Rect, Result};
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory1, IDXGIOutput};
+use winpilot_core::{Rect, Result};
 
 use crate::convert::rect_from_win32;
 use crate::monitor_list::{Monitor, enumerate_monitors, order_key};
@@ -93,7 +93,7 @@ fn add_gdi_only_monitors(outputs: &mut Vec<Output>, monitors: &[Monitor]) {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Point;
+    use winpilot_core::Point;
 
     use super::*;
 

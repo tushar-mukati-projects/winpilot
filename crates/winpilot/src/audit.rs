@@ -6,8 +6,8 @@ use std::{
 };
 
 use chrono::{DateTime, Days, Local, NaiveDate, SecondsFormat};
-use deckhand_core::ErrorCode;
 use serde::Serialize;
+use winpilot_core::ErrorCode;
 
 use crate::app_data;
 
@@ -46,11 +46,11 @@ struct Pruned {
 impl Audit {
     pub fn open() -> Self {
         let Some(dir) = default_dir() else {
-            eprintln!("deckhand: LOCALAPPDATA is not an absolute path, so the audit log is off");
+            eprintln!("winpilot: LOCALAPPDATA is not an absolute path, so the audit log is off");
             return Self::disabled();
         };
         if let Err(error) = fs::create_dir_all(&dir) {
-            eprintln!("deckhand: could not create the audit log folder {}: {error}", dir.display());
+            eprintln!("winpilot: could not create the audit log folder {}: {error}", dir.display());
         }
         Self::in_dir(dir)
     }
@@ -71,7 +71,7 @@ impl Audit {
     pub fn record(&self, entry: &Entry) {
         let Some(dir) = &self.dir else { return };
         if let Err(error) = self.append(dir, entry, Local::now()) {
-            eprintln!("deckhand: could not write the audit log: {error}");
+            eprintln!("winpilot: could not write the audit log: {error}");
         }
     }
 
@@ -104,7 +104,7 @@ impl Audit {
 }
 
 fn default_dir() -> Option<PathBuf> {
-    app_data::dir_from_env("LOCALAPPDATA").map(|dir| dir.join("deckhand").join("logs"))
+    app_data::dir_from_env("LOCALAPPDATA").map(|dir| dir.join("winpilot").join("logs"))
 }
 
 fn file_name(date: NaiveDate) -> String {
@@ -128,10 +128,10 @@ fn report_pruning(dir: &Path, outcome: io::Result<Pruned>) {
     match outcome {
         Ok(pruned) => {
             for failure in pruned.failures {
-                eprintln!("deckhand: could not delete an old audit log: {failure}");
+                eprintln!("winpilot: could not delete an old audit log: {failure}");
             }
         }
-        Err(error) => eprintln!("deckhand: could not clean old audit logs in {}: {error}", dir.display()),
+        Err(error) => eprintln!("winpilot: could not clean old audit logs in {}: {error}", dir.display()),
     }
 }
 

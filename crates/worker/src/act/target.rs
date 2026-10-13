@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use deckhand_core::{Error, ErrorCode, Result, TargetSpec, WindowInfo};
+use winpilot_core::{Error, ErrorCode, Result, TargetSpec, WindowInfo};
 
 use super::mode::Mode;
 use crate::{
@@ -69,13 +69,13 @@ fn ready(engine: &Engine, resolved: Resolved, mode: Mode, call: &CallScope) -> R
 
 fn foreground_window() -> Result<WindowInfo> {
     let hwnd =
-        deckhand_desktop::foreground_window().ok_or_else(|| Error::not_found("no window is in the foreground"))?;
-    deckhand_desktop::window(hwnd)
+        winpilot_desktop::foreground_window().ok_or_else(|| Error::not_found("no window is in the foreground"))?;
+    winpilot_desktop::window(hwnd)
 }
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Rect, WindowRef};
+    use winpilot_core::{Rect, WindowRef};
 
     use super::*;
     use crate::test_fixture::window;

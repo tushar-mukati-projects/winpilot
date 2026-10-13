@@ -1,8 +1,8 @@
-use deckhand_core::{Error, Point, Result};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
     SYSTEM_METRICS_INDEX,
 };
+use winpilot_core::{Error, Point, Result};
 
 const ABSOLUTE_RANGE: i64 = 65_536;
 

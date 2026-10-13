@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Element, ElementRef, Error, Result, Snapshot, WindowInfo, WindowRef};
+use winpilot_core::{Element, ElementRef, Error, Result, Snapshot, WindowInfo, WindowRef};
 
 use crate::{
     automation::Uia,
@@ -153,7 +153,7 @@ fn is_sparse_chromium(class_name: &str, count: usize) -> bool {
 mod tests {
     use std::collections::HashSet;
 
-    use deckhand_core::{ErrorCode, Role};
+    use winpilot_core::{ErrorCode, Role};
 
     use super::*;
     use crate::test_support::{first_element, foreground, handle, taskbar, window_info};

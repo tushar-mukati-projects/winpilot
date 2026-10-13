@@ -65,7 +65,7 @@ mod input_tests;
 
 use std::time::{Duration, Instant};
 
-use deckhand_core::{
+use winpilot_core::{
     Error, ErrorCode, Result, TargetSpec, WindowInfo,
     protocol::{ActArgs, ActReport, After, AfterMode, Step, StepOutcome},
 };
@@ -102,7 +102,7 @@ fn click_target(engine: &Engine, target: &TargetSpec, step: &Step, mode: Mode, c
 }
 
 pub(crate) fn settle(engine: &Engine, window: &WindowInfo, call: &CallScope) {
-    let _responsive = deckhand_desktop::wait_until_responsive(window.hwnd, call.bounded(RESPONSIVE_WAIT));
+    let _responsive = winpilot_desktop::wait_until_responsive(window.hwnd, call.bounded(RESPONSIVE_WAIT));
     let quiet = Duration::from_millis(engine.config.act.settle_quiet_ms);
     let max = call.bounded(Duration::from_millis(engine.config.act.settle_max_ms));
     let _quiet = Watch::window(window).wait_quiet(engine, quiet, max);

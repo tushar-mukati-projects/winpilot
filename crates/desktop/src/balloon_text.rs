@@ -1,4 +1,4 @@
-use deckhand_core::{Error, Result};
+use winpilot_core::{Error, Result};
 
 const TITLE_UNITS: usize = 64;
 const MESSAGE_UNITS: usize = 256;
@@ -38,11 +38,11 @@ pub(crate) fn wide_buffer<const N: usize>(field: &str, text: &str) -> Result<[u1
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{
+    use windows::Win32::UI::Shell::NOTIFYICONDATAW;
+    use winpilot_core::{
         ErrorCode,
         protocol::{NOTIFY_MESSAGE_MAX, NOTIFY_TITLE_MAX},
     };
-    use windows::Win32::UI::Shell::NOTIFYICONDATAW;
 
     use super::*;
 

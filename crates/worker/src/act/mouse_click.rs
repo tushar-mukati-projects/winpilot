@@ -1,4 +1,4 @@
-use deckhand_core::Result;
+use winpilot_core::Result;
 
 use super::{
     click_choice::ClickOptions,
@@ -36,7 +36,7 @@ fn click_located(
     call: &CallScope,
 ) -> Result<Located> {
     let point = Motion::start(engine, call).approach(prepared, &located, options.glide_ms)?;
-    deckhand_input::click(point, options.button, options.count, options.modifiers)?;
+    winpilot_input::click(point, options.button, options.count, options.modifiers)?;
     overlay::click(engine, call, point, options.count);
     Ok(Located { point, ..located })
 }

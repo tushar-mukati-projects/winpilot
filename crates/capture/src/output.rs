@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Point, Rect, Result};
 use windows::Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIOutput};
+use winpilot_core::{Point, Rect, Result};
 
 use crate::duplication::{Duplication, DxgiFailure};
 use crate::frame::Frame;

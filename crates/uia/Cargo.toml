@@ -1,5 +1,5 @@
 [package]
-name = "deckhand-uia"
+name = "winpilot-uia"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,12 +7,12 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
-deckhand-core.workspace = true
+winpilot-core.workspace = true
 windows.workspace = true
 windows-core.workspace = true
 
 [dev-dependencies]
-deckhand-fixture.workspace = true
+winpilot-fixture.workspace = true
 
 [lints]
 workspace = true

@@ -4,7 +4,6 @@ use std::{
     time::Duration,
 };
 
-use deckhand_core::{Context, Error, Result};
 use windows::Win32::{
     Foundation::{LPARAM, WPARAM},
     System::Threading::GetCurrentThreadId,
@@ -13,6 +12,7 @@ use windows::Win32::{
         WM_USER,
     },
 };
+use winpilot_core::{Context, Error, Result};
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(5);
 

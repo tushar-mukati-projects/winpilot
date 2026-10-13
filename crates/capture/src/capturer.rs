@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
 use std::thread::{self, JoinHandle};
 
-use deckhand_core::{Context, Error, Rect, Result, WindowRef};
+use winpilot_core::{Context, Error, Rect, Result, WindowRef};
 
 use crate::actor::{self, Reply, Request};
 use crate::frame::Frame;
@@ -31,7 +31,7 @@ impl Capturer {
         let (requests, inbox) = mpsc::channel();
         let (ready, started) = mpsc::channel();
         let worker = thread::Builder::new()
-            .name("deckhand-capture".to_string())
+            .name("winpilot-capture".to_string())
             .spawn(move || actor::run(&inbox, &ready))
             .context("starting the capture thread")?;
         let startup = started.recv().unwrap_or_else(|_| Err(Error::internal("capture thread stopped during startup")));
@@ -77,11 +77,11 @@ mod tests {
     use std::sync::OnceLock;
     use std::time::{Duration, Instant};
 
-    use deckhand_core::{ErrorCode, Point, protocol::ImageFormat};
     use windows::Win32::Foundation::RECT;
     use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
     use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
     use windows_core::w;
+    use winpilot_core::{ErrorCode, Point, protocol::ImageFormat};
 
     use super::*;
     use crate::encode::{EncodeOptions, encode};

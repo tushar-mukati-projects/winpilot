@@ -1,7 +1,7 @@
-use deckhand_core::keys::Modifiers;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     VIRTUAL_KEY, VK_CONTROL, VK_DIVIDE, VK_LEFT, VK_LWIN, VK_MENU, VK_PAUSE, VK_RETURN, VK_SHIFT, VK_TAB,
 };
+use winpilot_core::keys::Modifiers;
 
 use crate::layout::{KeyboardLayout, LayoutKey};
 

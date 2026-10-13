@@ -1,4 +1,3 @@
-use deckhand_core::{Context, Point, Rect, Result, WindowInfo, WindowRef};
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, POINT},
@@ -9,6 +8,7 @@ use windows::{
     },
     core::BOOL,
 };
+use winpilot_core::{Context, Point, Rect, Result, WindowInfo, WindowRef};
 
 use crate::{
     process::ProcessLookup,
@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn missing_window_is_not_found() {
         let error = window(WindowRef(0)).unwrap_err();
-        assert_eq!(error.code, deckhand_core::ErrorCode::NotFound);
+        assert_eq!(error.code, winpilot_core::ErrorCode::NotFound);
         assert!(!is_window(WindowRef(0)));
         assert!(!is_enabled(WindowRef(0)));
         assert!(owner_of(WindowRef(0)).is_none());

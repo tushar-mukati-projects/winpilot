@@ -1,6 +1,6 @@
 use std::{sync::mpsc::Sender, time::Duration};
 
-use deckhand_core::{Point, Rect};
+use winpilot_core::{Point, Rect};
 
 use super::{activity::Activity, chip_text::ChipText, driving::Driving};
 

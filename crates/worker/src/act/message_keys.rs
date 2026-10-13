@@ -1,4 +1,4 @@
-use deckhand_core::{Element, Result, WindowInfo, WindowRef, keys::Chord, protocol::MouseButton};
+use winpilot_core::{Element, Result, WindowInfo, WindowRef, keys::Chord, protocol::MouseButton};
 
 use super::{
     by_pattern::by_pattern,
@@ -37,7 +37,7 @@ pub(crate) fn type_text(
     let typed = if enter { format!("{text}{ENTER}") } else { text.to_string() };
     let check = || engine.guard.check_running(call);
     let ((), note) =
-        by_pattern(engine, &keyboard.window, call, || deckhand_input::message_text(keyboard.receiver, &typed, check))?;
+        by_pattern(engine, &keyboard.window, call, || winpilot_input::message_text(keyboard.receiver, &typed, check))?;
     Ok(Done::by(via_focus_click(MESSAGE, keyboard.clicked))
         .with_note(keyboard.note)
         .with_note(note)
@@ -57,7 +57,7 @@ pub(crate) fn press(
     }
     let check = || engine.guard.check_running(call);
     let ((), note) = by_pattern(engine, &keyboard.window, call, || {
-        deckhand_input::message_keys(keyboard.receiver, chords, repeat, check)
+        winpilot_input::message_keys(keyboard.receiver, chords, repeat, check)
     })?;
     Ok(Done::by(via_focus_click(MESSAGE, keyboard.clicked)).with_note(keyboard.note).with_note(note))
 }
@@ -73,9 +73,9 @@ fn keyboard(engine: &Engine, prepared: &Prepared, call: &CallScope) -> Result<Ke
 }
 
 fn window_keyboard(engine: &Engine, window: &WindowInfo, call: &CallScope) -> Result<Keyboard> {
-    let window = deckhand_desktop::window(window.hwnd)?;
+    let window = winpilot_desktop::window(window.hwnd)?;
     engine.guard.before_patterns(Some(&window), call)?;
     require_not_in_use(&window)?;
-    let receiver = deckhand_input::keyboard_window(window.hwnd)?;
+    let receiver = winpilot_input::keyboard_window(window.hwnd)?;
     Ok(Keyboard { window, receiver, element: None, clicked: false, note: None })
 }

@@ -1,4 +1,4 @@
-use deckhand_core::{WindowInfo, WindowRef};
+use winpilot_core::{WindowInfo, WindowRef};
 
 use super::{by_pattern::KeptForeground, done::both_notes, stacking::keep_behind_front};
 use crate::guard::Guard;
@@ -31,7 +31,7 @@ impl<'a> LaunchedBehind<'a> {
 }
 
 fn same_process(front: WindowRef, pid: u32) -> bool {
-    deckhand_desktop::window(front).is_ok_and(|front| front.pid == pid)
+    winpilot_desktop::window(front).is_ok_and(|front| front.pid == pid)
 }
 
 #[cfg(test)]

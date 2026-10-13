@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::Rect;
+use winpilot_core::Rect;
 
 use super::easing::{ease_out_cubic, lerp, progress};
 

@@ -1,6 +1,5 @@
 use std::{marker::PhantomData, os::windows::io::OwnedHandle, time::Duration};
 
-use deckhand_core::{Context, Error, Result};
 use windows::{
     Win32::{
         Foundation::{WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT},
@@ -8,6 +7,7 @@ use windows::{
     },
     core::{HSTRING, PCWSTR},
 };
+use winpilot_core::{Context, Error, Result};
 
 use crate::{
     handle::{adopt, raw},
@@ -112,7 +112,7 @@ mod tests {
 
     fn unique_name(kind: &str) -> String {
         let serial = NEXT_NAME.fetch_add(1, Ordering::Relaxed);
-        format!("Local\\deckhand-test-{kind}-{}-{serial}", std::process::id())
+        format!("Local\\winpilot-test-{kind}-{}-{serial}", std::process::id())
     }
 
     fn assert_send_sync<T: Send + Sync>() {}

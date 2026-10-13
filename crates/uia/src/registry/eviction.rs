@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{ElementRef, WindowRef};
+use winpilot_core::{ElementRef, WindowRef};
 
 use super::{Entry, Origin, Registry};
 

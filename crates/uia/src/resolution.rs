@@ -1,7 +1,7 @@
 use std::time::Instant;
 
-use deckhand_core::{Element, ElementRef, Error, ErrorCode, Result, WindowRef};
 use windows::Win32::UI::Accessibility::IUIAutomationElement;
+use winpilot_core::{Element, ElementRef, Error, ErrorCode, Result, WindowRef};
 
 use crate::{
     automation::Uia,
@@ -70,7 +70,7 @@ pub(crate) fn stale_ref(id: ElementRef) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Snapshot;
+    use winpilot_core::Snapshot;
 
     use super::*;
     use crate::{

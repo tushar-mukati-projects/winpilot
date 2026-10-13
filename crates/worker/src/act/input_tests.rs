@@ -1,9 +1,9 @@
-use deckhand_core::{
+use serde_json::json;
+use winpilot_core::{
     ErrorCode, Rect, TargetSpec, WindowState,
     protocol::{ActReport, Step},
 };
-use deckhand_desktop::clipboard;
-use serde_json::json;
+use winpilot_desktop::clipboard;
 
 use super::{
     fixture_tests::{self, step},
@@ -53,12 +53,12 @@ fn typing_into_an_edit_reports_its_value() {
     let engine = engine();
     let Some(fixture) = FixtureApp::launch_on_screen() else { return };
     let typed = step(
-        json!({ "do": "type", "target": fixture.selector("id:2001"), "text": "typed by deckhand", "how": "keys" }),
+        json!({ "do": "type", "target": fixture.selector("id:2001"), "text": "typed by winpilot", "how": "keys" }),
     );
     let report = act(engine, vec![typed]);
     assert_eq!(method(&report, 0), Some("keys"));
-    assert_eq!(report.steps[0].note.as_deref(), Some("value now \"typed by deckhand\""));
-    assert_eq!(fixture.text(2001), "typed by deckhand");
+    assert_eq!(report.steps[0].note.as_deref(), Some("value now \"typed by winpilot\""));
+    assert_eq!(fixture.text(2001), "typed by winpilot");
 }
 
 #[test]
@@ -67,7 +67,7 @@ fn long_text_is_pasted_and_the_clipboard_restored() {
     let engine = engine();
     let Some(fixture) = FixtureApp::launch_on_screen() else { return };
     let original = clipboard::get_text().unwrap();
-    clipboard::set_text("deckhand sentinel").unwrap();
+    clipboard::set_text("winpilot sentinel").unwrap();
     let long = "pasted line ".repeat(30);
     let report = act(engine, vec![step(json!({ "do": "type", "target": fixture.selector("id:2002"), "text": long }))]);
     let restored = clipboard::get_text().unwrap();
@@ -76,7 +76,7 @@ fn long_text_is_pasted_and_the_clipboard_restored() {
         None => clipboard::clear().unwrap(),
     }
     assert_eq!(method(&report, 0), Some("paste"));
-    assert_eq!(restored.as_deref(), Some("deckhand sentinel"));
+    assert_eq!(restored.as_deref(), Some("winpilot sentinel"));
     assert_eq!(fixture.text(2002).trim_end(), long.trim_end());
 }
 
@@ -199,7 +199,7 @@ fn focus_moves_keyboard_focus_into_the_edit() {
     let report = act(engine, vec![step(json!({ "do": "focus", "target": fixture.selector("id:2001") }))]);
     assert_eq!(method(&report, 0), Some("focus"));
     assert_eq!(report.steps[0].note, None);
-    let focused = engine.uia.run(deckhand_uia::Uia::focused).unwrap();
+    let focused = engine.uia.run(winpilot_uia::Uia::focused).unwrap();
     assert_eq!(focused.map(|element| element.automation_id), Some("2001".to_string()));
 }
 
@@ -288,7 +288,7 @@ fn close_the_fixture() {
     let Some(fixture) = FixtureApp::launch() else { return };
     let report = act(engine, vec![window_step(&fixture, "close")]);
     assert!(report.steps[0].note.as_deref().unwrap_or_default().starts_with("closed "));
-    assert!(!deckhand_desktop::is_window(fixture.hwnd()));
+    assert!(!winpilot_desktop::is_window(fixture.hwnd()));
 }
 
 #[test]

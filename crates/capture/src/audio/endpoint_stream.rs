@@ -1,9 +1,9 @@
-use deckhand_core::Result;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Media::Audio::{
     AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
     AUDCLNT_STREAMFLAGS_LOOPBACK, IAudioCaptureClient, IAudioClient,
 };
+use winpilot_core::Result;
 
 use super::device::{Endpoint, activate_default_client, audio_error};
 use super::event::AudioEvent;

@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Result, WindowInfo, format::window_line};
+use winpilot_core::{Result, WindowInfo, format::window_line};
 
 use super::{WaitReport, check::Check};
 use crate::{
@@ -38,7 +38,7 @@ fn quiet_check(window: &WindowInfo, quiet: Duration, calm: bool) -> Check {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
 

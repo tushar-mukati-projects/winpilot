@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use deckhand_core::{
+use winpilot_core::{
     Result, Snapshot, WindowInfo,
     ocr::exposes_no_uia,
     protocol::{ElementsRequest, Observation},
@@ -50,7 +50,7 @@ fn keep_matches_and_ancestors(snapshot: &Snapshot, query: &Selector) -> Snapshot
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Role;
+    use winpilot_core::Role;
 
     use super::*;
     use crate::test_fixture::{element, snapshot};

@@ -1,12 +1,12 @@
-use deckhand_core::{Result, keys::Chord};
+use winpilot_core::{Result, keys::Chord};
 
 use crate::call_scope::CallScope;
 
 pub(crate) fn with_held_modifiers_lifted<T>(call: &CallScope, press: impl FnOnce() -> Result<T>) -> Result<T> {
     let lifted = held_modifiers(&call.held_keys());
-    lifted.iter().rev().try_for_each(deckhand_input::release_chord)?;
+    lifted.iter().rev().try_for_each(winpilot_input::release_chord)?;
     let pressed = press();
-    let pressed_again = lifted.iter().try_for_each(deckhand_input::hold_chord);
+    let pressed_again = lifted.iter().try_for_each(winpilot_input::hold_chord);
     let value = pressed?;
     pressed_again.map(|()| value)
 }
@@ -20,7 +20,7 @@ fn held_modifiers(held: &[Chord]) -> Vec<Chord> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::keys::parse_chord;
+    use winpilot_core::keys::parse_chord;
 
     use super::*;
 
@@ -35,6 +35,6 @@ mod tests {
     fn nothing_held_means_the_press_runs_untouched() {
         let call = CallScope::relaxed();
         assert_eq!(with_held_modifiers_lifted(&call, || Ok(7)).unwrap(), 7);
-        assert!(with_held_modifiers_lifted(&call, || Err::<(), _>(deckhand_core::Error::internal("x"))).is_err());
+        assert!(with_held_modifiers_lifted(&call, || Err::<(), _>(winpilot_core::Error::internal("x"))).is_err());
     }
 }

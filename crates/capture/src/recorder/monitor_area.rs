@@ -1,6 +1,6 @@
-use deckhand_core::{Error, Rect, Result};
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, HMONITOR, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromRect};
+use winpilot_core::{Error, Rect, Result};
 
 use crate::convert::rect_from_win32;
 
@@ -69,7 +69,7 @@ fn monitor_rect(monitor: HMONITOR) -> Result<Rect> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Point;
+    use winpilot_core::Point;
 
     use super::*;
 
@@ -120,6 +120,6 @@ mod tests {
         assert!(found.is_clipped(hanging));
         assert!(found.area.width <= found.monitor_rect.width);
         let nowhere = MonitorArea::locate(Rect::new(-90_000, -90_000, 10, 10)).unwrap_err();
-        assert_eq!(nowhere.code, deckhand_core::ErrorCode::InvalidArgument);
+        assert_eq!(nowhere.code, winpilot_core::ErrorCode::InvalidArgument);
     }
 }

@@ -1,4 +1,4 @@
-use deckhand_core::WindowInfo;
+use winpilot_core::WindowInfo;
 
 const DIALOG: &str = "#32770";
 pub(crate) const POPUP_MENU: &str = "#32768";
@@ -38,7 +38,7 @@ pub(crate) fn is_frame_host(window: &WindowInfo) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;

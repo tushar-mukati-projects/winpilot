@@ -1,4 +1,4 @@
-use deckhand_core::{Element, Error, ErrorCode, Point, Result, WindowInfo, protocol::Direction};
+use winpilot_core::{Element, Error, ErrorCode, Point, Result, WindowInfo, protocol::Direction};
 
 use super::{
     by_pattern::by_pattern,
@@ -72,7 +72,7 @@ fn wheel(
         return Err(no_scroll_target(window));
     }
     motion.check()?;
-    deckhand_input::scroll(point, request.direction, amount(request))?;
+    winpilot_input::scroll(point, request.direction, amount(request))?;
     overlay::scroll(engine, call, Some(point));
     settle(engine, window, call);
     Ok(Done::by("wheel"))
@@ -102,7 +102,7 @@ fn wheel_point(engine: &Engine, prepared: &Prepared) -> Result<Option<Point>> {
 }
 
 fn current_point(engine: &Engine, prepared: &Prepared) -> Result<Option<Point>> {
-    let window = deckhand_desktop::window(prepared.window.hwnd)?;
+    let window = winpilot_desktop::window(prepared.window.hwnd)?;
     Ok(match &prepared.reach {
         Reach::Element(element) => clickable_point(&refreshed(engine, element.id)?, &window),
         Reach::Point { point, .. } => Some(*point),

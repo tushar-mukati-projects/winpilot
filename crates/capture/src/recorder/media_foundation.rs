@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
-use deckhand_core::{Error, Result};
 use windows::Win32::Media::MediaFoundation::{MF_VERSION, MFSTARTUP_NOSOCKET, MFShutdown, MFStartup};
+use winpilot_core::{Error, Result};
 
 pub(crate) struct MediaFoundation {
     _thread_bound: PhantomData<*const ()>,

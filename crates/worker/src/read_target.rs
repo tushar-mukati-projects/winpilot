@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     Result, Target,
     refs::{looks_like_element_ref, looks_like_window_ref},
     target::parse_text_target,
@@ -26,7 +26,7 @@ pub(crate) fn read_target(spec: Option<&str>) -> Result<ReadTarget> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ElementRef, ErrorCode};
+    use winpilot_core::{ElementRef, ErrorCode};
 
     use super::*;
 

@@ -1,6 +1,6 @@
 use std::sync::mpsc::{Receiver, Sender};
 
-use deckhand_core::{Error, Rect, Result, WindowRef};
+use winpilot_core::{Error, Rect, Result, WindowRef};
 
 use crate::capture_area::CaptureArea;
 use crate::com::ComApartment;

@@ -1,5 +1,5 @@
 [package]
-name = "deckhand-speech"
+name = "winpilot-speech"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,7 @@ publish.workspace = true
 license.workspace = true
 
 [dependencies]
-deckhand-core.workspace = true
+winpilot-core.workspace = true
 windows.workspace = true
 candle-core.workspace = true
 candle-nn.workspace = true

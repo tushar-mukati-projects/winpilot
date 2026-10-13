@@ -3,9 +3,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::Result;
-use deckhand_desktop::apps::{AppEntry, installed_apps};
 use parking_lot::Mutex;
+use winpilot_core::Result;
+use winpilot_desktop::apps::{AppEntry, installed_apps};
 
 pub(crate) const FRESH_LISTING: Duration = Duration::from_secs(300);
 pub(crate) const RECENT_LISTING: Duration = Duration::from_secs(10);

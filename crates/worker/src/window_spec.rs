@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     ElementRef, Error, Result, WindowInfo, WindowRef,
     refs::{looks_like_element_ref, looks_like_window_ref},
     selector::Selector,
@@ -65,7 +65,7 @@ fn is_selector_key(key: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ErrorCode, Rect};
+    use winpilot_core::{ErrorCode, Rect};
 
     use super::*;
     use crate::test_fixture::window;

@@ -1,7 +1,7 @@
 use std::ffi::c_void;
 
-use deckhand_core::{Rect, WindowRef};
 use windows::Win32::Foundation::{HWND, RECT};
+use winpilot_core::{Rect, WindowRef};
 
 pub(crate) const fn rect_from_win32(rect: RECT) -> Rect {
     Rect::from_edges(rect.left, rect.top, rect.right, rect.bottom)

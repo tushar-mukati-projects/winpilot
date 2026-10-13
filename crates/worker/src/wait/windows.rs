@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use deckhand_core::{Result, WindowInfo, WindowRef, format::window_line};
+use winpilot_core::{Result, WindowInfo, WindowRef, format::window_line};
 
 use super::check::{Check, unless_gone};
 use crate::{app_windows::app_windows, engine::Engine, resolve};
@@ -63,7 +63,7 @@ fn matching(engine: &Engine, title: &str) -> Result<Vec<WindowInfo>> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
 

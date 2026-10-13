@@ -6,9 +6,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Config, Error, Result, ipc::ToWorker};
 use parking_lot::Mutex;
 use tokio::{runtime::Handle, sync::watch};
+use winpilot_core::{Config, Error, Result, ipc::ToWorker};
 
 use crate::{
     backoff::Failure,
@@ -217,7 +217,7 @@ fn check_build(worker: &Announced) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "a newer Deckhand was installed (worker {} build {}, this server {} build {}); restart your MCP client to load it",
+        "a newer WinPilot was installed (worker {} build {}, this server {} build {}); restart your MCP client to load it",
         worker.version,
         shown(&worker.build),
         crate::VERSION,

@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::WindowInfo;
+use winpilot_core::WindowInfo;
 
 use crate::{engine::Engine, window_classes::is_frame_host};
 
@@ -15,7 +15,7 @@ impl Watch {
     }
 
     pub(crate) fn window(window: &WindowInfo) -> Self {
-        let content = is_frame_host(window).then(|| deckhand_desktop::uwp_content_pid(window.hwnd)).flatten();
+        let content = is_frame_host(window).then(|| winpilot_desktop::uwp_content_pid(window.hwnd)).flatten();
         Self { pids: with_content(window.pid, content) }
     }
 
@@ -48,7 +48,7 @@ fn with_content(pid: u32, content: Option<u32>) -> Vec<u32> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;

@@ -1,5 +1,5 @@
-use deckhand_core::Result;
 use windows::Win32::Foundation::HANDLE;
+use winpilot_core::Result;
 
 use super::converter::Converter;
 use super::device::Endpoint;

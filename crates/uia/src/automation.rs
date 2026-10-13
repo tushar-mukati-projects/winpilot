@@ -3,7 +3,6 @@ use std::{
     time::Duration,
 };
 
-use deckhand_core::{Context, Result};
 use windows::Win32::{
     System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance},
     UI::Accessibility::{
@@ -12,6 +11,7 @@ use windows::Win32::{
     },
 };
 use windows_core::Interface;
+use winpilot_core::{Context, Result};
 
 use crate::{options::UiaOptions, registry::Registry, requests::CacheRequests, warmed::Warmed};
 

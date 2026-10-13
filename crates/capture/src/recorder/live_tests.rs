@@ -5,10 +5,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use deckhand_core::{
-    Rect, WindowRef,
-    protocol::{Quality, VideoFormat},
-};
 use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows::Win32::Media::MediaFoundation::{
@@ -19,6 +15,10 @@ use windows::Win32::Media::MediaFoundation::{
 };
 use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
 use windows_core::{HSTRING, w};
+use winpilot_core::{
+    Rect, WindowRef,
+    protocol::{Quality, VideoFormat},
+};
 
 use super::layout::Size;
 use super::media_foundation::MediaFoundation;
@@ -29,7 +29,7 @@ use crate::audio::AudioSource;
 use crate::com::ComApartment;
 use crate::frame::Frame;
 
-const OUTPUT_FOLDER_VARIABLE: &str = "DECKHAND_RECORD_TEST_DIR";
+const OUTPUT_FOLDER_VARIABLE: &str = "WINPILOT_RECORD_TEST_DIR";
 const START_PATIENCE: Duration = Duration::from_secs(10);
 
 static NEXT_SCRATCH: AtomicUsize = AtomicUsize::new(0);
@@ -42,7 +42,7 @@ impl Scratch {
     fn new(name: &str) -> Self {
         let root = std::env::var_os(OUTPUT_FOLDER_VARIABLE).map_or_else(std::env::temp_dir, PathBuf::from);
         let serial = NEXT_SCRATCH.fetch_add(1, Ordering::Relaxed);
-        let folder = root.join(format!("deckhand-record-test-{name}-{}-{serial}", std::process::id()));
+        let folder = root.join(format!("winpilot-record-test-{name}-{}-{serial}", std::process::id()));
         fs::create_dir_all(&folder).unwrap();
         Self { folder }
     }
@@ -372,7 +372,7 @@ fn a_failed_start_removes_the_reserved_file_within_its_patience() {
     let error =
         Recorder::start(spec(source, &path, video(VideoFormat::Mp4, 30, 1920)), Duration::from_secs(2)).err().unwrap();
     assert!(started.elapsed() < Duration::from_secs(3));
-    assert_eq!(error.code, deckhand_core::ErrorCode::NotFound);
+    assert_eq!(error.code, winpilot_core::ErrorCode::NotFound);
     assert!(!path.exists());
 }
 

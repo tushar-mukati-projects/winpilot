@@ -1,4 +1,4 @@
-use deckhand_core::{Error, Result};
+use winpilot_core::{Error, Result};
 
 use crate::languages::language_index;
 
@@ -56,7 +56,7 @@ fn resolve_threads(threads: Option<usize>, logical_cores: usize) -> Result<usize
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
 

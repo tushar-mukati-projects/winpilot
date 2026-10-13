@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use deckhand_core::{Error, ErrorCode, Result};
+use winpilot_core::{Error, ErrorCode, Result};
 
 pub const MODEL_NAMES: [&str; 3] = ["tiny", "base", "small"];
 pub const DEFAULT_MODEL: &str = "base";
@@ -29,12 +29,12 @@ pub fn model_missing_error() -> Error {
     Error::new(
         ErrorCode::NeedsUser,
         "no speech model is installed; run scripts\\install.ps1 -SpeechModel base (or small for better accuracy) \
-         from the Deckhand repository, which downloads a pinned, hash-checked Whisper model once",
+         from the WinPilot repository, which downloads a pinned, hash-checked Whisper model once",
     )
 }
 
 fn models_under(local_app_data: &Path) -> PathBuf {
-    local_app_data.join("deckhand").join("models")
+    local_app_data.join("winpilot").join("models")
 }
 
 fn model_file_in(dir: &Path, name: &str) -> Result<PathBuf> {
@@ -55,7 +55,7 @@ mod tests {
     #[test]
     fn models_live_under_local_app_data() {
         let dir = models_under(Path::new(r"C:\Users\someone\AppData\Local"));
-        assert_eq!(dir, PathBuf::from(r"C:\Users\someone\AppData\Local\deckhand\models"));
+        assert_eq!(dir, PathBuf::from(r"C:\Users\someone\AppData\Local\winpilot\models"));
         assert_eq!(model_file_in(&dir, "base").unwrap(), dir.join("ggml-base.bin"));
     }
 
@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn nothing_is_installed_in_an_empty_folder() {
-        assert_eq!(first_installed(Path::new(r"Z:\deckhand-speech-test-missing")), None);
+        assert_eq!(first_installed(Path::new(r"Z:\winpilot-speech-test-missing")), None);
     }
 
     #[test]

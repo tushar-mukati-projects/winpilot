@@ -1,12 +1,12 @@
 use std::{ffi::c_void, ptr};
 
-use deckhand_core::{Error, Result, WindowRef};
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{
         GA_ROOT, GetAncestor, GetClassNameW, GetWindowTextW, GetWindowThreadProcessId, IsWindow,
     },
 };
+use winpilot_core::{Error, Result, WindowRef};
 
 const TITLE_CAPACITY: usize = 1024;
 const CLASS_CAPACITY: usize = 256;

@@ -1,4 +1,4 @@
-use deckhand_core::Rect;
+use winpilot_core::Rect;
 
 use super::{
     color::{Rgb, alpha_byte},

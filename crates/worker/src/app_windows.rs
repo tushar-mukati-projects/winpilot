@@ -1,9 +1,9 @@
-use deckhand_core::{Result, WindowInfo, selector::Selector};
+use winpilot_core::{Result, WindowInfo, selector::Selector};
 
 use crate::engine::Engine;
 
 pub(crate) fn app_windows(engine: &Engine) -> Result<Vec<WindowInfo>> {
-    let windows = deckhand_desktop::windows()?;
+    let windows = winpilot_desktop::windows()?;
     Ok(windows.into_iter().filter(|window| !engine.guard.denies(window)).collect())
 }
 

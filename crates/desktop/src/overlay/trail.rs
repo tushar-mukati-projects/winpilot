@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use deckhand_core::{Point, glide_timing::glide_point};
+use winpilot_core::{Point, glide_timing::glide_point};
 
 use super::{
     canvas::Canvas,

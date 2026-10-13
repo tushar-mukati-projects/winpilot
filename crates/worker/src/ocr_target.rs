@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     Error, ErrorCode, Result, WindowInfo,
     format::window_line,
     ocr::{find_matches, pick_match},
@@ -45,7 +45,7 @@ fn in_window(error: Error, window: &WindowInfo) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;

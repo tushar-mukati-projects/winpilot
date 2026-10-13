@@ -5,8 +5,8 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const ICON: &str = "../../assets/deckhand.ico";
-const PRODUCT: &str = "Deckhand";
+const ICON: &str = "../../assets/winpilot.ico";
+const PRODUCT: &str = "WinPilot";
 const WORKSPACE_INPUTS: [&str; 3] = ["../../crates", "../../Cargo.lock", "../../Cargo.toml"];
 const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
@@ -34,12 +34,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     tell_cargo(&format!("cargo:rerun-if-changed={ICON}"));
     tell_cargo("cargo:rerun-if-changed=build.rs");
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
-    tell_cargo(&format!("cargo:rustc-env=DECKHAND_BUILD_ID={}", build_id(&manifest_dir)?));
+    tell_cargo(&format!("cargo:rustc-env=WINPILOT_BUILD_ID={}", build_id(&manifest_dir)?));
     let icon = manifest_dir.join(ICON);
     let out = PathBuf::from(env::var("OUT_DIR")?);
-    let manifest = out.join("deckhand.manifest");
+    let manifest = out.join("winpilot.manifest");
     fs::write(&manifest, MANIFEST)?;
-    let script = out.join("deckhand.rc");
+    let script = out.join("winpilot.rc");
     fs::write(&script, resource_script(&icon, &manifest, &version()?))?;
     embed_resource::compile(&script, embed_resource::NONE).manifest_optional()?;
     Ok(())
@@ -107,9 +107,9 @@ fn resource_script(icon: &Path, manifest: &Path, version: &Version) -> String {
         string_value("CompanyName", PRODUCT),
         string_value("FileDescription", PRODUCT),
         string_value("FileVersion", text),
-        string_value("InternalName", "deckhand"),
+        string_value("InternalName", "winpilot"),
         string_value("LegalCopyright", "MIT License"),
-        string_value("OriginalFilename", "deckhand.exe"),
+        string_value("OriginalFilename", "winpilot.exe"),
         string_value("ProductName", PRODUCT),
         string_value("ProductVersion", text),
         "END".to_string(),

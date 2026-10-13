@@ -7,12 +7,12 @@ use std::{
     time::Duration,
 };
 
-use deckhand_core::{
+use tokio::sync::oneshot::error::RecvError;
+use winpilot_core::{
     Config, Error, ErrorCode, Result,
     ipc::ToWorker,
     protocol::{Call, Reply},
 };
-use tokio::sync::oneshot::error::RecvError;
 
 use crate::{
     deadline::Deadline,
@@ -176,8 +176,8 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use deckhand_core::protocol::ClipboardReport;
     use tokio::sync::oneshot;
+    use winpilot_core::protocol::ClipboardReport;
 
     use super::*;
     use crate::{
@@ -437,7 +437,7 @@ mod tests {
         let error = call(&supervisor, Call::status(), LONG).await.unwrap_err();
         assert_eq!(error.code, ErrorCode::TargetNotResponding);
         let expected = format!(
-            "a newer Deckhand was installed (worker {} build 0.1.0+1.feedfacefeedface, this server {} build {}); \
+            "a newer WinPilot was installed (worker {} build 0.1.0+1.feedfacefeedface, this server {} build {}); \
              restart your MCP client to load it",
             crate::VERSION,
             crate::VERSION,

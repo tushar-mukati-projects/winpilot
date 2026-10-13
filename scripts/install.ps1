@@ -9,15 +9,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repo = Join-Path $PSScriptRoot ".."
-$built = Join-Path $repo "target\release\deckhand.exe"
-$icon = Join-Path $repo "assets\deckhand.png"
-$installDir = Join-Path $env:LOCALAPPDATA "Programs\deckhand"
-$installed = Join-Path $installDir "deckhand.exe"
-$installedIcon = Join-Path $installDir "deckhand.png"
-$appId = "Deckhand.Agent"
+$built = Join-Path $repo "target\release\winpilot.exe"
+$icon = Join-Path $repo "assets\winpilot.png"
+$installDir = Join-Path $env:LOCALAPPDATA "Programs\winpilot"
+$installed = Join-Path $installDir "winpilot.exe"
+$installedIcon = Join-Path $installDir "winpilot.png"
+$appId = "WinPilot.Agent"
 $appIdKey = "HKCU:\Software\Classes\AppUserModelId\$appId"
-$configDir = Join-Path $env:APPDATA "deckhand"
-$logDir = Join-Path $env:LOCALAPPDATA "deckhand"
+$configDir = Join-Path $env:APPDATA "winpilot"
+$logDir = Join-Path $env:LOCALAPPDATA "winpilot"
 $modelDir = Join-Path $logDir "models"
 $speechModelSource = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 $speechModelHashes = @{
@@ -27,7 +27,7 @@ $speechModelHashes = @{
 }
 
 function Remove-RetiredCopies {
-    Get-ChildItem -Path $installDir -Filter "deckhand.old-*.exe" -ErrorAction SilentlyContinue | ForEach-Object {
+    Get-ChildItem -Path $installDir -Filter "winpilot.old-*.exe" -ErrorAction SilentlyContinue | ForEach-Object {
         Remove-Item $_.FullName -ErrorAction SilentlyContinue
     }
 }
@@ -39,9 +39,9 @@ function Restore-Retired($retired) {
         Move-Item $retired $installed -Force
     }
     catch {
-        throw "the previous deckhand.exe could not be put back; it is at $retired ($_)"
+        throw "the previous winpilot.exe could not be put back; it is at $retired ($_)"
     }
-    Write-Warning "the new build was not installed; the previous deckhand.exe was put back"
+    Write-Warning "the new build was not installed; the previous winpilot.exe was put back"
 }
 
 function Copy-Verified {
@@ -55,7 +55,7 @@ function Copy-Verified {
 function Install-Binary {
     $retired = $null
     if (Test-Path $installed) {
-        $retired = Join-Path $installDir ("deckhand.old-{0}.exe" -f (Get-Date -Format "yyyyMMdd-HHmmss-fff"))
+        $retired = Join-Path $installDir ("winpilot.old-{0}.exe" -f (Get-Date -Format "yyyyMMdd-HHmmss-fff"))
         Move-Item $installed $retired
     }
     $verified = $false
@@ -80,23 +80,23 @@ function Test-ClaudeCli {
 }
 
 function Remove-ClaudeEntry {
-    Invoke-Native "claude" @("mcp", "remove", "deckhand", "-s", "user") | Out-Null
+    Invoke-Native "claude" @("mcp", "remove", "winpilot", "-s", "user") | Out-Null
 }
 
 function Register-AppIdentity {
     Copy-Item $icon $installedIcon -Force
     New-Item -Path $appIdKey -Force | Out-Null
-    New-ItemProperty -Path $appIdKey -Name "DisplayName" -Value "Deckhand" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $appIdKey -Name "DisplayName" -Value "WinPilot" -PropertyType String -Force | Out-Null
     New-ItemProperty -Path $appIdKey -Name "IconUri" -Value $installedIcon -PropertyType String -Force | Out-Null
 }
 
 function Remove-McpRegistration {
     if (-not (Test-ClaudeCli)) {
-        Write-Output "the claude CLI was not found, so the MCP registration was left alone; remove it with: claude mcp remove deckhand -s user"
+        Write-Output "the claude CLI was not found, so the MCP registration was left alone; remove it with: claude mcp remove winpilot -s user"
         return
     }
     Remove-ClaudeEntry
-    Write-Output "removed the 'deckhand' MCP registration (if it existed)"
+    Write-Output "removed the 'winpilot' MCP registration (if it existed)"
 }
 
 function Test-ModelHash([string]$Path, [string]$Expected) {
@@ -137,14 +137,14 @@ function Install-SpeechModel([string]$Name) {
     Write-Output "installed the $Name speech model at $target (sha256 $expected)"
 }
 
-function Uninstall-Deckhand {
+function Uninstall-WinPilot {
     Remove-McpRegistration
     if (Test-Path $appIdKey) { Remove-Item $appIdKey -Recurse -Force }
     Write-Output "removed the $appId notification identity"
     if (Test-Path $installDir) {
         Remove-Item $installDir -Recurse -Force -ErrorAction SilentlyContinue
         if (Test-Path $installDir) {
-            Write-Output "some files in $installDir are in use; close Claude Code sessions using Deckhand and run -Uninstall again"
+            Write-Output "some files in $installDir are in use; close Claude Code sessions using WinPilot and run -Uninstall again"
         }
         else {
             Write-Output "removed $installDir"
@@ -164,7 +164,7 @@ function Uninstall-Deckhand {
 }
 
 if ($Uninstall) {
-    Uninstall-Deckhand
+    Uninstall-WinPilot
     return
 }
 if ($Purge) { throw "-Purge only works together with -Uninstall" }
@@ -176,7 +176,7 @@ if ($SpeechModel) {
 if (-not $SkipBuild) {
     Push-Location $repo
     try {
-        Invoke-Native "cargo" @("build", "--release", "-p", "deckhand")
+        Invoke-Native "cargo" @("build", "--release", "-p", "winpilot")
         if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
     }
     finally {
@@ -199,10 +199,10 @@ Write-Output "registered the $appId notification identity with the icon $install
 
 if ($Register) {
     if (-not (Test-ClaudeCli)) {
-        throw "the claude CLI was not found, so Deckhand is installed but not registered; install Claude Code, then run: claude mcp add -s user deckhand -- `"$installed`" mcp"
+        throw "the claude CLI was not found, so WinPilot is installed but not registered; install Claude Code, then run: claude mcp add -s user winpilot -- `"$installed`" mcp"
     }
     Remove-ClaudeEntry
-    Invoke-Native "claude" @("mcp", "add", "-s", "user", "deckhand", "--", $installed, "mcp")
+    Invoke-Native "claude" @("mcp", "add", "-s", "user", "winpilot", "--", $installed, "mcp")
     if ($LASTEXITCODE -ne 0) { throw "claude mcp add failed" }
-    Write-Output "registered with Claude Code as 'deckhand'; restart Claude Code sessions to load it"
+    Write-Output "registered with Claude Code as 'winpilot'; restart Claude Code sessions to load it"
 }

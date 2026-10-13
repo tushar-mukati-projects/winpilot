@@ -1,16 +1,16 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use deckhand_core::{
-    Context, Error, Point, Rect, Result,
-    ocr::{OcrLine, OcrWord},
-};
 use windows::Foundation::Rect as WinRect;
 use windows::Globalization::Language;
 use windows::Graphics::Imaging::{BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap};
 use windows::Media::Ocr::{OcrEngine, OcrLine as WinOcrLine, OcrResult};
 use windows::Security::Cryptography::CryptographicBuffer;
 use windows_future::{AsyncOperationCompletedHandler, IAsyncOperation};
+use winpilot_core::{
+    Context, Error, Point, Rect, Result,
+    ocr::{OcrLine, OcrWord},
+};
 
 use crate::com::ComApartment;
 use crate::frame::Frame;
@@ -282,7 +282,7 @@ mod tests {
         let selection = Selection::select(dc, HGDIOBJ::from(*font)).unwrap();
         unsafe { SetBkMode(dc, TRANSPARENT) };
         unsafe { SetTextColor(dc, COLORREF(0)) };
-        let mut text: Vec<u16> = "Deckhand 2026".encode_utf16().collect();
+        let mut text: Vec<u16> = "WinPilot 2026".encode_utf16().collect();
         let mut area = RECT { left: text_left, top: 20, right: width as i32, bottom: height as i32 };
         let drawn = unsafe { DrawTextW(dc, &mut text, &raw mut area, DT_LEFT | DT_SINGLELINE | DT_NOPREFIX) };
         assert!(drawn > 0);
@@ -297,12 +297,12 @@ mod tests {
         let started = Instant::now();
         let lines = ocr(&frame).unwrap();
         eprintln!("timing: OCR of a 900x160 synthetic frame: {:.1} ms", started.elapsed().as_secs_f64() * 1000.0);
-        let line = lines.iter().find(|line| line.text.contains("Deckhand")).unwrap();
+        let line = lines.iter().find(|line| line.text.contains("WinPilot")).unwrap();
         assert!(line.text.contains("2026"));
         assert!(line.rect.x >= 100 + 20 && line.rect.x <= 100 + 60, "{:?}", line.rect);
         assert!(line.rect.y >= 50 && line.rect.bottom() <= 50 + 160, "{:?}", line.rect);
         assert!(line.rect.width > 300);
-        let word = line.words.iter().find(|word| word.text.contains("Deckhand")).unwrap();
+        let word = line.words.iter().find(|word| word.text.contains("WinPilot")).unwrap();
         assert!(word.rect.x >= line.rect.x && word.rect.right() <= line.rect.right(), "{:?}", word.rect);
         assert!(word.rect.width < line.rect.width);
     }
@@ -311,10 +311,10 @@ mod tests {
     fn magnified_reading_maps_text_back_to_the_frame() {
         let frame = draw_text_frame(900, 160, 30, Point::new(100, 50));
         let lines = ocr_magnified(&frame).unwrap();
-        let line = lines.iter().find(|line| line.text.contains("Deckhand")).unwrap();
+        let line = lines.iter().find(|line| line.text.contains("WinPilot")).unwrap();
         assert!(line.rect.x >= 100 + 20 && line.rect.x <= 100 + 60, "{:?}", line.rect);
         assert!(line.rect.y >= 50 && line.rect.bottom() <= 50 + 160, "{:?}", line.rect);
-        assert_eq!(lines.iter().filter(|line| line.text.contains("Deckhand")).count(), 1);
+        assert_eq!(lines.iter().filter(|line| line.text.contains("WinPilot")).count(), 1);
     }
 
     #[test]
@@ -336,7 +336,7 @@ mod tests {
         let width = limit * 2;
         let frame = draw_text_frame(width, 300, limit as i32, Point::new(-50, 0));
         let lines = ocr(&frame).unwrap();
-        let line = lines.iter().find(|line| line.text.contains("Deckhand")).unwrap();
+        let line = lines.iter().find(|line| line.text.contains("WinPilot")).unwrap();
         let expected_left = limit as i32 - 50;
         assert!((line.rect.x - expected_left).abs() < 60, "{:?} vs {expected_left}", line.rect);
     }
@@ -371,7 +371,7 @@ mod tests {
         let slow = engine.RecognizeAsync(&bitmap).unwrap();
         match finish_within(&slow, Duration::ZERO) {
             Ok(_) => {}
-            Err(error) => assert_eq!(error.code, deckhand_core::ErrorCode::Timeout),
+            Err(error) => assert_eq!(error.code, winpilot_core::ErrorCode::Timeout),
         }
     }
 

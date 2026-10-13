@@ -4,8 +4,8 @@ use windows::Win32::{
 };
 use windows::core::{PCWSTR, w};
 
-pub(crate) const APP_USER_MODEL_ID: &str = "Deckhand.Agent";
-const REGISTRATION_KEY: PCWSTR = w!("Software\\Classes\\AppUserModelId\\Deckhand.Agent");
+pub(crate) const APP_USER_MODEL_ID: &str = "WinPilot.Agent";
+const REGISTRATION_KEY: PCWSTR = w!("Software\\Classes\\AppUserModelId\\WinPilot.Agent");
 const DISPLAY_NAME: PCWSTR = w!("DisplayName");
 
 pub(crate) fn is_registered() -> bool {

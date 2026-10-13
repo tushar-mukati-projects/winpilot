@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 
-use deckhand_core::Result;
+use winpilot_core::Result;
 
 use super::capture::AudioChunk;
 use super::event::wait_for_any;

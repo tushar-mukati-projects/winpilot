@@ -4,7 +4,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Context, Error, Result};
+use winpilot_core::{Context, Error, Result};
 
 use super::capture_thread::{ThreadInput, run};
 use super::pcm::AudioFormat;
@@ -42,7 +42,7 @@ impl AudioCapture {
         let stop = Arc::new(AtomicBool::new(false));
         let input = ThreadInput { source, ready, chunks: sender, stop: Arc::clone(&stop) };
         let thread = thread::Builder::new()
-            .name("deckhand-audio".to_string())
+            .name("winpilot-audio".to_string())
             .spawn(move || run(input))
             .context("starting the audio capture thread")?;
         match opened.recv_timeout(START_PATIENCE) {

@@ -4,7 +4,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Context, Error, ErrorCode, Result};
+use winpilot_core::{Context, Error, ErrorCode, Result};
 
 use super::audio_feed::{AudioFeed, TRACK_FORMAT};
 use super::clock::audio_frames_at;
@@ -61,7 +61,7 @@ impl EncoderThread {
         let (recycle, recycled) = mpsc::channel();
         let (ready, started) = mpsc::channel();
         let handle = thread::Builder::new()
-            .name("deckhand-encode".to_string())
+            .name("winpilot-encode".to_string())
             .spawn(move || {
                 let encoded = run(&settings, audio, &inbox, &recycle, &ready);
                 drop(output);

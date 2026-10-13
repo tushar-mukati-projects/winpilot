@@ -3,8 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Error, Point, Result, keys::Chord, protocol::MouseButton};
 use parking_lot::Mutex;
+use winpilot_core::{Error, Point, Result, keys::Chord, protocol::MouseButton};
 
 use crate::{cancel::Cancel, ocr_read::OcrReading, overlay_plan::Staged};
 
@@ -165,7 +165,7 @@ impl CallScope {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
 
@@ -212,8 +212,8 @@ mod tests {
     #[test]
     fn held_keys_are_tracked_until_released_or_taken() {
         let scope = CallScope::relaxed();
-        let shift = deckhand_core::keys::parse_chord("shift").unwrap();
-        let ctrl_a = deckhand_core::keys::parse_chord("ctrl+a").unwrap();
+        let shift = winpilot_core::keys::parse_chord("shift").unwrap();
+        let ctrl_a = winpilot_core::keys::parse_chord("ctrl+a").unwrap();
         scope.note_held_keys(shift);
         scope.note_held_keys(shift);
         scope.note_held_keys(ctrl_a);
@@ -242,8 +242,8 @@ mod tests {
         use crate::{overlay_plan::View, test_fixture::window};
         let scope = CallScope::relaxed();
         assert_eq!(scope.staged(), None);
-        let first = window(1, "a.exe", "A", deckhand_core::Rect::new(0, 0, 10, 10));
-        let second = window(2, "b.exe", "B", deckhand_core::Rect::new(0, 0, 10, 10));
+        let first = window(1, "a.exe", "A", winpilot_core::Rect::new(0, 0, 10, 10));
+        let second = window(2, "b.exe", "B", winpilot_core::Rect::new(0, 0, 10, 10));
         scope.stage(Staged { window: first, view: View::Watched });
         scope.stage(Staged { window: second.clone(), view: View::Driven });
         assert_eq!(scope.staged(), Some(Staged { window: second, view: View::Driven }));

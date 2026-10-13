@@ -2,14 +2,14 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use deckhand_capture::{CoverHold, Frame, Redact};
-use deckhand_core::{WindowRef, config::GuardConfig};
-use deckhand_desktop::WindowLabel;
+use winpilot_capture::{CoverHold, Frame, Redact};
+use winpilot_core::{WindowRef, config::GuardConfig};
+use winpilot_desktop::WindowLabel;
 
 use crate::blackout;
 
 pub(crate) const DENIED_NOTE: &str =
-    "parts of the recording are black because the window's title or process matched Deckhand's deny list";
+    "parts of the recording are black because the window's title or process matched WinPilot's deny list";
 
 pub(crate) struct WindowWatch {
     window: WindowRef,
@@ -53,7 +53,7 @@ impl WindowWatch {
         match &self.process {
             Some((known, name)) if *known == pid => name.clone(),
             _ => {
-                let name = deckhand_desktop::process_name(pid);
+                let name = winpilot_desktop::process_name(pid);
                 self.process = Some((pid, name.clone()));
                 name
             }
@@ -63,7 +63,7 @@ impl WindowWatch {
 
 impl Redact for WindowWatch {
     fn refresh(&mut self) -> bool {
-        self.update(deckhand_desktop::window_label(self.window), Instant::now())
+        self.update(winpilot_desktop::window_label(self.window), Instant::now())
     }
 
     fn cover(&self, frame: &mut Frame) {
@@ -78,8 +78,8 @@ impl Redact for WindowWatch {
 mod tests {
     use std::time::Duration;
 
-    use deckhand_capture::{COVER_HOLD, FrameSource};
-    use deckhand_core::{Point, config::DenyRule};
+    use winpilot_capture::{COVER_HOLD, FrameSource};
+    use winpilot_core::{Point, config::DenyRule};
 
     use super::*;
 

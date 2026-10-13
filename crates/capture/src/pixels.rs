@@ -1,4 +1,4 @@
-use deckhand_core::{Error, Result};
+use winpilot_core::{Error, Result};
 
 pub(crate) const BYTES_PER_PIXEL: usize = 4;
 

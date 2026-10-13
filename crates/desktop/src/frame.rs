@@ -1,5 +1,5 @@
-use deckhand_core::Rect;
 use windows::Win32::Foundation::RECT;
+use winpilot_core::Rect;
 
 pub(crate) fn rect_from_win32(rect: RECT) -> Rect {
     Rect::new(rect.left, rect.top, rect.right.saturating_sub(rect.left), rect.bottom.saturating_sub(rect.top))

@@ -1,8 +1,8 @@
-use deckhand_core::{Context, Result};
 use windows::Win32::{
     Foundation::ERROR_ACCESS_DENIED,
     UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext},
 };
+use winpilot_core::{Context, Result};
 
 pub fn enable_dpi_awareness() -> Result<()> {
     match unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) } {

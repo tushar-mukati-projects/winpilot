@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use deckhand_core::{
+use winpilot_core::{
     Result, Snapshot, WindowInfo, WindowRef,
     diff::diff,
     protocol::{After, AfterMode, DiffReport},
@@ -64,7 +64,7 @@ fn window_changes(before: &[WindowInfo], after: &[WindowInfo]) -> (Vec<WindowInf
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
 

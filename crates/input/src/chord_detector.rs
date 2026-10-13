@@ -1,4 +1,3 @@
-use deckhand_core::keys::Modifiers;
 use windows::Win32::UI::{
     Input::KeyboardAndMouse::{
         HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VIRTUAL_KEY, VK_CONTROL, VK_LCONTROL, VK_LMENU,
@@ -6,6 +5,7 @@ use windows::Win32::UI::{
     },
     WindowsAndMessaging::{RI_KEY_BREAK, RI_KEY_E0},
 };
+use winpilot_core::keys::Modifiers;
 
 use crate::hotkey_binding::HotkeyBinding;
 

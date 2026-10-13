@@ -1,11 +1,11 @@
 use std::path::Path;
 
-use deckhand_core::{
+use serde::Serialize;
+use winpilot_core::{
     Rect, TargetSpec,
     config::GuardConfig,
     protocol::{ActArgs, Call, Direction, KeyAction, MouseAction, MouseButton, ObserveArgs, SetChange, Step, WaitArgs},
 };
-use serde::Serialize;
 
 const MAX_SUMMARY_CHARS: usize = 600;
 const DENIED: &str = "<denied window>";
@@ -291,7 +291,7 @@ mod tests {
     #[test]
     fn targets_that_name_a_denied_window_are_masked() {
         let mut guard = GuardConfig::default();
-        guard.deny.push(deckhand_core::config::DenyRule { process: None, title: Some("Bank".to_string()) });
+        guard.deny.push(winpilot_core::config::DenyRule { process: None, title: Some("Bank".to_string()) });
         let quiet_with = |call: &Call| describe(call, Redaction { log_text: true, guard: &guard });
         let click = act_call(&json!([{"do": "click", "target": "window:\"My Bank\" >> name:Pay"}]));
         assert_eq!(quiet_with(&click), "click <denied window> return=diff");

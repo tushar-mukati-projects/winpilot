@@ -1,4 +1,4 @@
-use deckhand_core::{Element, ElementRef, Role, Snapshot, WindowInfo};
+use winpilot_core::{Element, ElementRef, Role, Snapshot, WindowInfo};
 
 use super::dialog_kind::DialogKind;
 

@@ -5,7 +5,7 @@ use std::sync::mpsc::{Sender, TrySendError};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use deckhand_core::Result;
+use winpilot_core::Result;
 
 use super::clock::{TickClock, total_ticks};
 use super::encoder::{Encoded, EncoderInput, EncoderStart, EncoderThread};

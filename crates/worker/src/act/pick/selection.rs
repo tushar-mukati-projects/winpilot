@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use deckhand_core::{Error, Result};
+use winpilot_core::{Error, Result};
 
 use super::dialog_kind::DialogKind;
 use crate::act::shortcut::refuse_shortcut;
@@ -113,7 +113,7 @@ fn existing_file(file: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ErrorCode, config::GuardConfig};
+    use winpilot_core::{ErrorCode, config::GuardConfig};
 
     use super::*;
     use crate::test_fixture::{TempFiles, temp_file};
@@ -184,11 +184,11 @@ mod tests {
 
     #[test]
     fn save_takes_one_path_in_an_existing_folder() {
-        let single = one(&std::env::temp_dir().join("deckhand-pick-new-file.txt"));
+        let single = one(&std::env::temp_dir().join("winpilot-pick-new-file.txt"));
         assert!(single.check_folder().is_ok() && single.check_for(DialogKind::Save).is_ok());
         let pair = parse(&["C:\\Data\\a.txt", "C:\\Data\\b.txt"]).unwrap();
         assert_eq!(pair.check_for(DialogKind::Save).unwrap_err().code, ErrorCode::InvalidArgument);
-        let nowhere = parse(&["C:\\deckhand-no-such-folder-7f3a\\a.txt"]).unwrap();
+        let nowhere = parse(&["C:\\winpilot-no-such-folder-7f3a\\a.txt"]).unwrap();
         assert_eq!(nowhere.check_folder().unwrap_err().code, ErrorCode::NotFound);
     }
 

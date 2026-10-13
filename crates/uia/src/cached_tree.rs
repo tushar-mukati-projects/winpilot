@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use deckhand_core::WindowRef;
 use windows::Win32::{
     Foundation::{E_FAIL, HWND},
     UI::{
@@ -8,6 +7,7 @@ use windows::Win32::{
         WindowsAndMessaging::{GA_PARENT, GetAncestor, GetDesktopWindow},
     },
 };
+use winpilot_core::WindowRef;
 
 use crate::{automation::Uia, properties::cached_runtime_id, tree::cached_children, win, win32_combo::dropdown_list};
 

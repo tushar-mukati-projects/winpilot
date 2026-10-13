@@ -1,4 +1,4 @@
-use deckhand_core::keys::{Chord, Key, Modifiers, NamedKey};
+use winpilot_core::keys::{Chord, Key, Modifiers, NamedKey};
 
 pub(crate) fn with_ctrl(key: char) -> Chord {
     Chord { modifiers: Modifiers { ctrl: true, ..Modifiers::NONE }, key: Some(Key::Char(key)) }
@@ -10,7 +10,7 @@ pub(crate) fn named(key: NamedKey) -> Chord {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::keys::parse_chord;
+    use winpilot_core::keys::parse_chord;
 
     use super::*;
 

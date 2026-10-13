@@ -1,4 +1,4 @@
-use deckhand_core::{Point, Rect};
+use winpilot_core::{Point, Rect};
 
 use super::{
     border_geometry::BorderMetrics,

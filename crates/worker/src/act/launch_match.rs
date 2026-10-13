@@ -1,7 +1,7 @@
 use std::{collections::HashSet, path::Path};
 
-use deckhand_core::{WindowInfo, WindowRef};
-use deckhand_desktop::apps::{AppEntry, AppKind};
+use winpilot_core::{WindowInfo, WindowRef};
+use winpilot_desktop::apps::{AppEntry, AppKind};
 
 use crate::window_classes::POPUP_MENU;
 
@@ -151,7 +151,7 @@ fn words(text: &str) -> Vec<String> {
 mod tests {
     use std::path::PathBuf;
 
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;

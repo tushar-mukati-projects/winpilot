@@ -1,5 +1,5 @@
 [package]
-name = "deckhand-fixture"
+name = "winpilot-fixture"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,11 +7,11 @@ publish.workspace = true
 license.workspace = true
 
 [lib]
-name = "deckhand_fixture"
+name = "winpilot_fixture"
 path = "src/lib.rs"
 
 [[bin]]
-name = "deckhand-fixture"
+name = "winpilot-fixture"
 path = "src/main.rs"
 
 [dependencies]

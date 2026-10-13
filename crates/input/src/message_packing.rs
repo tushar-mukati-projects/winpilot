@@ -1,10 +1,10 @@
-use deckhand_core::{
-    Point,
-    protocol::{Direction, MouseButton},
-};
 use windows::Win32::UI::WindowsAndMessaging::{
     WHEEL_DELTA, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP,
     WM_MOUSEHWHEEL, WM_MOUSEWHEEL, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP,
+};
+use winpilot_core::{
+    Point,
+    protocol::{Direction, MouseButton},
 };
 
 const HELD_LEFT: usize = 0x0001;

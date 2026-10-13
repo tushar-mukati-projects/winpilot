@@ -2,9 +2,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Error, ErrorCode, Point, Rect, Result};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+use winpilot_core::{Error, ErrorCode, Point, Rect, Result};
 
 use super::gpu::Gpu;
 use super::layout::Size;

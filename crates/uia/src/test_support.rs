@@ -1,12 +1,12 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use deckhand_core::{Element, Error, Rect, Result, Snapshot, WindowInfo, WindowRef, WindowState};
-use deckhand_fixture::{FixtureProcess, Placement};
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{FindWindowW, GetForegroundWindow},
 };
 use windows_core::{PCWSTR, w};
+use winpilot_core::{Element, Error, Rect, Result, Snapshot, WindowInfo, WindowRef, WindowState};
+use winpilot_fixture::{FixtureProcess, Placement};
 
 use crate::{UiaHandle, UiaOptions, win};
 
@@ -58,11 +58,11 @@ pub(crate) struct Fixture {
 
 pub(crate) fn launch_fixture() -> Option<Fixture> {
     static NEXT: AtomicU32 = AtomicU32::new(1);
-    let Some(exe) = deckhand_fixture::fixture_exe() else {
-        eprintln!("skipping: deckhand-fixture.exe is not built");
+    let Some(exe) = winpilot_fixture::fixture_exe() else {
+        eprintln!("skipping: winpilot-fixture.exe is not built");
         return None;
     };
-    let title = format!("Deckhand Fixture Uia {}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed));
+    let title = format!("WinPilot Fixture Uia {}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed));
     let process = FixtureProcess::launch(&exe, &title, Placement::OnScreen)?;
     let hwnd = process.hwnd();
     Some(Fixture { window: window_info(win::window_ref(hwnd), &class_of(hwnd)), _process: process })

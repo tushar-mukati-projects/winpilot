@@ -1,4 +1,4 @@
-use deckhand_core::{WindowInfo, WindowRef};
+use winpilot_core::{WindowInfo, WindowRef};
 
 use super::super::{
     by_pattern::KeptForeground, done::both_notes, foreground::owner_chain, stacking::keep_behind_front,

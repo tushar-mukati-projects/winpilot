@@ -1,4 +1,4 @@
-use deckhand_core::{Point, Result};
+use winpilot_core::{Point, Result};
 
 use crate::capture_area::CaptureArea;
 use crate::frame::{Frame, overlap};

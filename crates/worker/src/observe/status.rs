@@ -1,4 +1,4 @@
-use deckhand_core::protocol::StatusReport;
+use winpilot_core::protocol::StatusReport;
 
 use crate::engine::{Engine, duration_ms};
 
@@ -12,7 +12,7 @@ pub(crate) fn report(engine: &Engine) -> StatusReport {
         kill_hotkey: engine.guard.kill_hotkey().to_string(),
         hotkey_registered: engine.guard.hotkey_registered(),
         elevated: engine.guard.own_process_elevated(),
-        secure_desktop: deckhand_desktop::secure_desktop_active(),
+        secure_desktop: winpilot_desktop::secure_desktop_active(),
         worker_restarts: 0,
         recent: engine.recent_timings(),
     }

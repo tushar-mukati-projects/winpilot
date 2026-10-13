@@ -1,9 +1,9 @@
-use deckhand_core::{Error, Result};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetWindowDpiAwarenessContext,
     SetThreadDpiAwarenessContext,
 };
+use winpilot_core::{Error, Result};
 
 pub(crate) fn make_thread_per_monitor_aware() -> Result<()> {
     set_thread_context(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2).map(|_| ())

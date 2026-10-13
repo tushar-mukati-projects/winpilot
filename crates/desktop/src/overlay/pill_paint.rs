@@ -1,4 +1,4 @@
-use deckhand_core::Point;
+use winpilot_core::Point;
 
 use super::{
     canvas::{Bitmap, Canvas},
@@ -163,7 +163,7 @@ pub(crate) fn paint_dot(canvas: &mut Canvas<'_>, layout: &PillLayout, pulse: f32
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::overlay::{

@@ -1,5 +1,5 @@
-use deckhand_core::{Error, ErrorCode, Result};
-use deckhand_desktop::apps::AppEntry;
+use winpilot_core::{Error, ErrorCode, Result};
+use winpilot_desktop::apps::AppEntry;
 
 const MAX_LISTED: usize = 8;
 const MAX_SUGGESTED: usize = 5;
@@ -111,7 +111,7 @@ fn bigrams(text: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_desktop::apps::AppKind;
+    use winpilot_desktop::apps::AppKind;
 
     use super::*;
 

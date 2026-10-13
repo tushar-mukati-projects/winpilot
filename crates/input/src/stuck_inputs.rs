@@ -1,8 +1,8 @@
-use deckhand_core::Result;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, VIRTUAL_KEY, VK_LBUTTON, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MBUTTON, VK_RBUTTON,
     VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN,
 };
+use winpilot_core::Result;
 
 use crate::{
     event::InputEvent,

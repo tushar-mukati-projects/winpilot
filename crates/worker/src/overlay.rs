@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use deckhand_core::{Point, Rect, WindowInfo, WindowState};
-use deckhand_desktop::overlay::{Activity, CaptureHideGuard, Cue, OutOfSight, Overlay};
+use winpilot_core::{Point, Rect, WindowInfo, WindowState};
+use winpilot_desktop::overlay::{Activity, CaptureHideGuard, Cue, OutOfSight, Overlay};
 
 pub(crate) use crate::overlay_plan::KeyChips;
 use crate::{
@@ -154,7 +154,7 @@ fn frames_window(window: &WindowInfo) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{WindowRef, WindowState};
+    use winpilot_core::{WindowRef, WindowState};
 
     use super::*;
     use crate::test_fixture::window;

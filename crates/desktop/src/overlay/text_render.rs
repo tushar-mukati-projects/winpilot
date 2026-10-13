@@ -1,4 +1,3 @@
-use deckhand_core::{Error, Result};
 use windows::{
     Win32::{
         Foundation::{COLORREF, SIZE},
@@ -10,6 +9,7 @@ use windows::{
     },
     core::{PCWSTR, w},
 };
+use winpilot_core::{Error, Result};
 
 use super::{
     gdi::{DibSection, Font, MemoryDc, Selection},

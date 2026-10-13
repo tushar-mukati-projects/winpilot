@@ -1,4 +1,4 @@
-use deckhand_core::{Element, ElementRef, Error, ErrorCode, Result, WindowInfo, keys::NamedKey};
+use winpilot_core::{Element, ElementRef, Error, ErrorCode, Result, WindowInfo, keys::NamedKey};
 
 use super::{
     by_pattern::by_pattern,
@@ -90,11 +90,11 @@ fn set_by_keys(engine: &Engine, prepared: &Prepared, id: ElementRef, value: &str
 }
 
 fn replace_text(value: &str) -> Result<()> {
-    deckhand_input::press_chord(&with_ctrl('a'))?;
+    winpilot_input::press_chord(&with_ctrl('a'))?;
     if value.is_empty() {
-        return deckhand_input::press_chord(&named(NamedKey::Delete));
+        return winpilot_input::press_chord(&named(NamedKey::Delete));
     }
-    deckhand_input::type_text(value)
+    winpilot_input::type_text(value)
 }
 
 pub(crate) fn mismatch_note(now: Option<String>, wanted: &str) -> Option<String> {

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use deckhand_core::{Element, ElementRef, Error, Result, WindowInfo};
-use deckhand_desktop::clipboard;
+use winpilot_core::{Element, ElementRef, Error, Result, WindowInfo};
+use winpilot_desktop::clipboard;
 
 use super::{
     chords::with_ctrl,
@@ -11,7 +11,7 @@ use super::{
 use crate::{call_scope::CallScope, engine::Engine, until::until, watch::Watch};
 
 const CHANGED_DURING_PASTE: &str =
-    "something else changed the clipboard during the paste, so Deckhand left the new contents alone";
+    "something else changed the clipboard during the paste, so WinPilot left the new contents alone";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Restore {
@@ -61,7 +61,7 @@ fn press_and_confirm(
     text: &str,
     call: &CallScope,
 ) -> Result<()> {
-    with_held_modifiers_lifted(call, || deckhand_input::press_chord(&with_ctrl('v')))?;
+    with_held_modifiers_lifted(call, || winpilot_input::press_chord(&with_ctrl('v')))?;
     let limit = Duration::from_millis(engine.config.act.settle_max_ms);
     let landed = until(engine, call, limit, &Watch::window(window), || {
         let now = read_value(engine, readback.id).ok().flatten();
@@ -94,7 +94,7 @@ fn restore(plan: &Restore) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Role;
+    use winpilot_core::Role;
 
     use super::*;
     use crate::test_fixture::{element, engine};

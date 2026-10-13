@@ -1,8 +1,3 @@
-use deckhand_core::{
-    Context, Error, Point, Result,
-    keys::Modifiers,
-    protocol::{Direction, MouseButton},
-};
 use windows::Win32::{
     Foundation::POINT,
     UI::{
@@ -13,6 +8,11 @@ use windows::Win32::{
         },
         WindowsAndMessaging::{GetCursorPos, WHEEL_DELTA},
     },
+};
+use winpilot_core::{
+    Context, Error, Point, Result,
+    keys::Modifiers,
+    protocol::{Direction, MouseButton},
 };
 
 use crate::{
@@ -147,10 +147,10 @@ fn button_flags(button: PhysicalButton, transition: ButtonTransition) -> MOUSE_E
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_MENU, VK_SHIFT,
     };
+    use winpilot_core::ErrorCode;
 
     use super::*;
     use crate::{event::KeyStroke, test_layout::FakeLayout};

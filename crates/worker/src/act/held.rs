@@ -1,4 +1,4 @@
-use deckhand_core::{Point, keys::Chord, protocol::StepOutcome};
+use winpilot_core::{Point, keys::Chord, protocol::StepOutcome};
 
 use super::{key_labels::chord_text, steps::append_note};
 use crate::call_scope::{CallScope, HeldButton};
@@ -23,12 +23,12 @@ fn release_buttons(held: &[HeldButton], ended_early: bool) -> Option<String> {
     if held.is_empty() {
         return None;
     }
-    let here = deckhand_input::cursor_position().ok();
+    let here = winpilot_input::cursor_position().ok();
     let released: Vec<&str> = held
         .iter()
         .filter(|held| {
             let point = release_point(held, ended_early, here);
-            point.is_some_and(|point| deckhand_input::button_up(point, held.button).is_ok())
+            point.is_some_and(|point| winpilot_input::button_up(point, held.button).is_ok())
         })
         .map(|held| held.button.name())
         .collect();
@@ -40,7 +40,7 @@ fn release_keys(held: &[Chord]) -> Option<String> {
         return None;
     }
     let released: Vec<String> =
-        held.iter().rev().filter(|chord| deckhand_input::release_chord(chord).is_ok()).map(chord_text).collect();
+        held.iter().rev().filter(|chord| winpilot_input::release_chord(chord).is_ok()).map(chord_text).collect();
     Some(keys_note(&released, held.len()))
 }
 
@@ -61,7 +61,7 @@ fn buttons_note(released: &[&str], held: usize, ended_early: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::protocol::MouseButton;
+    use winpilot_core::protocol::MouseButton;
 
     use super::*;
 

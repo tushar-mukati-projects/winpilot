@@ -1,4 +1,4 @@
-use deckhand_core::keys::Modifiers;
+use winpilot_core::keys::Modifiers;
 
 use crate::{
     event::InputEvent,

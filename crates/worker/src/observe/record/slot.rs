@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use deckhand_capture::{AudioSource, Finished, Progress, Recorder, Started};
-use deckhand_core::{
+use winpilot_capture::{AudioSource, Finished, Progress, Recorder, Started};
+use winpilot_core::{
     Error, ErrorCode, Rect, Result,
     protocol::{RecordAudio, RecordReport, RecordState},
 };
@@ -45,7 +45,7 @@ enum State {
 impl RecordingSlot {
     pub(crate) fn claim(&mut self) -> Result<Claim> {
         if self.closed {
-            return Err(Error::new(ErrorCode::Cancelled, "Deckhand is shutting down, so no new recording can start"));
+            return Err(Error::new(ErrorCode::Cancelled, "WinPilot is shutting down, so no new recording can start"));
         }
         self.settle();
         match &self.state {
@@ -195,7 +195,7 @@ const fn record_audio(source: AudioSource) -> RecordAudio {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_capture::{AudioTrack, EndReason};
+    use winpilot_capture::{AudioTrack, EndReason};
 
     use super::*;
 

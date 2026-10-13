@@ -1,5 +1,5 @@
-use deckhand_core::{Rect, Result};
 use windows::Win32::{Foundation::HINSTANCE, UI::WindowsAndMessaging::MSG};
+use winpilot_core::{Rect, Result};
 
 use super::{
     badge_layer::BadgeLayer,
@@ -38,7 +38,7 @@ impl Factory {
 
     fn layers<const N: usize>(&self, capture: Capture) -> Result<[Layer; N]> {
         let made: Vec<Layer> = (0..N).map(|_| self.layer(capture)).collect::<Result<_>>()?;
-        made.try_into().map_err(|_| deckhand_core::Error::internal("creating overlay windows"))
+        made.try_into().map_err(|_| winpilot_core::Error::internal("creating overlay windows"))
     }
 
     fn strips(&self, capture: Capture) -> Result<StripLayers> {

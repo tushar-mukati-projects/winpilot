@@ -1,4 +1,4 @@
-use deckhand_core::{ImageMapping, Rect};
+use winpilot_core::{ImageMapping, Rect};
 
 use crate::canvas::{Bgra, Bounds, Canvas};
 use crate::font::{GLYPH_HEIGHT, draw_text, text_width};
@@ -75,7 +75,7 @@ fn label_tab(label: &str, anchor: Bounds, canvas_width: i64) -> Bounds {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Point;
+    use winpilot_core::Point;
 
     use super::*;
     use crate::canvas::tests::pixel_at;

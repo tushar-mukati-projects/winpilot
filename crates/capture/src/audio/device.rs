@@ -1,4 +1,3 @@
-use deckhand_core::{Error, ErrorCode, Result};
 use windows::Win32::Foundation::E_ACCESSDENIED;
 use windows::Win32::Media::Audio::{
     AUDCLNT_E_DEVICE_IN_USE, AUDCLNT_E_DEVICE_INVALIDATED, AUDCLNT_E_RESOURCES_INVALIDATED,
@@ -7,10 +6,11 @@ use windows::Win32::Media::Audio::{
 };
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
 use windows_core::HRESULT;
+use winpilot_core::{Error, ErrorCode, Result};
 
 const E_NOTFOUND: HRESULT = HRESULT(0x8007_0490_u32 as i32);
 const MICROPHONE_DENIED: &str = "Windows is blocking microphone access for desktop apps; the user must turn on \
-Settings > Privacy & security > Microphone > \"Let desktop apps access your microphone\" (Deckhand never changes it)";
+Settings > Privacy & security > Microphone > \"Let desktop apps access your microphone\" (WinPilot never changes it)";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Endpoint {

@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use deckhand_core::{Config, Error};
+use winpilot_core::{Config, Error};
 
 use crate::app_data;
 
@@ -29,7 +29,7 @@ pub fn load() -> LoadedConfig {
     let Some(path) = config_path() else { return LoadedConfig::defaults() };
     let loaded = load_from(&path);
     if let Some(problem) = &loaded.problem {
-        eprintln!("deckhand: {}; every tool except status is refused until then", advice(problem));
+        eprintln!("winpilot: {}; every tool except status is refused until then", advice(problem));
     }
     loaded
 }
@@ -43,7 +43,7 @@ pub fn refusal(problem: &str) -> Error {
 }
 
 fn config_path() -> Option<PathBuf> {
-    app_data::dir_from_env("APPDATA").map(|dir| dir.join("deckhand").join("config.toml"))
+    app_data::dir_from_env("APPDATA").map(|dir| dir.join("winpilot").join("config.toml"))
 }
 
 fn load_from(path: &Path) -> LoadedConfig {
@@ -80,7 +80,7 @@ fn line_number(text: &str, offset: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::config::{ActConfig, LogConfig, ScreenshotConfig};
+    use winpilot_core::config::{ActConfig, LogConfig, ScreenshotConfig};
 
     use super::*;
     use crate::testing::TempDir;
@@ -125,11 +125,11 @@ mod tests {
         let text = "[screenshot]\npreset = \"high\"\n\n[record]\nformat = \"gif\"\nfps = 12\nquality = \"medium\"\nmax_seconds = 60\ncursor = false\nmax_width = 800\nfolder = 'D:\\Clips'\n";
         let loaded = parse(text, path());
         assert_eq!(loaded.problem, None);
-        assert_eq!(loaded.config.screenshot.preset, deckhand_core::protocol::Quality::High);
+        assert_eq!(loaded.config.screenshot.preset, winpilot_core::protocol::Quality::High);
         let record = &loaded.config.record;
-        assert_eq!(record.format, deckhand_core::protocol::VideoFormat::Gif);
+        assert_eq!(record.format, winpilot_core::protocol::VideoFormat::Gif);
         assert_eq!((record.fps, record.max_seconds, record.cursor, record.max_width), (12, 60, false, Some(800)));
-        assert_eq!(record.quality, deckhand_core::protocol::Quality::Medium);
+        assert_eq!(record.quality, winpilot_core::protocol::Quality::Medium);
         assert_eq!(record.folder.as_deref(), Some(Path::new("D:\\Clips")));
         let typo = parse("[record]\nfrmat = \"gif\"\n", path());
         assert!(typo.problem.is_some());
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn refusal_tells_the_user_how_to_fix_it() {
         let error = refusal("C:\\cfg\\config.toml is invalid (line 3: bad)");
-        assert_eq!(error.code, deckhand_core::ErrorCode::InvalidArgument);
+        assert_eq!(error.code, winpilot_core::ErrorCode::InvalidArgument);
         assert_eq!(
             error.message,
             "C:\\cfg\\config.toml is invalid (line 3: bad); fix it or delete it to use the defaults"
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn missing_file_gives_defaults_without_a_problem() {
-        let missing = std::env::temp_dir().join("deckhand-config-that-does-not-exist").join("config.toml");
+        let missing = std::env::temp_dir().join("winpilot-config-that-does-not-exist").join("config.toml");
         let loaded = load_from(&missing);
         assert_eq!(loaded, LoadedConfig::defaults());
     }

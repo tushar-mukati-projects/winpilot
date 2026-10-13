@@ -1,6 +1,5 @@
 use std::{mem::size_of, ptr};
 
-use deckhand_core::WindowState;
 use windows::Win32::{
     Foundation::HWND,
     Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute},
@@ -9,6 +8,7 @@ use windows::Win32::{
         WS_EX_TOOLWINDOW,
     },
 };
+use winpilot_core::WindowState;
 
 pub(crate) fn is_visible(hwnd: HWND) -> bool {
     unsafe { IsWindowVisible(hwnd) }.as_bool()

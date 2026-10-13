@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Element, ElementRef, Error, Result, Role, WindowRef, keys::NamedKey};
+use winpilot_core::{Element, ElementRef, Error, Result, Role, WindowRef, keys::NamedKey};
 
 use super::{
     chords::named,
@@ -115,7 +115,7 @@ fn close_dropdown(
     if !escape_would_land(engine, prepared, call) {
         return Ok(Some(LEFT_OPEN));
     }
-    with_held_modifiers_lifted(call, || deckhand_input::press_chord(&named(NamedKey::Escape)))?;
+    with_held_modifiers_lifted(call, || winpilot_input::press_chord(&named(NamedKey::Escape)))?;
     settle(engine, &prepared.window, call);
     Ok(None)
 }
@@ -128,7 +128,7 @@ fn escape_would_land(engine: &Engine, prepared: &Prepared, call: &CallScope) -> 
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ErrorCode, Patterns};
+    use winpilot_core::{ErrorCode, Patterns};
 
     use super::*;
 

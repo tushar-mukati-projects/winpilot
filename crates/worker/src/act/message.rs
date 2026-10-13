@@ -1,8 +1,8 @@
-use deckhand_core::{
+use winpilot_core::{
     Error, ErrorCode, Point, Result, WindowInfo,
     protocol::{Direction, MouseButton},
 };
-use deckhand_input::MessageSpot;
+use winpilot_input::MessageSpot;
 
 use super::{
     by_pattern::by_pattern, click_choice::ClickOptions, done::Done, locate::locate_in_place, motion::Motion,
@@ -46,7 +46,7 @@ pub(crate) fn click_spot(
 ) -> Result<Option<String>> {
     let check = || engine.guard.check_running(call);
     let ((), note) =
-        by_pattern(engine, &spot.window, call, || deckhand_input::message_click(&spot.target, button, count, check))?;
+        by_pattern(engine, &spot.window, call, || winpilot_input::message_click(&spot.target, button, count, check))?;
     overlay::click(engine, call, spot.point, count);
     Ok(note)
 }
@@ -61,7 +61,7 @@ pub(crate) fn scroll(
     let spot = spot(engine, prepared, call)?;
     let check = || engine.guard.check_running(call);
     let ((), note) = by_pattern(engine, &spot.window, call, || {
-        deckhand_input::message_scroll(&spot.target, direction, notches, check)
+        winpilot_input::message_scroll(&spot.target, direction, notches, check)
     })?;
     overlay::scroll(engine, call, Some(spot.point));
     Ok(Done::by(MESSAGE).with_note(note))
@@ -79,7 +79,7 @@ pub(crate) fn drag(engine: &Engine, drag: &MessageDrag<'_>, call: &CallScope) ->
     let travel = Motion::start(engine, call).glide_duration(drag.glide_ms).max(SHORTEST_DRAG);
     let check = || engine.guard.check_running(call);
     let ((), note) = by_pattern(engine, &grab.window, call, || {
-        deckhand_input::message_drag(&grab.target, release.point, drag.button, travel, check)
+        winpilot_input::message_drag(&grab.target, release.point, drag.button, travel, check)
     })?;
     overlay::drag(engine, call, grab.point, release.point, travel);
     Ok(Done::by(MESSAGE).with_note(note))
@@ -90,8 +90,8 @@ fn spot_at(engine: &Engine, window: &WindowInfo, point: Point, call: &CallScope)
     require_not_in_use(window)?;
     require_inside(window, point)?;
     host_terminal::check_point(engine, window, point)?;
-    let target = deckhand_input::message_spot(window.hwnd, point)?;
-    if !cover::same_program(window.pid, target.pid, deckhand_desktop::process_image_path) {
+    let target = winpilot_input::message_spot(window.hwnd, point)?;
+    if !cover::same_program(window.pid, target.pid, winpilot_desktop::process_image_path) {
         return Err(other_process(window, point));
     }
     Ok(Spot { window: window.clone(), point, target })
@@ -124,7 +124,7 @@ fn other_process(window: &WindowInfo, point: Point) -> Error {
     Error::new(
         ErrorCode::Denied,
         format!(
-            "{},{} in {} belongs to a window of another process, and Deckhand only sends window messages to the target app",
+            "{},{} in {} belongs to a window of another process, and WinPilot only sends window messages to the target app",
             point.x, point.y, window.hwnd
         ),
     )
@@ -139,7 +139,7 @@ fn across_windows(from: &WindowInfo, to: &WindowInfo) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;

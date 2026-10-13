@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
-use deckhand_core::{Context, Error, Result};
 use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
 use windows::Win32::Media::MediaFoundation::{MF_VERSION, MFSTARTUP_NOSOCKET, MFShutdown, MFStartup};
 use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
+use winpilot_core::{Context, Error, Result};
 
 pub(crate) struct ComApartment {
     owns_initialization: bool,

@@ -1,4 +1,4 @@
-use deckhand_core::{ElementRef, Error, Result};
+use winpilot_core::{ElementRef, Error, Result};
 
 use super::{
     focus::{Focused, focus_is_inside},
@@ -23,7 +23,7 @@ fn focus_missed(id: ElementRef) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
 

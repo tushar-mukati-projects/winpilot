@@ -8,7 +8,6 @@ use std::{
     time::Duration,
 };
 
-use deckhand_core::{Context, Error, Result};
 use windows::{
     Win32::{
         Foundation::{HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation, WAIT_OBJECT_0},
@@ -21,6 +20,7 @@ use windows::{
     },
     core::{PCWSTR, PWSTR},
 };
+use winpilot_core::{Context, Error, Result};
 
 use crate::{
     job::Job,
@@ -35,7 +35,7 @@ pub struct ProcessSpawner;
 
 impl Spawn for ProcessSpawner {
     fn spawn(&self) -> Result<WorkerPipes> {
-        let exe = std::env::current_exe().context("finding the deckhand executable")?;
+        let exe = std::env::current_exe().context("finding the winpilot executable")?;
         let child = launch_in_job(&exe, WORKER_ARGUMENT)?;
         let process = Box::new(WorkerChild { process: child.process, job: child.job });
         Ok(WorkerPipes { stdin: Box::new(child.stdin), stdout: Box::new(child.stdout), process })
@@ -183,7 +183,7 @@ impl WorkerProcess for WorkerChild {
 
     fn terminate(&mut self) {
         let Err(error) = self.job.terminate() else { return };
-        eprintln!("deckhand: {error}");
+        eprintln!("winpilot: {error}");
         kill(&self.process);
     }
 }
@@ -230,7 +230,7 @@ fn resume(thread: &OwnedHandle) -> Result<()> {
 
 fn kill(process: &OwnedHandle) {
     if let Err(error) = unsafe { TerminateProcess(raw(process), KILLED_EXIT_CODE) } {
-        eprintln!("deckhand: could not stop the desktop worker: {error}");
+        eprintln!("winpilot: could not stop the desktop worker: {error}");
     }
 }
 
@@ -267,21 +267,21 @@ mod tests {
 
     #[test]
     fn command_line_quotes_the_executable() {
-        let line = command_line(Path::new("C:\\Program Files\\deckhand\\deckhand.exe"), "worker");
+        let line = command_line(Path::new("C:\\Program Files\\winpilot\\winpilot.exe"), "worker");
         assert_eq!(line.last(), Some(&0));
         let text = String::from_utf16(&line[..line.len() - 1]).unwrap();
-        assert_eq!(text, "\"C:\\Program Files\\deckhand\\deckhand.exe\" worker");
+        assert_eq!(text, "\"C:\\Program Files\\winpilot\\winpilot.exe\" worker");
     }
 
     #[test]
     fn launched_child_runs_inside_its_job_with_working_pipes() {
         let JobbedChild { mut stdin, mut stdout, process, job } = launch_in_job(&cmd(), "/d /q").unwrap();
         assert!(job.contains(&process));
-        stdin.write_all(b"echo deckhand-pipe-check\r\nexit\r\n").unwrap();
+        stdin.write_all(b"echo winpilot-pipe-check\r\nexit\r\n").unwrap();
         drop(stdin);
         let mut output = Vec::new();
         stdout.read_to_end(&mut output).unwrap();
-        assert!(String::from_utf8_lossy(&output).contains("deckhand-pipe-check"));
+        assert!(String::from_utf8_lossy(&output).contains("winpilot-pipe-check"));
     }
 
     #[test]
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn launch_of_a_missing_program_fails_cleanly() {
-        let missing = std::env::temp_dir().join("deckhand-no-such-program.exe");
+        let missing = std::env::temp_dir().join("winpilot-no-such-program.exe");
         let error = launch_in_job(&missing, "worker").err().unwrap();
         assert!(error.message.starts_with("starting the desktop worker"), "{}", error.message);
     }

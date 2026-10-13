@@ -1,10 +1,10 @@
 use std::mem::size_of;
 
-use deckhand_core::{Context, Result};
 use windows::Win32::{
     Foundation::HWND,
     UI::Input::{RAWINPUTDEVICE, RAWINPUTDEVICE_FLAGS, RIDEV_INPUTSINK, RIDEV_REMOVE, RegisterRawInputDevices},
 };
+use winpilot_core::{Context, Result};
 
 const GENERIC_DESKTOP_PAGE: u16 = 0x01;
 const MOUSE_USAGE: u16 = 0x02;

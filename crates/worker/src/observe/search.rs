@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{
+use winpilot_core::{
     Result, Snapshot, WindowInfo,
     protocol::{Found, SearchReport, SearchRequest},
     selector::Selector,
@@ -66,7 +66,7 @@ fn ancestor_names(snapshot: &Snapshot, index: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Role;
+    use winpilot_core::Role;
 
     use super::*;
     use crate::test_fixture::{element, snapshot};

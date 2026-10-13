@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Point, glide_timing::glide_point};
+use winpilot_core::{Point, glide_timing::glide_point};
 
 use super::{easing::progress, fade::Fade, presence::FRAME, scene_frame::BadgeFrame, scene_items::Look};
 

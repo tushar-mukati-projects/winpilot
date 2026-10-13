@@ -1,9 +1,9 @@
 use std::mem::size_of;
 
-use deckhand_core::INJECTION_MARK;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY, VK_MENU,
 };
+use winpilot_core::INJECTION_MARK;
 
 const UNASSIGNED_KEY: VIRTUAL_KEY = VIRTUAL_KEY(0xE8);
 const KEY_DOWN: KEYBD_EVENT_FLAGS = KEYBD_EVENT_FLAGS(0);

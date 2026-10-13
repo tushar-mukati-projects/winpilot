@@ -5,12 +5,12 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32, deflateSync } from "node:zlib";
 
-const REPO_URL = "github.com/your-handle/deckhand";
+const REPO_URL = "github.com/your-handle/winpilot";
 
 const DEMO = dirname(fileURLToPath(import.meta.url));
 const WORK = join(DEMO, "work");
 const CARDS = join(DEMO, "cards");
-const ICON = resolve(DEMO, "..", "assets", "deckhand.png");
+const ICON = resolve(DEMO, "..", "assets", "winpilot.png");
 const FONT_DIR = "C:/Windows/Fonts";
 const FONTS = {
   bold: "segoeuib.ttf",
@@ -434,7 +434,7 @@ function riseLayer(path, baselineShift, start, rise = 24, fade = 0.5) {
 
 function renderIntro() {
   const iconY = 392;
-  const title = textLayer("intro-title", { text: "Deckhand", weight: "bold", size: 128, color: "white", height: 200, y: 150 });
+  const title = textLayer("intro-title", { text: "WinPilot", weight: "bold", size: 128, color: "white", height: 200, y: 150 });
   const subtitle = textLayer("intro-subtitle", { text: "Let AI agents drive your Windows desktop", weight: "semilight", size: 48, color: "0xC4CAE8", height: 100, y: 66 });
   return renderCard("intro", INTRO_SECONDS, [
     haloLayer("intro", iconY, { radius: 156, width: 24, alpha: 0.5, glow: 0.2, spread: 210 }, 0),
@@ -466,7 +466,7 @@ function renderUrlPill() {
 
 function renderOutro() {
   const iconY = 290;
-  const title = textLayer("outro-title", { text: "Deckhand", weight: "bold", size: 92, color: "white", height: 150, y: 110 });
+  const title = textLayer("outro-title", { text: "WinPilot", weight: "bold", size: 92, color: "white", height: 150, y: 110 });
   const tagline = gradientTextLayer("outro-tagline", { text: "Rust · MCP · open source", weight: "semibold", size: 56, height: 110, y: 75 });
   const speed = textLayer("outro-speed", { text: "Reads a window in ~60 ms", weight: "semilight", size: 40, color: "0xB4BCDC", height: 90, y: 60 });
   const url = renderUrlPill();
@@ -700,13 +700,13 @@ function assemble(intro, footage, outro) {
 }
 
 function exportMp4(master) {
-  const path = join(DEMO, "deckhand-demo.mp4");
+  const path = join(DEMO, "winpilot-demo.mp4");
   ffmpeg(["-i", master, ...deliveryVideo(18), path]);
   return path;
 }
 
 function exportGif(master) {
-  const path = join(DEMO, "deckhand-demo.gif");
+  const path = join(DEMO, "winpilot-demo.gif");
   for (const attempt of GIF_TRIES) {
     const text = `[0:v]fps=${attempt.fps},scale=${attempt.width}:-2:flags=lanczos,split[a][b];[a]palettegen=max_colors=256:stats_mode=full[p];[b][p]paletteuse=dither=${attempt.dither}:diff_mode=rectangle`;
     ffmpeg(["-i", master, "-/filter_complex", graph("gif", text), "-loop", "0", path]);

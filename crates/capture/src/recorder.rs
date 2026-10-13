@@ -39,7 +39,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Context, Error, Result};
+use winpilot_core::{Context, Error, Result};
 
 pub use cover_hold::{COVER_HOLD, CoverHold};
 pub use outcome::{AudioTrack, EndReason, Finished, Progress, Started};
@@ -140,7 +140,7 @@ impl Recorder {
 
 fn spawn_sampler(input: SamplerInput) -> Result<JoinHandle<Finished>> {
     thread::Builder::new()
-        .name("deckhand-record".to_string())
+        .name("winpilot-record".to_string())
         .spawn(move || sampler::run(input))
         .context("starting the recording thread")
 }

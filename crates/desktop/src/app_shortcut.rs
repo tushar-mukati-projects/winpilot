@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use deckhand_core::{Context, Result};
 use windows::{
     Win32::{
         Foundation::PROPERTYKEY,
@@ -8,6 +7,7 @@ use windows::{
     },
     core::{GUID, HSTRING, PCWSTR},
 };
+use winpilot_core::{Context, Result};
 
 use crate::{apps::APPS_FOLDER_PREFIX, co_task_string::CoTaskString};
 

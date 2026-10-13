@@ -1,10 +1,10 @@
-use deckhand_core::{Point, Rect};
 use windows::Win32::{
     Foundation::{POINT, RECT},
     Graphics::Gdi::{
         MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY, MonitorFromPoint, MonitorFromRect, MonitorFromWindow,
     },
 };
+use winpilot_core::{Point, Rect};
 
 use super::scale::scale_from_dpi;
 use crate::{

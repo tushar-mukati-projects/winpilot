@@ -1,4 +1,4 @@
-use deckhand_core::{WindowInfo, WindowRef};
+use winpilot_core::{WindowInfo, WindowRef};
 
 use super::foreground::owner_chain;
 use crate::window_classes::is_shell;
@@ -26,7 +26,7 @@ enum Stacking {
 }
 
 pub(crate) fn keep_behind_front(window: &WindowInfo, said_as: &str) -> Option<String> {
-    let front = deckhand_desktop::foreground_window().and_then(|front| deckhand_desktop::window(front).ok());
+    let front = winpilot_desktop::foreground_window().and_then(|front| winpilot_desktop::window(front).ok());
     match stacking(&Target::of(window), front.as_ref().map(Front::of)) {
         Stacking::Leave => None,
         Stacking::AlreadyBehind(front) => Some(behind_note(said_as, front)),
@@ -38,7 +38,7 @@ impl Target {
     fn of(window: &WindowInfo) -> Self {
         Self {
             hwnd: window.hwnd,
-            topmost: deckhand_desktop::is_topmost(window.hwnd),
+            topmost: winpilot_desktop::is_topmost(window.hwnd),
             elsewhere: !window.on_current_desktop,
             owners: owner_chain(Some(window.hwnd)),
         }
@@ -47,7 +47,7 @@ impl Target {
 
 impl Front {
     fn of(window: &WindowInfo) -> Self {
-        Self { hwnd: window.hwnd, topmost: deckhand_desktop::is_topmost(window.hwnd), shell: is_shell(window) }
+        Self { hwnd: window.hwnd, topmost: winpilot_desktop::is_topmost(window.hwnd), shell: is_shell(window) }
     }
 }
 
@@ -64,9 +64,9 @@ fn stays_put(target: &Target, front: &Front) -> bool {
 }
 
 fn placed_note(window: WindowRef, front: WindowRef, said_as: &str) -> String {
-    match deckhand_desktop::place_below(window, front) {
+    match winpilot_desktop::place_below(window, front) {
         Ok(()) => behind_note(said_as, front),
-        Err(error) => format!("Deckhand could not place {window} behind {front}: {}", error.message),
+        Err(error) => format!("WinPilot could not place {window} behind {front}: {}", error.message),
     }
 }
 

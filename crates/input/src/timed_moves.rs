@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{
+use winpilot_core::{
     Point, Result,
     glide_timing::{capped_glide, glide_path},
 };
@@ -46,7 +46,7 @@ pub(crate) fn play(
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Error, ErrorCode, glide_timing::MAX_GLIDE_MS};
+    use winpilot_core::{Error, ErrorCode, glide_timing::MAX_GLIDE_MS};
 
     use super::*;
 

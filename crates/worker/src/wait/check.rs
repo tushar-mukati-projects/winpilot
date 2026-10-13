@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use deckhand_core::{Error, ErrorCode, Rect, Result, Target, WindowInfo, format::window_line, ocr::coords};
+use winpilot_core::{Error, ErrorCode, Rect, Result, Target, WindowInfo, format::window_line, ocr::coords};
 
 use super::WaitReport;
 use crate::engine::duration_ms;
@@ -94,7 +94,7 @@ pub(crate) fn target_label(target: &Target) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ElementRef, Point, WindowRef};
+    use winpilot_core::{ElementRef, Point, WindowRef};
 
     use super::*;
 

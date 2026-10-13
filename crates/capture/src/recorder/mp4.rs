@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use deckhand_core::{Context, Error, Result, protocol::Quality};
 use windows::Win32::Media::MediaFoundation::{
     IMFAttributes, IMFByteStream, IMFMediaBuffer, IMFSinkWriter, MF_ACCESSMODE_READWRITE, MF_FILEFLAGS_NONE,
     MF_OPENMODE_FAIL_IF_NOT_EXIST, MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, MF_TRANSCODE_CONTAINERTYPE,
@@ -8,6 +7,7 @@ use windows::Win32::Media::MediaFoundation::{
     MFTranscodeContainerType_FMPEG4,
 };
 use windows_core::HSTRING;
+use winpilot_core::{Context, Error, Result, protocol::Quality};
 
 use super::audio_backlog::TrackSamples;
 use super::bitrate::average_bitrate;

@@ -1,11 +1,11 @@
-use deckhand_core::{
+use winpilot_core::{
     Result,
     protocol::{MonitorInfo, MonitorsReport},
 };
-use deckhand_desktop::Monitor;
+use winpilot_desktop::Monitor;
 
 pub(crate) fn list() -> Result<MonitorsReport> {
-    let monitors = deckhand_desktop::monitors()?.iter().map(monitor_info).collect();
+    let monitors = winpilot_desktop::monitors()?.iter().map(monitor_info).collect();
     Ok(MonitorsReport { monitors })
 }
 
@@ -21,7 +21,7 @@ fn monitor_info(monitor: &Monitor) -> MonitorInfo {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Rect, format};
+    use winpilot_core::{Rect, format};
 
     use super::*;
     use crate::test_fixture::engine;

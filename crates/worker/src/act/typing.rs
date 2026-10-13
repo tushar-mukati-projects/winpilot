@@ -1,6 +1,6 @@
-use deckhand_core::{Element, Error, Result, keys::NamedKey, protocol::TypeHow};
-use deckhand_desktop::clipboard;
-use deckhand_uia::Uia;
+use winpilot_core::{Element, Error, Result, keys::NamedKey, protocol::TypeHow};
+use winpilot_desktop::clipboard;
+use winpilot_uia::Uia;
 
 use super::{
     append,
@@ -155,7 +155,7 @@ fn enter_text(
     match typing {
         Typing::Paste(readback) => paste(engine, &focused.window, &readback, text, call).map(|note| ("paste", note)),
         Typing::Keys | Typing::KeysToKeepClipboard | Typing::KeysToConfirm => {
-            deckhand_input::type_text(text).map(|()| ("keys", None))
+            winpilot_input::type_text(text).map(|()| ("keys", None))
         }
     }
 }
@@ -163,7 +163,7 @@ fn enter_text(
 fn press_enter(engine: &Engine, focused: &Focused, call: &CallScope) -> Result<()> {
     engine.guard.check_running(call)?;
     ensure_keys_land(engine, focused)?;
-    with_held_modifiers_lifted(call, || deckhand_input::press_chord(&named(NamedKey::Enter)))
+    with_held_modifiers_lifted(call, || winpilot_input::press_chord(&named(NamedKey::Enter)))
 }
 
 pub(crate) fn value_note(engine: &Engine, element: Option<&Element>) -> Option<String> {
@@ -174,7 +174,7 @@ pub(crate) fn value_note(engine: &Engine, element: Option<&Element>) -> Option<S
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ElementRef;
+    use winpilot_core::ElementRef;
 
     use super::*;
 
@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn background_typing_sets_writable_fields_and_messages_everything_else() {
-        use deckhand_core::Role;
+        use winpilot_core::Role;
 
         use crate::test_fixture::element;
 

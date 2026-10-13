@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use deckhand_core::Result;
 use parking_lot::Mutex;
+use winpilot_core::Result;
 
 use crate::{
     app_identity,
@@ -55,7 +55,7 @@ impl Notifier {
         while showing.len() >= MAX_SHOWING {
             showing.remove(0);
         }
-        let (balloon, ()) = MessageThread::spawn_within("deckhand-notify", BALLOON_STARTUP, move |cancel| {
+        let (balloon, ()) = MessageThread::spawn_within("winpilot-notify", BALLOON_STARTUP, move |cancel| {
             Balloon::show(&text, cancel).map(|shown| (shown, ()))
         })?;
         showing.push(balloon);
@@ -72,7 +72,7 @@ const fn toast_outcome(result: ToastResult, quiet: Option<QuietReason>) -> Notif
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
 
@@ -113,7 +113,7 @@ mod tests {
     #[ignore = "shows a notification"]
     fn shows_a_real_notification_and_removes_any_tray_icon_on_drop() {
         let notifier = Notifier::new();
-        let outcome = notifier.notify("Deckhand test", "This is a test notification from cargo test.").unwrap();
+        let outcome = notifier.notify("WinPilot test", "This is a test notification from cargo test.").unwrap();
         assert!(!matches!(outcome, NotifyOutcome::Blocked(_)), "{outcome:?}");
         notifier.dismiss_all();
         assert!(notifier.showing.lock().is_empty());

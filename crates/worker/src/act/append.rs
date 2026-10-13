@@ -1,4 +1,4 @@
-use deckhand_core::{Error, Result};
+use winpilot_core::{Error, Result};
 
 use super::{
     by_pattern::by_pattern,

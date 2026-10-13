@@ -1,10 +1,10 @@
 use std::mem::size_of;
 
-use deckhand_core::{Error, ErrorCode, Result};
 use windows::Win32::{
     Foundation::{ERROR_ACCESS_DENIED, GetLastError, WIN32_ERROR},
     UI::Input::KeyboardAndMouse::{INPUT, SendInput},
 };
+use winpilot_core::{Error, ErrorCode, Result};
 
 use crate::{batch::Batch, call_split::split_into_calls, event::InputEvent};
 

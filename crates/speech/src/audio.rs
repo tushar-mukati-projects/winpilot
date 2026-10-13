@@ -1,6 +1,6 @@
 use std::f64::consts::PI;
 
-use deckhand_core::{Error, Result};
+use winpilot_core::{Error, Result};
 
 pub const WHISPER_SAMPLE_RATE: u32 = 16_000;
 pub(crate) const MIN_SAMPLE_RATE: u32 = 1_000;

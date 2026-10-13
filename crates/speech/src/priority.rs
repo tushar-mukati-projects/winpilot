@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
-use deckhand_core::{Context, Error, Result};
 use windows::Win32::System::Threading::{
     GetCurrentThread, GetThreadPriority, SetThreadPriority, THREAD_PRIORITY, THREAD_PRIORITY_BELOW_NORMAL,
 };
+use winpilot_core::{Context, Error, Result};
 
 const PRIORITY_ERROR_RETURN: i32 = 0x7FFF_FFFF;
 
@@ -46,7 +46,7 @@ pub(crate) fn run_below_normal<T: Send>(threads: usize, work: impl FnOnce() -> T
     let _caller = BelowNormalPriority::enter()?;
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(threads)
-        .thread_name(|index| format!("deckhand-speech-{index}"))
+        .thread_name(|index| format!("winpilot-speech-{index}"))
         .start_handler(|_| {
             let _ = lower_current_thread();
         })

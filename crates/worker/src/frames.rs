@@ -1,11 +1,11 @@
-use deckhand_capture::{Frame, FrameSource};
-use deckhand_core::{Error, Rect, Result, WindowInfo, WindowRef, WindowState, format::other_desktop};
-use deckhand_desktop::overlay::CaptureHideGuard;
+use winpilot_capture::{Frame, FrameSource};
+use winpilot_core::{Error, Rect, Result, WindowInfo, WindowRef, WindowState, format::other_desktop};
+use winpilot_desktop::overlay::CaptureHideGuard;
 
 use crate::{blackout, cover, engine::Engine, overlay};
 
 const OVERLAY_MAY_SHOW: &str =
-    "Deckhand's overlay could not be confirmed hidden in time, so it may appear in this capture";
+    "WinPilot's overlay could not be confirmed hidden in time, so it may appear in this capture";
 
 pub(crate) struct Captured {
     pub(crate) frame: Frame,
@@ -40,7 +40,7 @@ pub(crate) fn element(engine: &Engine, window: &WindowInfo, rect: Rect) -> Resul
 }
 
 fn own_popup_in_front(engine: &Engine, window: &WindowInfo) -> bool {
-    deckhand_desktop::foreground_window()
+    winpilot_desktop::foreground_window()
         .is_some_and(|front| front != window.hwnd && !cover::window_covers(engine, window.hwnd, front))
 }
 
@@ -111,7 +111,7 @@ fn blacked_out(engine: &Engine, mut frame: Frame, above: Option<WindowRef>, mut 
 }
 
 fn denied_rects(engine: &Engine, above: Option<WindowRef>) -> Result<Vec<Rect>> {
-    let windows = deckhand_desktop::all_visible_windows()?;
+    let windows = winpilot_desktop::all_visible_windows()?;
     Ok(blackout::covering_rects(&windows, |window| engine.guard.denies_titled(&window.process, &window.title), above))
 }
 

@@ -1,7 +1,7 @@
-use deckhand_core::{ElementRef, Result, Role};
 use windows::Win32::UI::Accessibility::{
     IUIAutomationTextPattern, IUIAutomationValuePattern, UIA_TextPatternId, UIA_ValuePatternId,
 };
+use winpilot_core::{ElementRef, Result, Role};
 
 use crate::{
     automation::Uia, failure::UiaResult, pattern::current_pattern, properties::cached_text, resolved::Resolved,

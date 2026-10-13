@@ -1,6 +1,6 @@
 use std::ffi::{OsStr, OsString};
 
-const DEFAULT_TITLE: &str = "Deckhand Fixture";
+const DEFAULT_TITLE: &str = "WinPilot Fixture";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {

@@ -1,5 +1,5 @@
-use deckhand_core::{Context, Error, Point, Rect, Result};
 use windows::Win32::Graphics::Gdi::{BitBlt, SRCCOPY};
+use winpilot_core::{Context, Error, Point, Rect, Result};
 
 use crate::frame::Frame;
 use crate::gdi::{GdiSurface, ScreenDc};

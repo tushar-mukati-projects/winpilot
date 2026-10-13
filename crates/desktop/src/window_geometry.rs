@@ -1,11 +1,11 @@
 use std::{mem::size_of, ptr};
 
-use deckhand_core::Rect;
 use windows::Win32::{
     Foundation::{HWND, RECT},
     Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute},
     UI::WindowsAndMessaging::GetWindowRect,
 };
+use winpilot_core::Rect;
 
 use crate::frame::rect_from_win32;
 

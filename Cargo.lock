@@ -373,114 +373,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deckhand"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "deckhand-core",
- "deckhand-fixture",
- "deckhand-worker",
- "embed-resource",
- "parking_lot",
- "rmcp",
- "serde",
- "serde_json",
- "tokio",
- "toml 0.9.12+spec-1.1.0",
- "windows",
-]
-
-[[package]]
-name = "deckhand-capture"
-version = "0.1.0"
-dependencies = [
- "deckhand-core",
- "fast_image_resize",
- "gif",
- "jpeg-encoder",
- "parking_lot",
- "png",
- "windows",
- "windows-core",
- "windows-future",
-]
-
-[[package]]
-name = "deckhand-core"
-version = "0.1.0"
-dependencies = [
- "schemars",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "deckhand-desktop"
-version = "0.1.0"
-dependencies = [
- "deckhand-core",
- "deckhand-fixture",
- "parking_lot",
- "windows",
-]
-
-[[package]]
-name = "deckhand-fixture"
-version = "0.1.0"
-dependencies = [
- "windows",
-]
-
-[[package]]
-name = "deckhand-input"
-version = "0.1.0"
-dependencies = [
- "deckhand-core",
- "parking_lot",
- "windows",
-]
-
-[[package]]
-name = "deckhand-speech"
-version = "0.1.0"
-dependencies = [
- "candle-core",
- "candle-nn",
- "candle-transformers",
- "deckhand-core",
- "rayon",
- "windows",
-]
-
-[[package]]
-name = "deckhand-uia"
-version = "0.1.0"
-dependencies = [
- "deckhand-core",
- "deckhand-fixture",
- "windows",
- "windows-core",
-]
-
-[[package]]
-name = "deckhand-worker"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "deckhand-capture",
- "deckhand-core",
- "deckhand-desktop",
- "deckhand-fixture",
- "deckhand-input",
- "deckhand-speech",
- "deckhand-uia",
- "parking_lot",
- "serde_json",
- "windows",
-]
-
-[[package]]
 name = "derive_builder"
 version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2291,6 +2183,114 @@ name = "winnow"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+
+[[package]]
+name = "winpilot"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "embed-resource",
+ "parking_lot",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml 0.9.12+spec-1.1.0",
+ "windows",
+ "winpilot-core",
+ "winpilot-fixture",
+ "winpilot-worker",
+]
+
+[[package]]
+name = "winpilot-capture"
+version = "0.1.0"
+dependencies = [
+ "fast_image_resize",
+ "gif",
+ "jpeg-encoder",
+ "parking_lot",
+ "png",
+ "windows",
+ "windows-core",
+ "windows-future",
+ "winpilot-core",
+]
+
+[[package]]
+name = "winpilot-core"
+version = "0.1.0"
+dependencies = [
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "winpilot-desktop"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "windows",
+ "winpilot-core",
+ "winpilot-fixture",
+]
+
+[[package]]
+name = "winpilot-fixture"
+version = "0.1.0"
+dependencies = [
+ "windows",
+]
+
+[[package]]
+name = "winpilot-input"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "windows",
+ "winpilot-core",
+]
+
+[[package]]
+name = "winpilot-speech"
+version = "0.1.0"
+dependencies = [
+ "candle-core",
+ "candle-nn",
+ "candle-transformers",
+ "rayon",
+ "windows",
+ "winpilot-core",
+]
+
+[[package]]
+name = "winpilot-uia"
+version = "0.1.0"
+dependencies = [
+ "windows",
+ "windows-core",
+ "winpilot-core",
+ "winpilot-fixture",
+]
+
+[[package]]
+name = "winpilot-worker"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "parking_lot",
+ "serde_json",
+ "windows",
+ "winpilot-capture",
+ "winpilot-core",
+ "winpilot-desktop",
+ "winpilot-fixture",
+ "winpilot-input",
+ "winpilot-speech",
+ "winpilot-uia",
+]
 
 [[package]]
 name = "winreg"

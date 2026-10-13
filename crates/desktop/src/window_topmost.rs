@@ -1,5 +1,5 @@
-use deckhand_core::WindowRef;
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST;
+use winpilot_core::WindowRef;
 
 use crate::{
     window_identity::{hwnd_of, is_live},

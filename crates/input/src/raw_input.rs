@@ -1,9 +1,9 @@
 use std::{mem::size_of, ptr};
 
-use deckhand_core::INJECTION_MARK;
 use windows::Win32::UI::Input::{
     GetRawInputData, HRAWINPUT, RAWINPUT, RAWINPUTHEADER, RID_INPUT, RIM_TYPEKEYBOARD, RIM_TYPEMOUSE,
 };
+use winpilot_core::INJECTION_MARK;
 
 use crate::{
     chord_detector::PhysicalKey,

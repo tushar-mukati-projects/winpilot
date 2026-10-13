@@ -3,11 +3,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Context, Error, Rect, Result, WindowRef};
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos},
 };
+use winpilot_core::{Context, Error, Rect, Result, WindowRef};
 
 use crate::{
     activation::Activation,
@@ -89,9 +89,9 @@ fn describe(rect: Rect) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
-    use deckhand_fixture::{FixtureProcess, Placement, fixture_exe};
+    use winpilot_fixture::{FixtureProcess, Placement, fixture_exe};
 
     use super::*;
     use crate::{dpi::enable_dpi_awareness, window_identity::ref_of};
@@ -134,7 +134,7 @@ mod tests {
     fn moves_a_window_to_the_requested_rect() {
         enable_dpi_awareness().unwrap();
         let Some(exe) = fixture_exe() else { return };
-        let title = format!("Deckhand Fixture placement {}", std::process::id());
+        let title = format!("WinPilot Fixture placement {}", std::process::id());
         let Some(fixture) = FixtureProcess::launch(&exe, &title, Placement::OnScreen) else { return };
         let target = Rect::new(160, 140, 720, 520);
         move_window(ref_of(fixture.hwnd()), target, Activation::KeepForeground).unwrap();

@@ -3,8 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::Result;
 use parking_lot::Mutex;
+use winpilot_core::Result;
 
 use crate::{
     input_clock::{last_user_input, last_user_press, start_clock},
@@ -26,7 +26,7 @@ impl ActivityMonitor {
             return Ok(Self { monitor_thread: Some(shared) });
         }
         start_clock();
-        let (thread, ()) = MessageThread::spawn("deckhand-activity", || RawInputSink::start().map(|sink| (sink, ())))?;
+        let (thread, ()) = MessageThread::spawn("winpilot-activity", || RawInputSink::start().map(|sink| (sink, ())))?;
         let thread = Arc::new(thread);
         *running = Arc::downgrade(&thread);
         Ok(Self { monitor_thread: Some(thread) })

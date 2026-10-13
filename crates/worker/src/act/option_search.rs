@@ -1,7 +1,7 @@
 use std::time::Instant;
 
-use deckhand_core::{Element, ElementRef, Result, Role, Snapshot, WindowInfo, WindowRef};
-use deckhand_desktop::VisibleWindow;
+use winpilot_core::{Element, ElementRef, Result, Role, Snapshot, WindowInfo, WindowRef};
+use winpilot_desktop::VisibleWindow;
 
 use super::target::Prepared;
 use crate::{engine::Engine, resolve::Reach, wait::unless_gone, window_classes::is_popup_class};
@@ -54,7 +54,7 @@ pub(crate) fn search(engine: &Engine, combo: &Combo, option: &str) -> Result<Sea
 }
 
 pub(crate) fn in_subtree(engine: &Engine, window: &WindowInfo, id: ElementRef, option: &str) -> Result<Search> {
-    let own = engine.snapshot(&deckhand_desktop::window(window.hwnd)?)?;
+    let own = engine.snapshot(&winpilot_desktop::window(window.hwnd)?)?;
     let subtree = subtree_of(&own, id);
     Ok(scope_search(subtree, &own.window, option, false))
 }
@@ -76,7 +76,7 @@ fn in_popups(engine: &Engine, combo: &Combo, option: &str) -> Result<Search> {
 fn in_opened_windows(engine: &Engine, combo: &Combo, option: &str) -> Result<Search> {
     let mut search = Search::default();
     for hwnd in engine.changes.windows_opened_since(combo.opened_at) {
-        let Some(window) = unless_gone(deckhand_desktop::window(hwnd))? else { continue };
+        let Some(window) = unless_gone(winpilot_desktop::window(hwnd))? else { continue };
         if !opened_by_combo_app(&window, combo) || engine.guard.denies(&window) {
             continue;
         }
@@ -90,7 +90,7 @@ fn in_opened_windows(engine: &Engine, combo: &Combo, option: &str) -> Result<Sea
 }
 
 fn same_process_popups(combo: &Combo) -> Result<Vec<VisibleWindow>> {
-    let windows = deckhand_desktop::all_visible_windows()?;
+    let windows = winpilot_desktop::all_visible_windows()?;
     Ok(windows.into_iter().filter(|window| is_combo_popup(window, combo)).collect())
 }
 
@@ -103,7 +103,7 @@ fn opened_by_combo_app(window: &WindowInfo, combo: &Combo) -> bool {
 }
 
 fn snapshot_of(engine: &Engine, hwnd: WindowRef) -> Result<Option<Snapshot>> {
-    let Some(window) = unless_gone(deckhand_desktop::window(hwnd))? else { return Ok(None) };
+    let Some(window) = unless_gone(winpilot_desktop::window(hwnd))? else { return Ok(None) };
     if engine.guard.denies(&window) {
         return Ok(None);
     }
@@ -165,7 +165,7 @@ fn fold(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;

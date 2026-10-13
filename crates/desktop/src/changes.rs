@@ -3,8 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Result, WindowRef};
 use parking_lot::Mutex;
+use winpilot_core::{Result, WindowRef};
 
 use crate::{activity::ActivityBoard, message_thread::MessageThread, win_event_hooks::install_change_hooks};
 
@@ -26,7 +26,7 @@ impl ChangeMonitor {
             return Ok(Self { _hooks: existing });
         }
         board().clear();
-        let (thread, ()) = MessageThread::spawn("deckhand-changes", install_change_hooks)?;
+        let (thread, ()) = MessageThread::spawn("winpilot-changes", install_change_hooks)?;
         let hooks = Arc::new(thread);
         *running = Arc::downgrade(&hooks);
         Ok(Self { _hooks: hooks })

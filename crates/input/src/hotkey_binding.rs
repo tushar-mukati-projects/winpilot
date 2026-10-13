@@ -1,9 +1,9 @@
-use deckhand_core::{
-    Error, Result,
-    keys::{Chord, Modifiers},
-};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, VIRTUAL_KEY,
+};
+use winpilot_core::{
+    Error, Result,
+    keys::{Chord, Modifiers},
 };
 
 use crate::{
@@ -39,11 +39,11 @@ fn hotkey_modifiers(modifiers: Modifiers) -> HOT_KEY_MODIFIERS {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_F9};
+    use winpilot_core::{
         ErrorCode,
         keys::{Key, NamedKey},
     };
-    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_F9};
 
     use super::*;
     use crate::test_layout::FakeLayout;

@@ -10,7 +10,7 @@ mod status;
 mod text;
 mod windows;
 
-use deckhand_core::{
+use winpilot_core::{
     Result,
     protocol::{ObserveArgs, ObserveRequest, Reply},
 };

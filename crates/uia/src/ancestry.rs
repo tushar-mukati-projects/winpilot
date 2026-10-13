@@ -1,6 +1,6 @@
-use deckhand_core::{ElementRef, Result, WindowRef};
 use windows::Win32::UI::Accessibility::IUIAutomationElement;
 use windows_core::BOOL;
+use winpilot_core::{ElementRef, Result, WindowRef};
 
 use crate::{
     automation::Uia,

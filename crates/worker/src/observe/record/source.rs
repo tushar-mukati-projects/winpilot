@@ -1,5 +1,5 @@
-use deckhand_capture::RecordingSource;
-use deckhand_core::{
+use winpilot_capture::RecordingSource;
+use winpilot_core::{
     Error, Rect, Result, Target, WindowInfo, WindowRef, WindowState, format::other_desktop, protocol::RecordRequest,
 };
 
@@ -93,7 +93,7 @@ fn crop_within(window: Rect, element: Rect) -> Result<Rect> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
     use crate::test_fixture;

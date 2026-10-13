@@ -1,5 +1,5 @@
-use deckhand_core::{Error, Result, keys::Chord};
 use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
+use winpilot_core::{Error, Result, keys::Chord};
 
 use crate::{
     event::InputEvent,
@@ -53,11 +53,11 @@ fn chord_keys(chord: &Chord, layout: &impl KeyboardLayout) -> Result<Vec<VIRTUAL
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{
+    use windows::Win32::UI::Input::KeyboardAndMouse::{KEYEVENTF_KEYUP, VK_CONTROL, VK_SHIFT};
+    use winpilot_core::{
         ErrorCode,
         keys::{Key, Modifiers, parse_chord},
     };
-    use windows::Win32::UI::Input::KeyboardAndMouse::{KEYEVENTF_KEYUP, VK_CONTROL, VK_SHIFT};
 
     use super::*;
     use crate::{event::KeyStroke, test_layout::FakeLayout};

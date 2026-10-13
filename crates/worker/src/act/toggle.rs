@@ -1,4 +1,4 @@
-use deckhand_core::{Element, ElementRef, Error, Result};
+use winpilot_core::{Element, ElementRef, Error, Result};
 
 use super::{
     by_pattern::by_pattern, click_choice::ClickOptions, done::Done, locate::refreshed, mode::Mode,
@@ -69,7 +69,7 @@ fn flip(
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
 

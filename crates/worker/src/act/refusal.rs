@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     Error, ErrorCode, WindowInfo,
     format::other_desktop,
     keys::parse_keys,
@@ -45,7 +45,7 @@ impl Refusal {
         let desktop = other_desktop(window).unwrap_or_else(|| "another desktop".to_string());
         let instead = self.instead.map(|instead| format!("{instead}, or ")).unwrap_or_default();
         let message = format!(
-            "{} is on {desktop}, where mouse and keyboard input can't reach and Deckhand never switches; {} needs {} ({instead}move the window to this desktop)",
+            "{} is on {desktop}, where mouse and keyboard input can't reach and WinPilot never switches; {} needs {} ({instead}move the window to this desktop)",
             window.hwnd, self.step, self.needs
         );
         Error::new(ErrorCode::NeedsUser, message)
@@ -101,7 +101,7 @@ fn mouse_refusal(action: MouseAction, targeted: bool) -> Option<Refusal> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;
@@ -217,7 +217,7 @@ mod tests {
         assert_eq!(error.code, ErrorCode::NeedsUser);
         assert_eq!(
             error.message,
-            "w123 is on desktop 2, where mouse and keyboard input can't reach and Deckhand never switches; mouse move needs the real mouse (move the window to this desktop)"
+            "w123 is on desktop 2, where mouse and keyboard input can't reach and WinPilot never switches; mouse move needs the real mouse (move the window to this desktop)"
         );
         let typing = background_refusal(&step(r#"{"do":"type","text":"x"}"#)).unwrap();
         assert!(

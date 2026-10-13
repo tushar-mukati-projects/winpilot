@@ -1,10 +1,10 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Context, Error, ErrorCode, Result, WindowRef, WindowState};
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{IsHungAppWindow, ShowWindowAsync},
 };
+use winpilot_core::{Context, Error, ErrorCode, Result, WindowRef, WindowState};
 
 use crate::{
     activation::Activation,

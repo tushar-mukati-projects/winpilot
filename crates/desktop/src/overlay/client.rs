@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use deckhand_core::{Point, Rect, Result};
+use winpilot_core::{Point, Rect, Result};
 
 use super::{
     activity::Activity,
@@ -32,7 +32,7 @@ impl Overlay {
         let wake = WakeFlag::default();
         let thread_wake = wake.clone();
         let (thread, every_layer_excluded) =
-            MessageThread::spawn("deckhand-overlay", move || OverlayThread::create(receiver, thread_wake, options))?;
+            MessageThread::spawn("winpilot-overlay", move || OverlayThread::create(receiver, thread_wake, options))?;
         Ok(Self { commands, wake, thread, every_layer_excluded })
     }
 

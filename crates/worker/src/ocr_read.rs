@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
-use deckhand_capture::{ocr, ocr_magnified};
-use deckhand_core::{Rect, Result, WindowInfo, WindowRef, ocr::OcrLine};
+use winpilot_capture::{ocr, ocr_magnified};
+use winpilot_core::{Rect, Result, WindowInfo, WindowRef, ocr::OcrLine};
 
 use crate::{call_scope::CallScope, engine::Engine, frames, watch::Watch};
 

@@ -1,6 +1,6 @@
-use deckhand_capture::Frame;
-use deckhand_core::{Rect, WindowRef};
-use deckhand_desktop::VisibleWindow;
+use winpilot_capture::Frame;
+use winpilot_core::{Rect, WindowRef};
+use winpilot_desktop::VisibleWindow;
 
 const BLACK: [u8; 4] = [0, 0, 0, 255];
 const BYTES_PER_PIXEL: usize = 4;
@@ -42,8 +42,8 @@ fn fill_area(frame: &mut Frame, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_capture::FrameSource;
-    use deckhand_core::Point;
+    use winpilot_capture::FrameSource;
+    use winpilot_core::Point;
 
     use super::*;
 

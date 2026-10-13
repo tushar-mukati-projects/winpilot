@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const DEMO = dirname(fileURLToPath(import.meta.url));
 const LOCAL = process.env.LOCALAPPDATA;
-const DECKHAND = process.env.DECKHAND_EXE ?? join(LOCAL, "Programs", "deckhand", "deckhand.exe");
+const WINPILOT = process.env.WINPILOT_EXE ?? join(LOCAL, "Programs", "winpilot", "winpilot.exe");
 const BROWSERS = [
   "C:/Program Files/Google/Chrome/Application/chrome.exe",
   join(LOCAL, "Google/Chrome/Application/chrome.exe"),
@@ -26,7 +26,7 @@ const SPEC = join(DEMO, "spec.pdf");
 const COUNTDOWN_SECONDS = 3;
 const CHECK_ONLY = process.argv.includes("--check");
 const KEEP = process.argv.includes("--keep");
-const SCRATCH = join(tmpdir(), `deckhand-promo-${Date.now()}`);
+const SCRATCH = join(tmpdir(), `winpilot-promo-${Date.now()}`);
 
 const EXPECTED = [
   ["edit", "Project name"],
@@ -67,12 +67,12 @@ const BROWSER_FLAGS = [
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 const say = (line) => console.log(line);
 
-class Deckhand {
+class WinPilot {
   constructor(env) {
     this.pending = new Map();
     this.nextId = 0;
     this.errors = [];
-    this.process = spawn(DECKHAND, ["mcp"], { stdio: ["pipe", "pipe", "pipe"], env });
+    this.process = spawn(WINPILOT, ["mcp"], { stdio: ["pipe", "pipe", "pipe"], env });
     this.process.stdin.on("error", () => {});
     readline.createInterface({ input: this.process.stdout }).on("line", (line) => this.receive(line));
     this.process.stderr.on("data", (chunk) => this.errors.push(String(chunk)));
@@ -94,7 +94,7 @@ class Deckhand {
   }
 
   failPending() {
-    for (const waiter of this.pending.values()) waiter.reject(new Error(`deckhand exited\n${this.errors.join("")}`));
+    for (const waiter of this.pending.values()) waiter.reject(new Error(`winpilot exited\n${this.errors.join("")}`));
     this.pending.clear();
   }
 
@@ -120,7 +120,7 @@ class Deckhand {
     const tools = await this.request("tools/list", {});
     const names = (tools.result?.tools ?? []).map((tool) => tool.name);
     if (!names.includes("observe") || !names.includes("act")) {
-      throw new Error(`this deckhand.exe exposes ${names.join(", ")}; the promo needs the v2 build with observe and act`);
+      throw new Error(`this winpilot.exe exposes ${names.join(", ")}; the promo needs the v2 build with observe and act`);
     }
   }
 
@@ -152,9 +152,9 @@ function findBrowser() {
 }
 
 function writeScratch() {
-  mkdirSync(join(SCRATCH, "appdata", "deckhand"), { recursive: true });
+  mkdirSync(join(SCRATCH, "appdata", "winpilot"), { recursive: true });
   mkdirSync(join(SCRATCH, "localappdata"), { recursive: true });
-  writeFileSync(join(SCRATCH, "appdata", "deckhand", "config.toml"), CONFIG);
+  writeFileSync(join(SCRATCH, "appdata", "winpilot", "config.toml"), CONFIG);
   const preferences = { selectfile_last_directory: DEMO, browser: { has_seen_welcome_page: true }, profile: { exit_type: "Normal" } };
   mkdirSync(join(SCRATCH, "chrome-app", "Default"), { recursive: true });
   writeFileSync(join(SCRATCH, "chrome-app", "Default", "Preferences"), JSON.stringify(preferences));
@@ -188,18 +188,18 @@ function rectIn(text) {
   return { x, y, width, height };
 }
 
-async function waitForApp(deckhand) {
+async function waitForApp(winpilot) {
   const deadline = Date.now() + 20000;
   while (Date.now() < deadline) {
-    const { text } = await deckhand.call("observe", { mode: "windows" });
+    const { text } = await winpilot.call("observe", { mode: "windows" });
     if (text.includes(`"${TITLE}`)) return;
     await pause(400);
   }
   throw new Error(`the "${TITLE}" window did not open`);
 }
 
-async function primaryMonitor(deckhand) {
-  const { text } = await deckhand.call("observe", { mode: "monitors" });
+async function primaryMonitor(winpilot) {
+  const { text } = await winpilot.call("observe", { mode: "monitors" });
   const line = text.split("\n").find((entry) => entry.includes("primary")) ?? text.split("\n")[0];
   return rectIn(line);
 }
@@ -218,10 +218,10 @@ function missingTargets(text) {
   return EXPECTED.filter(([role, name]) => !new RegExp(`\\b${role} "${name}`).test(text));
 }
 
-async function readUntilReady(deckhand) {
+async function readUntilReady(winpilot) {
   let read;
   for (let attempt = 1; attempt <= 10; attempt++) {
-    read = await deckhand.call("observe", { window: APP });
+    read = await winpilot.call("observe", { window: APP });
     if (missingTargets(read.text).length === 0) {
       const attach = read.text.split("\n").find((line) => line.includes('"Attach spec'));
       say(`  all ${EXPECTED.length} targets found on read ${attempt} (Attach spec reads as: ${attach?.trim().split(" ")[1] ?? "?"})`);
@@ -234,27 +234,27 @@ async function readUntilReady(deckhand) {
   throw new Error(`the page is missing ${missingTargets(read.text).map(([role, name]) => `${role} "${name}"`).join(", ")}`);
 }
 
-async function prepare(deckhand) {
-  await waitForApp(deckhand);
-  await deckhand.act([{ do: "focus", target: 'window:"Stage"' }]).catch(() => say("  (could not raise the stage window)"));
-  await deckhand.act([{ do: "focus", target: APP }]);
-  const monitor = await primaryMonitor(deckhand);
+async function prepare(winpilot) {
+  await waitForApp(winpilot);
+  await winpilot.act([{ do: "focus", target: 'window:"Stage"' }]).catch(() => say("  (could not raise the stage window)"));
+  await winpilot.act([{ do: "focus", target: APP }]);
+  const monitor = await primaryMonitor(winpilot);
   const wanted = WINDOW_RECT.x + WINDOW_RECT.width + MARGIN <= monitor.x + monitor.width ? WINDOW_RECT : { ...WINDOW_RECT, x: monitor.x + Math.round((monitor.width - WINDOW_RECT.width) / 2) };
-  await deckhand.act([{ do: "window", action: "move", target: APP, rect: wanted }, { do: "focus", target: APP }]);
+  await winpilot.act([{ do: "window", action: "move", target: APP, rect: wanted }, { do: "focus", target: APP }]);
   await pause(600);
-  const read = await readUntilReady(deckhand);
+  const read = await readUntilReady(winpilot);
   const rect = rectIn(read.text);
   const region = regionAround(rect, monitor);
   say(`  window ${rect.width}x${rect.height}@${rect.x},${rect.y} · recording region ${region.width}x${region.height}@${region.x},${region.y}`);
   const park = { x: Math.min(monitor.x + monitor.width - 40, region.x + region.width + 140), y: region.y + Math.round(region.height * 0.62) };
-  await deckhand.act([{ do: "mouse", action: "move", target: park, glide_ms: 0 }]);
-  await deckhand.act([{ do: "focus", target: APP }]);
-  await requireAppInFront(deckhand);
+  await winpilot.act([{ do: "mouse", action: "move", target: park, glide_ms: 0 }]);
+  await winpilot.act([{ do: "focus", target: APP }]);
+  await requireAppInFront(winpilot);
   return { rect, region, monitor };
 }
 
-async function requireAppInFront(deckhand) {
-  const { text } = await deckhand.call("observe", { mode: "windows" });
+async function requireAppInFront(winpilot) {
+  const { text } = await winpilot.call("observe", { mode: "windows" });
   const line = text.split("\n").find((entry) => entry.includes(`"${TITLE}`)) ?? "";
   if (!/\bforeground\b/.test(line)) throw new Error(`the "${TITLE}" window is not in the foreground; not recording`);
   say(`  "${TITLE}" is in the foreground`);
@@ -294,12 +294,12 @@ function keyedOptionSteps(region) {
   ];
 }
 
-async function chooseRegion(deckhand) {
+async function chooseRegion(winpilot) {
   try {
-    return { call: await deckhand.act(optionSteps()), method: process.argv.includes("--region-keys") ? "keys" : "set option" };
+    return { call: await winpilot.act(optionSteps()), method: process.argv.includes("--region-keys") ? "keys" : "set option" };
   } catch (error) {
     say(`  set option failed, falling back to click + keys: ${error.message.split("\n").slice(-1)[0]}`);
-    return { call: await deckhand.act(keyedOptionSteps(at('role:combobox name:"Region"'))), method: "keys (fallback)" };
+    return { call: await winpilot.act(keyedOptionSteps(at('role:combobox name:"Region"'))), method: "keys (fallback)" };
   }
 }
 
@@ -312,10 +312,10 @@ function choiceSteps() {
   ];
 }
 
-async function fillForm(deckhand) {
-  const typed = await deckhand.act(typingSteps());
-  const region = await chooseRegion(deckhand);
-  const chosen = await deckhand.act(choiceSteps());
+async function fillForm(winpilot) {
+  const typed = await winpilot.act(typingSteps());
+  const region = await chooseRegion(winpilot);
+  const chosen = await winpilot.act(choiceSteps());
   return { started: typed.started, ended: chosen.ended, text: [typed.text, region.call.text, chosen.text].join("\n"), region: region.method };
 }
 
@@ -341,9 +341,9 @@ function clearRawSlot() {
   renameSync(RAW, join(DEMO, "work", `raw-previous-${Date.now()}.mp4`));
 }
 
-async function perform(deckhand, stage) {
+async function perform(winpilot, stage) {
   clearRawSlot();
-  const recording = await deckhand.call("observe", {
+  const recording = await winpilot.call("observe", {
     mode: "record",
     action: "start",
     region: stage.region,
@@ -359,25 +359,25 @@ async function perform(deckhand, stage) {
   const replies = {};
   try {
     await pause(700);
-    const read = await deckhand.call("observe", { window: APP });
+    const read = await winpilot.call("observe", { window: APP });
     events.read = { ...event(read, zero), ms: read.ended - read.started, elements: read.text.split("\n").filter((line) => /^\s*e\d+ /.test(line)).length };
     await pause(1500);
-    const fill = await fillForm(deckhand);
+    const fill = await fillForm(winpilot);
     events.fill = event(fill, zero);
     replies.fill = fill.text;
     replies.region = fill.region;
-    const pick = await deckhand.act([{ do: "pick", paths: [SPEC], open_with: at('role:button name~:"Attach spec"') }]);
+    const pick = await winpilot.act([{ do: "pick", paths: [SPEC], open_with: at('role:button name~:"Attach spec"') }]);
     events.pick = event(pick, zero);
     replies.pick = pick.text;
-    const create = await deckhand.act(createSteps());
+    const create = await winpilot.act(createSteps());
     events.create = event(create, zero);
     replies.create = create.text;
-    const shot = await deckhand.call("observe", { mode: "screenshot", target: APP });
+    const shot = await winpilot.call("observe", { mode: "screenshot", target: APP });
     events.shot = event(shot, zero);
     replies.shot = shot.text.split("\n")[0].replace(/ · w\d+ .*$/, "");
     await pause(1700);
   } finally {
-    const stopped = await deckhand.call("observe", { mode: "record", action: "stop" });
+    const stopped = await winpilot.call("observe", { mode: "record", action: "stop" });
     replies.stop = stopped.text.split("\n")[0];
     say(`  ${replies.stop}`);
   }
@@ -396,8 +396,8 @@ function killTree(child) {
   spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
 }
 
-async function cleanUp(deckhand, browsers) {
-  if (deckhand) await deckhand.close().catch(() => {});
+async function cleanUp(winpilot, browsers) {
+  if (winpilot) await winpilot.close().catch(() => {});
   if (KEEP) {
     say(`--keep: windows and ${SCRATCH} were left in place`);
     return;
@@ -409,15 +409,15 @@ async function cleanUp(deckhand, browsers) {
 }
 
 async function main() {
-  if (!existsSync(DECKHAND)) throw new Error(`deckhand.exe not found at ${DECKHAND}`);
+  if (!existsSync(WINPILOT)) throw new Error(`winpilot.exe not found at ${WINPILOT}`);
   if (!existsSync(SPEC)) throw new Error(`missing ${SPEC}`);
   const browser = findBrowser();
   writeScratch();
   const browsers = [];
-  let deckhand;
+  let winpilot;
   const interrupted = () => {
     say("interrupted; cleaning up");
-    deckhand?.process.kill();
+    winpilot?.process.kill();
   };
   process.once("SIGINT", interrupted);
   try {
@@ -425,23 +425,23 @@ async function main() {
     browsers.push(launchStage(browser));
     await pause(2500);
     browsers.push(launchApp(browser));
-    deckhand = new Deckhand({ ...process.env, APPDATA: join(SCRATCH, "appdata"), LOCALAPPDATA: join(SCRATCH, "localappdata") });
-    await deckhand.start();
+    winpilot = new WinPilot({ ...process.env, APPDATA: join(SCRATCH, "appdata"), LOCALAPPDATA: join(SCRATCH, "localappdata") });
+    await winpilot.start();
     say("preparing the stage");
-    const stage = await prepare(deckhand);
+    const stage = await prepare(winpilot);
     if (CHECK_ONLY) {
-      const fill = await fillForm(deckhand);
+      const fill = await fillForm(winpilot);
       say(`  region chosen by ${fill.region}\n${fill.text}`);
       say("--check: everything is in place; nothing was recorded");
       return;
     }
     await countdown();
-    const performed = await perform(deckhand, stage);
+    const performed = await perform(winpilot, stage);
     writeTimeline(stage, performed);
     say("next: node demo/build.mjs");
   } finally {
     process.removeListener("SIGINT", interrupted);
-    await cleanUp(deckhand, browsers);
+    await cleanUp(winpilot, browsers);
   }
 }
 

@@ -9,7 +9,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use deckhand_core::{
+use winpilot_core::{
     Context, Result,
     ipc::{FromWorker, ToWorker, read_frame, write_frame},
     protocol::{ActArgs, AfterMode, Call, ClipboardReport, Reply, StatusReport, Step},
@@ -161,7 +161,7 @@ pub struct TempDir {
 impl TempDir {
     pub fn new(tag: &str) -> Self {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |elapsed| elapsed.as_nanos());
-        let path = std::env::temp_dir().join(format!("deckhand-{tag}-{}-{nanos}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("winpilot-{tag}-{}-{nanos}", std::process::id()));
         fs::create_dir_all(&path).unwrap();
         Self { path }
     }

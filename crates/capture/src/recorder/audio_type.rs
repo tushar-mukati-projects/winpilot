@@ -1,4 +1,3 @@
-use deckhand_core::{Context, Result};
 use windows::Win32::Media::MediaFoundation::{
     IMFMediaType, MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, MF_MT_AAC_PAYLOAD_TYPE, MF_MT_ALL_SAMPLES_INDEPENDENT,
     MF_MT_AUDIO_AVG_BYTES_PER_SECOND, MF_MT_AUDIO_BITS_PER_SAMPLE, MF_MT_AUDIO_BLOCK_ALIGNMENT,
@@ -6,6 +5,7 @@ use windows::Win32::Media::MediaFoundation::{
     MFAudioFormat_PCM, MFCreateMediaType, MFMediaType_Audio,
 };
 use windows_core::GUID;
+use winpilot_core::{Context, Result};
 
 use crate::audio::AudioFormat;
 

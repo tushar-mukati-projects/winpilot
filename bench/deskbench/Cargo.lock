@@ -371,7 +371,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
-name = "deckhand-core"
+name = "winpilot-core"
 version = "0.1.0"
 dependencies = [
  "schemars",
@@ -383,7 +383,7 @@ dependencies = [
 name = "deskbench"
 version = "0.1.0"
 dependencies = [
- "deckhand-core",
+ "winpilot-core",
  "fast_image_resize",
  "image",
  "jpeg-encoder",

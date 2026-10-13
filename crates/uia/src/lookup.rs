@@ -1,7 +1,7 @@
 use std::{mem, time::Instant};
 
-use deckhand_core::{Element, ElementRef, Point, Result, WindowRef};
 use windows::Win32::{Foundation::POINT, UI::Accessibility::IUIAutomationElement};
+use winpilot_core::{Element, ElementRef, Point, Result, WindowRef};
 
 use crate::{
     automation::Uia,
@@ -58,7 +58,7 @@ impl Uia {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
     use crate::{

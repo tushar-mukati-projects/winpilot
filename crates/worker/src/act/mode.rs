@@ -1,5 +1,5 @@
-use deckhand_core::{Result, WindowInfo, protocol::Step};
-use deckhand_desktop::Activation;
+use winpilot_core::{Result, WindowInfo, protocol::Step};
+use winpilot_desktop::Activation;
 
 use super::refusal::background_refusal;
 use crate::{call_scope::CallScope, engine::Engine};
@@ -42,7 +42,7 @@ pub(crate) fn for_window(requested: Mode, window: &WindowInfo, step: &Step) -> R
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ErrorCode, Rect};
+    use winpilot_core::{ErrorCode, Rect};
 
     use super::*;
     use crate::test_fixture::window;

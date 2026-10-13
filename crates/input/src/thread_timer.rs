@@ -1,5 +1,5 @@
-use deckhand_core::{Error, Result};
 use windows::Win32::UI::WindowsAndMessaging::{KillTimer, SetTimer};
+use winpilot_core::{Error, Result};
 
 const NEW_TIMER: usize = 0;
 

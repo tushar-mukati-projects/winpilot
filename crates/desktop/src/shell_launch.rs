@@ -1,6 +1,5 @@
 use std::mem::size_of;
 
-use deckhand_core::{Context, Error, ErrorCode, Result};
 use windows::{
     Win32::{
         Foundation::{ERROR_CANCELLED, ERROR_FILE_NOT_FOUND, ERROR_NO_ASSOCIATION, ERROR_PATH_NOT_FOUND},
@@ -15,6 +14,7 @@ use windows::{
     },
     core::{HSTRING, PCWSTR},
 };
+use winpilot_core::{Context, Error, ErrorCode, Result};
 
 use crate::{
     activation::Activation,

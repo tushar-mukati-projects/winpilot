@@ -6,8 +6,8 @@ use std::{
     thread::{self, JoinHandle, ThreadId},
 };
 
-use deckhand_core::{Context, Error, Result};
 use windows::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext};
+use winpilot_core::{Context, Error, Result};
 
 use crate::{automation::Uia, com::ComApartment, options::UiaOptions};
 
@@ -34,7 +34,7 @@ impl UiaHandle {
         let (sender, tasks) = mpsc::channel::<Task>();
         let (ready_sender, ready) = mpsc::sync_channel::<Result<()>>(1);
         let thread = thread::Builder::new()
-            .name("deckhand-uia".to_string())
+            .name("winpilot-uia".to_string())
             .spawn(move || serve(options, &tasks, &ready_sender))
             .context("starting the UI Automation thread")?;
         let shared = Shared { sender: Some(sender), thread_id: thread.thread().id(), thread: Some(thread) };
@@ -109,7 +109,7 @@ fn use_physical_pixels() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
 

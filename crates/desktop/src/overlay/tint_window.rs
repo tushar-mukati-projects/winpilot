@@ -1,4 +1,3 @@
-use deckhand_core::{Rect, Result};
 use windows::Win32::{
     Foundation::{COLORREF, HINSTANCE},
     UI::WindowsAndMessaging::{
@@ -6,6 +5,7 @@ use windows::Win32::{
         SetLayeredWindowAttributes, SetWindowPos,
     },
 };
+use winpilot_core::{Rect, Result};
 
 use super::window::{Capture, OverlayWindow};
 

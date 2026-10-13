@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use deckhand_core::{Error, ErrorCode};
 use tokio::time::{Instant, Sleep, sleep_until};
+use winpilot_core::{Error, ErrorCode};
 
 use crate::death::{Death, seconds};
 

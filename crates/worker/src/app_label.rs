@@ -1,4 +1,4 @@
-use deckhand_core::WindowInfo;
+use winpilot_core::WindowInfo;
 
 use crate::window_classes::FRAME_HOST_PROCESS;
 
@@ -59,7 +59,7 @@ const fn is_invisible(letter: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;

@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use deckhand_core::{Element, ElementRef, Error, ErrorCode, Result, format::element_line};
+use winpilot_core::{Element, ElementRef, Error, ErrorCode, Result, format::element_line};
 
 use crate::{
     automation::Uia,
@@ -85,7 +85,7 @@ fn ambiguous_ref(id: ElementRef, candidates: &[&Element]) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ElementState, Patterns, Rect, Role};
+    use winpilot_core::{ElementState, Patterns, Rect, Role};
 
     use super::*;
 

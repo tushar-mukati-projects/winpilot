@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use deckhand_core::{Error, ErrorCode, Result, WindowInfo, WindowRef, format::other_desktop};
+use winpilot_core::{Error, ErrorCode, Result, WindowInfo, WindowRef, format::other_desktop};
 
 use crate::window_classes::is_popup;
 
@@ -26,18 +26,18 @@ enum Front {
 }
 
 pub(crate) fn bring_forward(window: &WindowInfo) -> Result<WindowInfo> {
-    let current = deckhand_desktop::window(window.hwnd)?;
+    let current = winpilot_desktop::window(window.hwnd)?;
     refuse_other_desktop(&current)?;
     if is_popup(&current) {
         require_popup_in_front(&current)?;
         return Ok(current);
     }
-    let behind = deckhand_desktop::foreground_window() != Some(current.hwnd);
-    if behind && deckhand_desktop::is_enabled(current.hwnd) {
-        deckhand_desktop::focus_window(current.hwnd)?;
+    let behind = winpilot_desktop::foreground_window() != Some(current.hwnd);
+    if behind && winpilot_desktop::is_enabled(current.hwnd) {
+        winpilot_desktop::focus_window(current.hwnd)?;
     }
     require_foreground(current.hwnd)?;
-    deckhand_desktop::window(window.hwnd)
+    winpilot_desktop::window(window.hwnd)
 }
 
 pub(crate) fn require_in_front(window: &WindowInfo) -> Result<()> {
@@ -53,10 +53,10 @@ pub(crate) fn require_foreground(target: WindowRef) -> Result<()> {
 }
 
 pub(crate) fn require_no_dialog_on_top(target: WindowRef) -> Result<()> {
-    if !deckhand_desktop::is_window(target) {
+    if !winpilot_desktop::is_window(target) {
         return Ok(());
     }
-    match front(target, &seen(target, deckhand_desktop::foreground_window())) {
+    match front(target, &seen(target, winpilot_desktop::foreground_window())) {
         Front::DialogOnTop => Err(dialog_on_top(target)),
         Front::Target | Front::Elsewhere(_) => Ok(()),
     }
@@ -78,13 +78,13 @@ fn popup_belongs_to(popup: &WindowInfo, owners: &[WindowRef], foreground: Option
 }
 
 pub(crate) fn popup_showing(hwnd: WindowRef) -> bool {
-    deckhand_desktop::all_visible_windows().is_ok_and(|windows| windows.iter().any(|window| window.hwnd == hwnd))
+    winpilot_desktop::all_visible_windows().is_ok_and(|windows| windows.iter().any(|window| window.hwnd == hwnd))
 }
 
 pub(crate) fn owner_chain(window: Option<WindowRef>) -> Vec<WindowRef> {
     let mut chain = Vec::new();
     let mut current = window;
-    while let Some(owner) = current.and_then(deckhand_desktop::owner_of) {
+    while let Some(owner) = current.and_then(winpilot_desktop::owner_of) {
         if chain.contains(&owner) || chain.len() >= MAX_OWNERS {
             break;
         }
@@ -98,7 +98,7 @@ fn require_popup_in_front(popup: &WindowInfo) -> Result<()> {
     if !popup_showing(popup.hwnd) {
         return Err(Error::not_found(format!("{} is a menu or dropdown that is no longer showing", popup.hwnd)));
     }
-    let foreground = deckhand_desktop::foreground_window().and_then(|hwnd| deckhand_desktop::window(hwnd).ok());
+    let foreground = winpilot_desktop::foreground_window().and_then(|hwnd| winpilot_desktop::window(hwnd).ok());
     if popup_belongs_to(popup, &owner_chain(Some(popup.hwnd)), foreground.as_ref()) {
         return Ok(());
     }
@@ -110,7 +110,7 @@ fn refuse_other_desktop(window: &WindowInfo) -> Result<()> {
     let Some(desktop) = other_desktop(window) else { return Ok(()) };
     Err(Error::new(
         ErrorCode::NeedsUser,
-        format!("{} is on {desktop}; Deckhand never switches desktops, so it won't bring it forward", window.hwnd),
+        format!("{} is on {desktop}; WinPilot never switches desktops, so it won't bring it forward", window.hwnd),
     ))
 }
 
@@ -118,7 +118,7 @@ fn seen(target: WindowRef, foreground: Option<WindowRef>) -> Seen {
     Seen {
         foreground,
         owners_of_foreground: owner_chain(foreground),
-        target_enabled: deckhand_desktop::is_enabled(target),
+        target_enabled: winpilot_desktop::is_enabled(target),
     }
 }
 
@@ -141,7 +141,7 @@ fn popup_elsewhere_message(popup: WindowRef, other: Option<WindowRef>) -> String
 fn settled_foreground(target: WindowRef) -> Option<WindowRef> {
     let started = Instant::now();
     loop {
-        let foreground = deckhand_desktop::foreground_window();
+        let foreground = winpilot_desktop::foreground_window();
         if foreground == Some(target) || started.elapsed() >= FOREGROUND_SETTLE {
             return foreground;
         }
@@ -151,7 +151,7 @@ fn settled_foreground(target: WindowRef) -> Option<WindowRef> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Rect;
+    use winpilot_core::Rect;
 
     use super::*;
     use crate::test_fixture::window;
@@ -222,7 +222,7 @@ mod tests {
         let elsewhere = WindowInfo { desktop: Some(2), on_current_desktop: false, ..app(5, 1) };
         let error = refuse_other_desktop(&elsewhere).unwrap_err();
         assert_eq!(error.code, ErrorCode::NeedsUser);
-        assert!(error.message.starts_with("w5 is on desktop 2; Deckhand never switches desktops"), "{}", error.message);
+        assert!(error.message.starts_with("w5 is on desktop 2; WinPilot never switches desktops"), "{}", error.message);
         let unknown = WindowInfo { desktop: None, ..elsewhere };
         assert!(refuse_other_desktop(&unknown).unwrap_err().message.starts_with("w5 is on another desktop"));
         assert!(refuse_other_desktop(&app(5, 1)).is_ok());

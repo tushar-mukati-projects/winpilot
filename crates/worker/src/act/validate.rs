@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     Error, Result, TargetSpec,
     keys::parse_keys,
     protocol::{ActArgs, Step},
@@ -71,7 +71,7 @@ fn parse_optional(target: Option<&TargetSpec>) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ErrorCode, protocol::AfterMode};
+    use winpilot_core::{ErrorCode, protocol::AfterMode};
 
     use super::*;
     use crate::test_fixture::engine;
@@ -127,7 +127,7 @@ mod tests {
     fn later_steps_that_cannot_run_are_caught_before_anything_runs() {
         let relative = validate(&args(&[r#"{"do":"wait","ms":1}"#, r#"{"do":"pick","paths":["notes.txt"]}"#]));
         assert!(relative.unwrap_err().message.starts_with("step 2: "));
-        let missing_folder = r#"{"do":"pick","paths":["C:\\deckhand-no-such-folder\\a.txt"]}"#;
+        let missing_folder = r#"{"do":"pick","paths":["C:\\winpilot-no-such-folder\\a.txt"]}"#;
         assert_eq!(validate(&args(&[missing_folder])).unwrap_err().code, ErrorCode::NotFound);
         let bad_scope = r#"{"do":"wait","until":"text","text":"Done","window":"role:button"}"#;
         assert!(validate(&args(&[bad_scope])).is_err());

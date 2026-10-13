@@ -1,4 +1,3 @@
-use deckhand_core::{Error, Result};
 use windows::Win32::{
     Foundation::{HWND, LPARAM, WPARAM},
     UI::{
@@ -9,6 +8,7 @@ use windows::Win32::{
         },
     },
 };
+use winpilot_core::{Error, Result};
 
 const ANSWER_WAIT_MS: u32 = 2000;
 

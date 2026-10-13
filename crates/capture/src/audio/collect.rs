@@ -1,7 +1,7 @@
 use std::sync::mpsc::RecvTimeoutError;
 use std::time::{Duration, Instant};
 
-use deckhand_core::Result;
+use winpilot_core::Result;
 
 use super::capture::{AudioCapture, AudioChunk};
 use super::pcm::{AudioFormat, Pcm};

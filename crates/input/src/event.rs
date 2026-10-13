@@ -1,8 +1,8 @@
-use deckhand_core::INJECTION_MARK;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBD_EVENT_FLAGS, KEYBDINPUT, MOUSE_EVENT_FLAGS, MOUSEINPUT,
     VIRTUAL_KEY,
 };
+use winpilot_core::INJECTION_MARK;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct KeyStroke {
@@ -54,12 +54,12 @@ fn mouse_input(action: MouseAction) -> INPUT {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{
+    use windows::Win32::UI::Input::KeyboardAndMouse::{KEYEVENTF_UNICODE, MOUSEEVENTF_MOVE, VK_RETURN};
+    use winpilot_core::{
         Point,
         keys::{Chord, Key, Modifiers, NamedKey},
         protocol::Direction,
     };
-    use windows::Win32::UI::Input::KeyboardAndMouse::{KEYEVENTF_UNICODE, MOUSEEVENTF_MOVE, VK_RETURN};
 
     use super::*;
     use crate::{

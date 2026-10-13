@@ -1,6 +1,6 @@
 use std::{f32::consts::TAU, time::Duration};
 
-use deckhand_core::{Point, Rect};
+use winpilot_core::{Point, Rect};
 
 use super::{
     canvas::Canvas,

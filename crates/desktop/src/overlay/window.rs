@@ -1,6 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use deckhand_core::{Context, Result};
 use windows::{
     Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
@@ -14,12 +13,13 @@ use windows::{
     },
     core::{PCWSTR, w},
 };
+use winpilot_core::{Context, Result};
 
 use crate::window_class::register_window_class;
 
-const OVERLAY_CLASS: PCWSTR = w!("DeckhandOverlay");
-const TINT_CLASS: PCWSTR = w!("DeckhandOverlayTint");
-const OVERLAY_TITLE: PCWSTR = w!("Deckhand overlay");
+const OVERLAY_CLASS: PCWSTR = w!("WinPilotOverlay");
+const TINT_CLASS: PCWSTR = w!("WinPilotOverlayTint");
+const OVERLAY_TITLE: PCWSTR = w!("WinPilot overlay");
 
 static CLASS_REGISTERED: AtomicBool = AtomicBool::new(false);
 static TINT_CLASS_REGISTERED: AtomicBool = AtomicBool::new(false);

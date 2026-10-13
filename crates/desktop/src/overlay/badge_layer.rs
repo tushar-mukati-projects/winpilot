@@ -1,4 +1,4 @@
-use deckhand_core::{Error, Point, Result};
+use winpilot_core::{Error, Point, Result};
 
 use super::{
     color::alpha_byte,

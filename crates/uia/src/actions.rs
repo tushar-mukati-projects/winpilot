@@ -1,4 +1,3 @@
-use deckhand_core::{ElementRef, Error, Result};
 use windows::Win32::UI::Accessibility::{
     IUIAutomationExpandCollapsePattern, IUIAutomationInvokePattern, IUIAutomationLegacyIAccessiblePattern,
     IUIAutomationScrollItemPattern, IUIAutomationSelectionItemPattern, IUIAutomationValuePattern,
@@ -6,6 +5,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_SelectionItemPatternId, UIA_ValuePatternId,
 };
 use windows_core::BSTR;
+use winpilot_core::{ElementRef, Error, Result};
 
 use crate::{automation::Uia, failure::UiaResult, pattern::current_pattern};
 
@@ -87,7 +87,7 @@ impl Uia {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{Element, ErrorCode, Role, Snapshot};
+    use winpilot_core::{Element, ErrorCode, Role, Snapshot};
 
     use super::*;
     use crate::{
@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "acts on the deckhand fixture app"]
+    #[ignore = "acts on the winpilot fixture app"]
     fn sets_and_reads_the_edit_value() {
         let Some(fixture) = launch_fixture() else { return };
         let window = fixture.window.clone();
@@ -113,10 +113,10 @@ mod tests {
             .run(move |uia| {
                 let snapshot = uia.snapshot(&window, &SnapshotOptions::default())?;
                 let edit = control(&snapshot, "2001", Role::Edit)?;
-                uia.set_value(edit, "hello deckhand")?;
-                assert_eq!(uia.value(edit)?.as_deref(), Some("hello deckhand"));
+                uia.set_value(edit, "hello winpilot")?;
+                assert_eq!(uia.value(edit)?.as_deref(), Some("hello winpilot"));
                 assert_eq!(uia.text(edit, 5)?, "hello");
-                assert_eq!(uia.element(edit)?.value.as_deref(), Some("hello deckhand"));
+                assert_eq!(uia.element(edit)?.value.as_deref(), Some("hello winpilot"));
                 assert!(uia.contains(snapshot.elements[0].id, edit)?);
                 assert_eq!(uia.window_of(edit)?, window.hwnd);
                 Ok(())
@@ -125,7 +125,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "acts on the deckhand fixture app"]
+    #[ignore = "acts on the winpilot fixture app"]
     fn invokes_the_button_and_toggles_the_checkbox() {
         let Some(fixture) = launch_fixture() else { return };
         let window = fixture.window.clone();
@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "acts on the deckhand fixture app"]
+    #[ignore = "acts on the winpilot fixture app"]
     fn selects_a_listbox_item() {
         let Some(fixture) = launch_fixture() else { return };
         let window = fixture.window.clone();

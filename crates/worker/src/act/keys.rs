@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     Error, Result,
     keys::{Chord, parse_keys},
     protocol::KeyAction,
@@ -83,7 +83,7 @@ fn press(engine: &Engine, chords: &[Chord], repeat: u32, call: &CallScope) -> Re
     for _ in 0..repeat {
         for chord in chords {
             engine.guard.check_running(call)?;
-            deckhand_input::press_chord(chord)?;
+            winpilot_input::press_chord(chord)?;
         }
     }
     Ok(())
@@ -91,7 +91,7 @@ fn press(engine: &Engine, chords: &[Chord], repeat: u32, call: &CallScope) -> Re
 
 fn hold(chords: &[Chord], call: &CallScope) -> Result<()> {
     for chord in chords {
-        deckhand_input::hold_chord(chord)?;
+        winpilot_input::hold_chord(chord)?;
         call.note_held_keys(*chord);
     }
     Ok(())
@@ -100,7 +100,7 @@ fn hold(chords: &[Chord], call: &CallScope) -> Result<()> {
 fn release(engine: &Engine, chords: &[Chord], call: &CallScope) -> Result<Done> {
     engine.guard.check_running(call)?;
     for chord in chords {
-        deckhand_input::release_chord(chord)?;
+        winpilot_input::release_chord(chord)?;
         call.note_released_keys(*chord);
     }
     Ok(Done::by("keys"))

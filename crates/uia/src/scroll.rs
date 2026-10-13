@@ -1,8 +1,8 @@
-use deckhand_core::{ElementRef, Error, Result, protocol::Direction};
 use windows::Win32::UI::Accessibility::{
     IUIAutomationElement, IUIAutomationScrollPattern, ScrollAmount, ScrollAmount_NoAmount, ScrollAmount_SmallDecrement,
     ScrollAmount_SmallIncrement, UIA_ScrollPatternId,
 };
+use winpilot_core::{ElementRef, Error, Result, protocol::Direction};
 
 use crate::{
     ancestry::MAX_ANCESTRY, automation::Uia, failure::UiaResult, pattern::current_pattern, resolved::Resolved,
@@ -124,7 +124,7 @@ fn direction_word(direction: Direction) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::{ErrorCode, Role};
+    use winpilot_core::{ErrorCode, Role};
 
     use super::*;
     use crate::{SnapshotOptions, test_support::launch_fixture};
@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "acts on the deckhand fixture app"]
+    #[ignore = "acts on the winpilot fixture app"]
     fn scrolls_the_listbox_or_reports_unsupported() {
         let Some(fixture) = launch_fixture() else { return };
         let window = fixture.window.clone();

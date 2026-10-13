@@ -129,7 +129,7 @@ pub struct ObserveArgs {
     #[schemars(description = "record: show the mouse pointer (default true).")]
     pub cursor: Option<bool>,
     #[schemars(
-        description = "record: absolute .mp4 or .gif path that does not exist yet. Default: Videos\\Deckhand\\deckhand-<time>.mp4. listen: an audio or video file to transcribe instead of listening live."
+        description = "record: absolute .mp4 or .gif path that does not exist yet. Default: Videos\\WinPilot\\winpilot-<time>.mp4. listen: an audio or video file to transcribe instead of listening live."
     )]
     pub path: Option<String>,
     #[schemars(

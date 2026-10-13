@@ -3,13 +3,13 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use chrono::Local;
-use deckhand_capture::OutputFile;
-use deckhand_core::{Context, Error, Result, config::RecordConfig, protocol::VideoFormat};
+use winpilot_capture::OutputFile;
+use winpilot_core::{Context, Error, Result, config::RecordConfig, protocol::VideoFormat};
 
 use super::naming::{candidates, default_stem};
 use crate::guard::Guard;
 
-const RECORDINGS_SUBFOLDER: &str = "Deckhand";
+const RECORDINGS_SUBFOLDER: &str = "WinPilot";
 
 pub(crate) fn reserve(
     guard: &Guard,
@@ -53,12 +53,12 @@ fn recordings_folder(config: &RecordConfig) -> Result<PathBuf> {
     if let Some(folder) = &config.folder {
         return Ok(folder.clone());
     }
-    Ok(deckhand_desktop::videos_folder()?.join(RECORDINGS_SUBFOLDER))
+    Ok(winpilot_desktop::videos_folder()?.join(RECORDINGS_SUBFOLDER))
 }
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::ErrorCode;
+    use winpilot_core::ErrorCode;
 
     use super::*;
 
@@ -66,7 +66,7 @@ mod tests {
 
     impl TempFolder {
         fn new(name: &str) -> Self {
-            let folder = std::env::temp_dir().join(format!("deckhand-output-{name}-{}", std::process::id()));
+            let folder = std::env::temp_dir().join(format!("winpilot-output-{name}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&folder);
             Self(folder)
         }
@@ -85,12 +85,12 @@ mod tests {
     #[test]
     fn default_names_never_collide() {
         let temp = TempFolder::new("collide");
-        let first = reserve_in(&temp.0, "deckhand-1", VideoFormat::Mp4).unwrap();
-        let second = reserve_in(&temp.0, "deckhand-1", VideoFormat::Mp4).unwrap();
-        let third = reserve_in(&temp.0, "deckhand-1", VideoFormat::Mp4).unwrap();
-        let gif = reserve_in(&temp.0, "deckhand-1", VideoFormat::Gif).unwrap();
+        let first = reserve_in(&temp.0, "winpilot-1", VideoFormat::Mp4).unwrap();
+        let second = reserve_in(&temp.0, "winpilot-1", VideoFormat::Mp4).unwrap();
+        let third = reserve_in(&temp.0, "winpilot-1", VideoFormat::Mp4).unwrap();
+        let gif = reserve_in(&temp.0, "winpilot-1", VideoFormat::Gif).unwrap();
         let names = [&first, &second, &third, &gif].map(|reserved| file_name(reserved.path()));
-        assert_eq!(names, ["deckhand-1.mp4", "deckhand-1-2.mp4", "deckhand-1-3.mp4", "deckhand-1.gif"]);
+        assert_eq!(names, ["winpilot-1.mp4", "winpilot-1-2.mp4", "winpilot-1-3.mp4", "winpilot-1.gif"]);
     }
 
     #[test]
@@ -129,6 +129,6 @@ mod tests {
         let config = RecordConfig { folder: Some(PathBuf::from("D:\\Clips")), ..RecordConfig::default() };
         assert_eq!(recordings_folder(&config).unwrap(), PathBuf::from("D:\\Clips"));
         let default = recordings_folder(&RecordConfig::default()).unwrap();
-        assert_eq!(default, deckhand_desktop::videos_folder().unwrap().join("Deckhand"));
+        assert_eq!(default, winpilot_desktop::videos_folder().unwrap().join("WinPilot"));
     }
 }

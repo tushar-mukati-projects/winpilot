@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use deckhand_core::{Context, Result};
 use windows::Win32::{
     Foundation::{CloseHandle, FILETIME, HANDLE},
     System::{
@@ -11,6 +10,7 @@ use windows::Win32::{
         Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
     },
 };
+use winpilot_core::{Context, Result};
 
 const MAX_DEPTH: usize = 32;
 

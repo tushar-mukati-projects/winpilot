@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use deckhand_core::{Error, ErrorCode};
+use winpilot_core::{Error, ErrorCode};
 
 use crate::death::seconds;
 

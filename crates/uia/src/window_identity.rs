@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use deckhand_core::WindowRef;
+use winpilot_core::WindowRef;
 
 use crate::win;
 

@@ -1,4 +1,4 @@
-use deckhand_core::{Element, Error, Result, WindowInfo, protocol::ClickHow};
+use winpilot_core::{Element, Error, Result, WindowInfo, protocol::ClickHow};
 
 use super::{
     by_pattern::by_pattern,
@@ -70,7 +70,7 @@ fn pattern_or_fallback(engine: &Engine, prepared: &Prepared, options: ClickOptio
 
 fn click_in_background(engine: &Engine, prepared: &Prepared, options: ClickOptions, call: &CallScope) -> Result<Done> {
     if matches!(prepared.reach, Reach::Point { .. }) {
-        message::require_not_in_use(&deckhand_desktop::window(prepared.window.hwnd)?)?;
+        message::require_not_in_use(&winpilot_desktop::window(prepared.window.hwnd)?)?;
     }
     let candidate = background_candidate(engine, prepared);
     match background_path(options, candidate) {

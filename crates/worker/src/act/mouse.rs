@@ -1,4 +1,4 @@
-use deckhand_core::{
+use winpilot_core::{
     Error, Result, TargetSpec,
     protocol::{Direction, MouseAction, MouseButton, Step},
 };

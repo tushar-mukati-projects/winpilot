@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use deckhand_core::{Result, protocol::MouseButton};
+use winpilot_core::{Result, protocol::MouseButton};
 
 use super::{
     done::Done,
@@ -37,7 +37,7 @@ pub(crate) fn drag(engine: &Engine, drag: &Drag<'_>, call: &CallScope) -> Result
     overlay::click(engine, call, grab_point, 1);
     let travel = motion.glide_duration(drag.glide_ms).max(SHORTEST_DRAG);
     overlay::glide(engine, call, grab_point, release_point, travel);
-    deckhand_input::drag_guarded(grab_point, release_point, drag.button, travel, || motion.check())?;
+    winpilot_input::drag_guarded(grab_point, release_point, drag.button, travel, || motion.check())?;
     overlay::click(engine, call, release_point, 1);
     settle(engine, &grab.window, call);
     Ok(Done::by("mouse"))

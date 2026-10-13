@@ -3,7 +3,7 @@ mod replacement;
 
 use std::{collections::HashMap, mem, time::Instant};
 
-use deckhand_core::{ElementRef, WindowRef};
+use winpilot_core::{ElementRef, WindowRef};
 
 use crate::fingerprint::Fingerprint;
 
@@ -170,7 +170,7 @@ impl<T: Clone> Registry<T> {
 
 #[cfg(test)]
 mod tests {
-    use deckhand_core::Role;
+    use winpilot_core::Role;
 
     use super::*;
     use crate::fingerprint::tests::{print, test_window};

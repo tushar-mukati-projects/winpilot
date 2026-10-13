@@ -1,4 +1,3 @@
-use deckhand_core::{Element, ElementRef, ElementState, Patterns, Rect, Role, WindowRef};
 use windows::Win32::{
     Foundation::RECT,
     UI::Accessibility::{
@@ -18,6 +17,7 @@ use windows::Win32::{
     },
 };
 use windows_core::{BOOL, BSTR};
+use winpilot_core::{Element, ElementRef, ElementState, Patterns, Rect, Role, WindowRef};
 
 use crate::{
     fingerprint::Fingerprint, text::truncate_chars, tree_path::TreePath, variant::OwnedVariant, win,

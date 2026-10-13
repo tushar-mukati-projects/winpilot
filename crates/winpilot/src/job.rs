@@ -1,6 +1,5 @@
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 
-use deckhand_core::{Context, Result};
 use windows::{
     Win32::{
         Foundation::HANDLE,
@@ -13,6 +12,7 @@ use windows::{
     },
     core::PCWSTR,
 };
+use winpilot_core::{Context, Result};
 
 const TERMINATED_EXIT_CODE: u32 = 1;
 const WORKER_LIMITS: JOB_OBJECT_LIMIT = JOB_OBJECT_LIMIT(

@@ -1,4 +1,4 @@
-use deckhand_core::{ElementRef, Role};
+use winpilot_core::{ElementRef, Role};
 
 use crate::{
     tree_path::{PathCloseness, TreePath, View},
@@ -71,7 +71,7 @@ pub(crate) fn top_matches<'a>(
 pub(crate) mod tests {
     use std::sync::Arc;
 
-    use deckhand_core::WindowRef;
+    use winpilot_core::WindowRef;
 
     use super::*;
 
