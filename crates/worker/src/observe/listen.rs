@@ -53,10 +53,18 @@ impl SpeechSlot {
 }
 
 fn live(engine: &Engine, source: ListenSource, seconds: u32, call: &CallScope) -> Result<Heard> {
-    let audio = capture_audio(capture_source(source), Duration::from_secs(u64::from(seconds)), || {
-        engine.guard.check_running(call)
-    })?;
-    Ok(Heard { audio, what: format!("{seconds} s of {}", source.name()), notes: Vec::new() })
+    let length = Duration::from_secs(u64::from(seconds));
+    let check = || engine.guard.check_running(call);
+    match capture_audio(capture_source(source), length, check) {
+        Ok(audio) => Ok(Heard { audio, what: format!("{seconds} s of {}", source.name()), notes: Vec::new() }),
+        Err(mic_problem) if source == ListenSource::Both => {
+            let audio = capture_audio(AudioSource::System, length, || engine.guard.check_running(call))?;
+            let note =
+                format!("heard the system sound only, because the mic could not be used: {}", mic_problem.message);
+            Ok(Heard { audio, what: format!("{seconds} s of {}", ListenSource::System.name()), notes: vec![note] })
+        }
+        Err(error) => Err(error),
+    }
 }
 
 const fn capture_source(source: ListenSource) -> AudioSource {

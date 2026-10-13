@@ -111,7 +111,7 @@ Other clients, such as Codex, take the same command and `args` in their own conf
 | `marks` | Draw element ref labels on the screenshot. |
 | `action` | Recording `start`, `stop` or `status`; required for `mode=record`. `stop` and `status` take no other fields. |
 | `fps`, `max_seconds`, `cursor`, `path` | Override the [`[record]` config](#configuration) for one recording. |
-| `audio` | Recording `start` only: the sound in an MP4. `system` (default: what the PC plays), `mic`, `both` (mixed) or `none`. GIFs have no sound, so a GIF with any `audio` other than `none` is refused. |
+| `audio` | Recording `start` only: the sound in an MP4. `system` (default: what the PC plays), `mic`, `both` (mixed; if the mic can't be used, the system sound is kept and the reply says why) or `none`. GIFs have no sound, so a GIF with any `audio` other than `none` is refused. |
 
 Arguments are checked per mode before anything runs. A field from another mode is an `invalid_argument` error that says where it belongs, such as `fps does not apply to mode=screenshot; it is for mode=record`. Text, screenshots and recordings take at most one source (`window`/`target`/`region` for text, `target`/`region`/`monitor` for the others); with none, they use the default window. When `apps` is cut short, a first line says so: `showing 30 of 212 installed apps; narrow with query or raise max`. `status` answers even when the worker is down or the config file is invalid.
 

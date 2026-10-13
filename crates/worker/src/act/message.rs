@@ -8,7 +8,7 @@ use super::{
     by_pattern::by_pattern, click_choice::ClickOptions, done::Done, locate::locate_in_place, motion::Motion,
     pointer::SHORTEST_DRAG, target::Prepared,
 };
-use crate::{call_scope::CallScope, engine::Engine, host_terminal, overlay};
+use crate::{call_scope::CallScope, cover, engine::Engine, host_terminal, overlay};
 
 pub(crate) const MESSAGE: &str = "message";
 
@@ -91,7 +91,7 @@ fn spot_at(engine: &Engine, window: &WindowInfo, point: Point, call: &CallScope)
     require_inside(window, point)?;
     host_terminal::check_point(engine, window, point)?;
     let target = deckhand_input::message_spot(window.hwnd, point)?;
-    if !same_app(window.pid, target.pid, deckhand_desktop::process_image_path) {
+    if !cover::same_program(window.pid, target.pid, deckhand_desktop::process_image_path) {
         return Err(other_process(window, point));
     }
     Ok(Spot { window: window.clone(), point, target })
@@ -120,16 +120,6 @@ fn require_inside(window: &WindowInfo, point: Point) -> Result<()> {
     ))
 }
 
-fn same_app(window_pid: u32, spot_pid: u32, image_path: impl Fn(u32) -> Option<String>) -> bool {
-    if window_pid == spot_pid {
-        return true;
-    }
-    match (image_path(window_pid), image_path(spot_pid)) {
-        (Some(window), Some(spot)) => window.eq_ignore_ascii_case(&spot),
-        _ => false,
-    }
-}
-
 fn other_process(window: &WindowInfo, point: Point) -> Error {
     Error::new(
         ErrorCode::Denied,
@@ -153,25 +143,6 @@ mod tests {
 
     use super::*;
     use crate::test_fixture::window;
-
-    fn paths(pid: u32) -> Option<String> {
-        match pid {
-            1 | 2 => Some("C:\\Apps\\CapCut.exe".to_string()),
-            3 => Some("c:\\apps\\capcut.EXE".to_string()),
-            4 => Some("C:\\Other\\Helper.exe".to_string()),
-            _ => None,
-        }
-    }
-
-    #[test]
-    fn the_same_process_or_the_same_program_may_get_messages() {
-        assert!(same_app(7, 7, |_| panic!("the path is not needed for the same process")));
-        assert!(same_app(1, 2, paths));
-        assert!(same_app(1, 3, paths));
-        assert!(!same_app(1, 4, paths));
-        assert!(!same_app(1, 9, paths));
-        assert!(!same_app(9, 10, paths));
-    }
 
     #[test]
     fn refusals_name_the_spot_and_the_window() {

@@ -5,8 +5,22 @@ pub(crate) fn start_sound(source: Option<AudioSource>) -> (Option<AudioCapture>,
     let Some(source) = source else { return (None, AudioTrack::default()) };
     match AudioCapture::start(source) {
         Ok(capture) => (Some(capture), AudioTrack { source: Some(source), note: None }),
+        Err(error) if source == AudioSource::Both => system_only(&error.message),
         Err(error) => (None, without_sound(&error.message)),
     }
+}
+
+fn system_only(mic_problem: &str) -> (Option<AudioCapture>, AudioTrack) {
+    match AudioCapture::start(AudioSource::System) {
+        Ok(capture) => {
+            (Some(capture), AudioTrack { source: Some(AudioSource::System), note: Some(mic_dropped(mic_problem)) })
+        }
+        Err(error) => (None, without_sound(&error.message)),
+    }
+}
+
+fn mic_dropped(mic_problem: &str) -> String {
+    format!("recorded the system sound only, because the mic could not be used: {mic_problem}")
 }
 
 pub(crate) fn without_sound(reason: &str) -> AudioTrack {
@@ -22,6 +36,14 @@ mod tests {
         let (capture, track) = start_sound(None);
         assert!(capture.is_none());
         assert_eq!(track, AudioTrack::default());
+    }
+
+    #[test]
+    fn a_dropped_mic_is_explained() {
+        assert_eq!(
+            mic_dropped("access denied"),
+            "recorded the system sound only, because the mic could not be used: access denied"
+        );
     }
 
     #[test]

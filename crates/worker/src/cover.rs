@@ -33,10 +33,17 @@ const fn covers(facts: CoverFacts) -> bool {
     !same_app
 }
 
-fn cover_facts(target: &WindowInfo, hit: &WindowInfo, owned_by_target: bool, agent_terminal: bool) -> CoverFacts {
+struct Relation {
+    same_program: bool,
+    owned_by_target: bool,
+    agent_terminal: bool,
+}
+
+fn cover_facts(target: &WindowInfo, hit: &WindowInfo, relation: &Relation) -> CoverFacts {
+    let Relation { same_program, owned_by_target, agent_terminal } = *relation;
     CoverFacts {
         same_window: target.hwnd == hit.hwnd,
-        same_process: target.pid == hit.pid,
+        same_process: same_program,
         shared_host: SHARED_HOSTS.iter().any(|host| host.eq_ignore_ascii_case(target.process.trim())),
         popup: is_popup(hit),
         owned_by_target,
@@ -52,8 +59,22 @@ pub(crate) fn window_covers(engine: &Engine, target: WindowRef, hit: WindowRef) 
     let (Ok(target), Ok(hit)) = (deckhand_desktop::window(target), deckhand_desktop::window(hit)) else {
         return true;
     };
-    let owned = owned_by(hit.hwnd, target.hwnd);
-    covers(cover_facts(&target, &hit, owned, engine.host.contains(hit.pid)))
+    let relation = Relation {
+        same_program: same_program(target.pid, hit.pid, deckhand_desktop::process_image_path),
+        owned_by_target: owned_by(hit.hwnd, target.hwnd),
+        agent_terminal: engine.host.contains(hit.pid),
+    };
+    covers(cover_facts(&target, &hit, &relation))
+}
+
+pub(crate) fn same_program(target: u32, hit: u32, image_path: impl Fn(u32) -> Option<String>) -> bool {
+    if target == hit {
+        return true;
+    }
+    match (image_path(target), image_path(hit)) {
+        (Some(target), Some(hit)) => target.eq_ignore_ascii_case(&hit),
+        _ => false,
+    }
 }
 
 pub(crate) fn uncovered_at(engine: &Engine, window: &WindowInfo, spot: Point) -> bool {
@@ -83,59 +104,83 @@ mod tests {
         WindowInfo { pid, class_name: class_name.to_string(), ..window(hwnd, process, "App", Rect::new(0, 0, 10, 10)) }
     }
 
+    fn facts(target: &WindowInfo, hit: &WindowInfo, owned_by_target: bool, agent_terminal: bool) -> CoverFacts {
+        let relation = Relation { same_program: target.pid == hit.pid, owned_by_target, agent_terminal };
+        cover_facts(target, hit, &relation)
+    }
+
     fn clipchamp() -> WindowInfo {
         app(1, 100, "Clipchamp.exe", "WinUIDesktopWin32WindowClass")
     }
 
     #[test]
+    fn windows_of_the_same_program_count_as_one_app_across_processes() {
+        let paths = |pid: u32| match pid {
+            1 | 2 => Some("C:/Apps/CapCut/CapCut.exe".to_string()),
+            3 => Some("c:/apps/capcut/capcut.EXE".to_string()),
+            4 => Some("C:/Apps/Other.exe".to_string()),
+            _ => None,
+        };
+        assert!(same_program(7, 7, |_| None));
+        assert!(same_program(1, 2, paths));
+        assert!(same_program(1, 3, paths));
+        assert!(!same_program(1, 4, paths));
+        assert!(!same_program(1, 9, paths));
+        let editor = app(10, 1, "CapCut.exe", "Qt622QWindowIcon");
+        let helper = app(11, 2, "CapCut.exe", "Qt622QWindowIcon");
+        let relation = Relation { same_program: true, owned_by_target: false, agent_terminal: false };
+        assert!(!covers(cover_facts(&editor, &helper, &relation)));
+    }
+
+    #[test]
     fn the_target_window_itself_never_covers() {
-        assert!(!covers(cover_facts(&clipchamp(), &clipchamp(), false, false)));
+        assert!(!covers(facts(&clipchamp(), &clipchamp(), false, false)));
     }
 
     #[test]
     fn a_flyout_or_dialog_of_the_same_process_does_not_cover() {
         let flyout = app(2, 100, "Clipchamp.exe", "Microsoft.UI.Content.PopupWindowSiteBridge");
-        assert!(!covers(cover_facts(&clipchamp(), &flyout, false, false)));
+        assert!(!covers(facts(&clipchamp(), &flyout, false, false)));
         let dialog = app(3, 100, "Clipchamp.exe", "#32770");
-        assert!(!covers(cover_facts(&clipchamp(), &dialog, false, false)));
+        assert!(!covers(facts(&clipchamp(), &dialog, false, false)));
     }
 
     #[test]
     fn an_owned_window_does_not_cover_even_from_another_process() {
         let helper = app(4, 200, "Helper.exe", "HelperWindow");
-        assert!(!covers(cover_facts(&clipchamp(), &helper, true, false)));
-        assert!(covers(cover_facts(&clipchamp(), &helper, false, false)));
+        assert!(!covers(facts(&clipchamp(), &helper, true, false)));
+        assert!(covers(facts(&clipchamp(), &helper, false, false)));
     }
 
     #[test]
     fn other_processes_cover_and_the_agent_terminal_always_does() {
         let terminal = app(5, 300, "WindowsTerminal.exe", "CASCADIA_HOSTING_WINDOW_CLASS");
-        assert!(covers(cover_facts(&clipchamp(), &terminal, false, true)));
-        assert!(covers(cover_facts(&clipchamp(), &terminal, false, false)));
+        assert!(covers(facts(&clipchamp(), &terminal, false, true)));
+        assert!(covers(facts(&clipchamp(), &terminal, false, false)));
         let own_terminal = app(6, 100, "Clipchamp.exe", "Console");
-        assert!(covers(cover_facts(&clipchamp(), &own_terminal, true, true)));
+        assert!(covers(facts(&clipchamp(), &own_terminal, true, true)));
     }
 
     #[test]
     fn the_taskbar_and_desktop_always_cover() {
         let explorer = app(7, 400, "explorer.exe", "CabinetWClass");
         let taskbar = app(8, 400, "explorer.exe", "Shell_TrayWnd");
-        assert!(covers(cover_facts(&explorer, &taskbar, false, false)));
+        assert!(covers(facts(&explorer, &taskbar, false, false)));
         let desktop = app(9, 100, "Clipchamp.exe", "Progman");
-        assert!(covers(cover_facts(&clipchamp(), &desktop, false, false)));
+        assert!(covers(facts(&clipchamp(), &desktop, false, false)));
     }
 
     #[test]
     fn processes_that_host_many_apps_only_share_menus_and_owned_windows() {
         let calculator = app(10, 500, FRAME_HOST_PROCESS, "ApplicationFrameWindow");
         let settings = app(11, 500, FRAME_HOST_PROCESS, "ApplicationFrameWindow");
-        assert!(covers(cover_facts(&calculator, &settings, false, false)));
+        assert!(covers(facts(&calculator, &settings, false, false)));
         let explorer = app(12, 400, "explorer.exe", "CabinetWClass");
         let other_folder = app(13, 400, "explorer.exe", "CabinetWClass");
-        assert!(covers(cover_facts(&explorer, &other_folder, false, false)));
+        assert!(covers(facts(&explorer, &other_folder, false, false)));
         let menu = app(14, 400, "explorer.exe", "#32768");
-        assert!(!covers(cover_facts(&explorer, &menu, false, false)));
-        assert!(!covers(cover_facts(&explorer, &other_folder, true, false)));
+        assert!(!covers(facts(&explorer, &menu, false, false)));
+        assert!(!covers(facts(&explorer, &other_folder, true, false)));
     }
 
     #[test]
