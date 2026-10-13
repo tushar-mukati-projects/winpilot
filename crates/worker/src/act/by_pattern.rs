@@ -5,10 +5,9 @@ use deckhand_core::{Result, WindowInfo, WindowRef};
 use super::{foreground::require_no_dialog_on_top, settle};
 use crate::{call_scope::CallScope, engine::Engine, guard::Guard};
 
-struct KeptForeground<'a> {
+pub(crate) struct KeptForeground<'a> {
     guard: &'a Guard,
     previous: Option<WindowRef>,
-    target: WindowRef,
     since: Instant,
 }
 
@@ -19,27 +18,35 @@ pub(crate) fn by_pattern<T>(
     action: impl FnOnce() -> Result<T>,
 ) -> Result<(T, Option<String>)> {
     require_no_dialog_on_top(window.hwnd)?;
-    let kept = KeptForeground::record(&engine.guard, window.hwnd);
+    let kept = KeptForeground::record(&engine.guard);
     let acted = action();
     if acted.is_ok() {
         settle(engine, window, call);
     }
-    let handed_back = kept.hand_back();
+    let handed_back = kept.hand_back(window.hwnd);
     acted.map(|value| (value, handed_back))
 }
 
 impl<'a> KeptForeground<'a> {
-    fn record(guard: &'a Guard, target: WindowRef) -> Self {
-        Self { guard, previous: deckhand_desktop::foreground_window(), target, since: Instant::now() }
+    pub(crate) fn record(guard: &'a Guard) -> Self {
+        Self { guard, previous: deckhand_desktop::foreground_window(), since: Instant::now() }
     }
 
-    fn hand_back(&self) -> Option<String> {
-        let previous = self.previous.filter(|previous| *previous != self.target)?;
-        let taken = deckhand_desktop::foreground_window() == Some(self.target);
-        if !taken || self.guard.physical_press_since(self.since) {
+    pub(crate) fn was_in(&self, windows: &[WindowRef]) -> bool {
+        self.previous.is_some_and(|previous| windows.contains(&previous))
+    }
+
+    pub(crate) fn hand_back(&self, target: WindowRef) -> Option<String> {
+        self.hand_back_from(|front| front == target)
+    }
+
+    pub(crate) fn hand_back_from(&self, taken: impl Fn(WindowRef) -> bool) -> Option<String> {
+        let previous = self.previous?;
+        let front = deckhand_desktop::foreground_window()?;
+        if front == previous || !taken(front) || self.guard.physical_press_since(self.since) {
             return None;
         }
-        Some(handed_back_note(self.target, previous, deckhand_desktop::focus_window(previous)))
+        Some(handed_back_note(front, previous, deckhand_desktop::focus_window(previous)))
     }
 }
 
@@ -75,9 +82,14 @@ mod tests {
     #[test]
     fn nothing_is_handed_back_when_the_target_was_already_in_front() {
         let guard = &engine().guard;
-        let kept = KeptForeground { guard, previous: Some(WindowRef(5)), target: WindowRef(5), since: Instant::now() };
-        assert_eq!(kept.hand_back(), None);
+        let kept = KeptForeground { guard, previous: Some(WindowRef(5)), since: Instant::now() };
+        assert_eq!(kept.hand_back(WindowRef(5)), None);
+        assert_eq!(kept.hand_back_from(|_| false), None);
+        assert!(kept.was_in(&[WindowRef(3), WindowRef(5)]));
+        assert!(!kept.was_in(&[WindowRef(3)]));
         let nobody = KeptForeground { previous: None, ..kept };
-        assert_eq!(nobody.hand_back(), None);
+        assert_eq!(nobody.hand_back(WindowRef(5)), None);
+        assert_eq!(nobody.hand_back_from(|_| true), None);
+        assert!(!nobody.was_in(&[WindowRef(5)]));
     }
 }

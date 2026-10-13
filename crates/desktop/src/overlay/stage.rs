@@ -12,6 +12,7 @@ use super::{
     monitor_at::work_area_around,
     palette::Palette,
     pill_kind::PillKind,
+    pill_label::PresenceLook,
     pill_layer::{PillLayer, PillShow, PillVoice},
     presence::Tone,
     ripple_layers::RippleLayers,
@@ -61,6 +62,7 @@ pub(crate) struct Stage {
     border: BorderLayers,
     focus: FocusLayers,
     pill: PillLayer,
+    activity: PillLayer,
     ripples: RippleLayers,
     trail: TrailLayers,
     badge: BadgeLayer,
@@ -82,6 +84,7 @@ impl Stage {
             border: BorderLayers::new(make.layers(presence)?),
             focus: FocusLayers::new(make.strips(presence)?, make.layer(presence)?),
             pill: PillLayer::new(make.layer(presence)?, voice(&cast)),
+            activity: PillLayer::new(make.layer(presence)?, voice(&cast)),
             ripples: RippleLayers::new(make.layers(presence)?),
             trail: TrailLayers::new(make.layers(presence)?),
             badge: BadgeLayer::new(make.layer(presence)?, cast.label.clone()),
@@ -101,6 +104,7 @@ impl Stage {
 
     pub(crate) fn relabel(&mut self, label: &str) {
         self.pill.relabel(label);
+        self.activity.relabel(label);
         self.recording.relabel(label);
         self.badge.relabel(label);
     }
@@ -120,6 +124,7 @@ impl Stage {
     pub(crate) fn show(&mut self, frame: &Frame<'_>, screen: Rect, concealed: bool, tick: u64) {
         let paint_tick = tick.is_multiple_of(STEADY_EVERY);
         self.show_presence(frame, screen, tick);
+        self.show_activity(frame, paint_tick);
         self.ripples.show(&frame.ripples, &self.palette);
         self.trail.show(frame.trail.as_ref(), &self.palette);
         match frame.focus {
@@ -164,6 +169,7 @@ impl Stage {
 
     pub(crate) fn release_memory(&mut self) {
         self.pill.release_memory();
+        self.activity.release_memory();
         self.recording.release_memory();
         self.badge.release_memory();
         self.chips.release_memory();
@@ -194,7 +200,11 @@ impl Stage {
         match frame.pill {
             Some(pill) => self.pill.show(
                 &PillShow {
-                    kind: PillKind::Presence { tone: pill.tone, room: pill.label_anchor.width },
+                    kind: PillKind::Presence(PresenceLook {
+                        tone: pill.tone,
+                        driving: pill.driving,
+                        room: pill.label_anchor.width,
+                    }),
                     anchor: pill.anchor,
                     scale: pill.scale,
                     alpha: pill.alpha,
@@ -207,6 +217,27 @@ impl Stage {
             ),
             None => self.pill.hide(),
         }
+    }
+
+    fn show_activity(&mut self, frame: &Frame<'_>, paint_tick: bool) {
+        let Some(activity) = frame.activity else {
+            self.activity.hide();
+            return;
+        };
+        self.activity.describe(activity.hint);
+        self.activity.show(
+            &PillShow {
+                kind: PillKind::Activity,
+                anchor: activity.anchor,
+                scale: activity.scale,
+                alpha: activity.alpha,
+                pulse: activity.pulse,
+                spin: activity.spin,
+                entrance: activity.entrance,
+                repaint: paint_tick || !activity.steady,
+            },
+            activity.anchor,
+        );
     }
 
     fn show_private(&mut self, frame: &Frame<'_>, screen: Rect, paint_tick: bool, concealed: bool) {
@@ -237,7 +268,13 @@ impl Stage {
             .layers()
             .iter()
             .chain(self.focus.layers())
-            .chain([self.pill.layer(), self.recording.layer(), self.badge.layer(), self.chips.layer()])
+            .chain([
+                self.pill.layer(),
+                self.activity.layer(),
+                self.recording.layer(),
+                self.badge.layer(),
+                self.chips.layer(),
+            ])
             .chain(self.ripples.layers())
             .chain(self.trail.layers())
             .chain(self.scan.layers())
@@ -249,7 +286,13 @@ impl Stage {
             .layers_mut()
             .iter_mut()
             .chain(self.focus.layers_mut())
-            .chain([self.pill.layer_mut(), self.recording.layer_mut(), self.badge.layer_mut(), self.chips.layer_mut()])
+            .chain([
+                self.pill.layer_mut(),
+                self.activity.layer_mut(),
+                self.recording.layer_mut(),
+                self.badge.layer_mut(),
+                self.chips.layer_mut(),
+            ])
             .chain(self.ripples.layers_mut().iter_mut())
             .chain(self.trail.layers_mut().iter_mut())
             .chain(self.scan.layers_mut())

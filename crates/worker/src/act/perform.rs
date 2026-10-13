@@ -67,7 +67,7 @@ fn dispatch(
         Step::Set { .. } => set::step(engine, required(prepared, step)?, &step.set_change()?, mode, call),
         Step::Focus { .. } => focus_step::step(engine, required(prepared, step)?, call),
         Step::Window { .. } => window::step(engine, &WindowRequest::try_from(step)?, step, context),
-        Step::Pick { .. } => pick::step(engine, &PickRequest::try_from(step)?, step, call),
+        Step::Pick { .. } => pick::step(engine, &PickRequest::try_from(step)?, step, mode, call),
         Step::Wait(args) => wait_step::step(engine, args, call, context.before),
         Step::Clipboard { text } => clipboard::step(engine, text, mode, call),
         Step::Notify { title, message } => notify::step(engine, title, message, context),

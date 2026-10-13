@@ -47,7 +47,7 @@ pub(crate) fn click_spot(
     let check = || engine.guard.check_running(call);
     let ((), note) =
         by_pattern(engine, &spot.window, call, || deckhand_input::message_click(&spot.target, button, count, check))?;
-    show_click(engine, spot, count);
+    overlay::click(engine, call, spot.point, count);
     Ok(note)
 }
 
@@ -63,7 +63,7 @@ pub(crate) fn scroll(
     let ((), note) = by_pattern(engine, &spot.window, call, || {
         deckhand_input::message_scroll(&spot.target, direction, notches, check)
     })?;
-    show_click(engine, &spot, 1);
+    overlay::scroll(engine, call, Some(spot.point));
     Ok(Done::by(MESSAGE).with_note(note))
 }
 
@@ -81,9 +81,7 @@ pub(crate) fn drag(engine: &Engine, drag: &MessageDrag<'_>, call: &CallScope) ->
     let ((), note) = by_pattern(engine, &grab.window, call, || {
         deckhand_input::message_drag(&grab.target, release.point, drag.button, travel, check)
     })?;
-    if grab.window.on_current_desktop {
-        overlay::glide(engine, grab.point, release.point, travel);
-    }
+    overlay::drag(engine, call, grab.point, release.point, travel);
     Ok(Done::by(MESSAGE).with_note(note))
 }
 
@@ -97,12 +95,6 @@ fn spot_at(engine: &Engine, window: &WindowInfo, point: Point, call: &CallScope)
         return Err(other_process(window, point));
     }
     Ok(Spot { window: window.clone(), point, target })
-}
-
-fn show_click(engine: &Engine, spot: &Spot, count: u8) {
-    if spot.window.on_current_desktop {
-        overlay::click(engine, spot.point, count);
-    }
 }
 
 pub(crate) fn require_not_in_use(window: &WindowInfo) -> Result<()> {

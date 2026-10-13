@@ -34,11 +34,11 @@ pub(crate) fn drag(engine: &Engine, drag: &Drag<'_>, call: &CallScope) -> Result
     let release_point = hit_point(engine, drag.to, &release)?;
     let motion = Motion::start(engine, call);
     let grab_point = motion.approach(drag.from, &grab, drag.glide_ms)?;
-    overlay::click(engine, grab_point, 1);
+    overlay::click(engine, call, grab_point, 1);
     let travel = motion.glide_duration(drag.glide_ms).max(SHORTEST_DRAG);
-    overlay::glide(engine, grab_point, release_point, travel);
+    overlay::glide(engine, call, grab_point, release_point, travel);
     deckhand_input::drag_guarded(grab_point, release_point, drag.button, travel, || motion.check())?;
-    overlay::click(engine, release_point, 1);
+    overlay::click(engine, call, release_point, 1);
     settle(engine, &grab.window, call);
     Ok(Done::by("mouse"))
 }

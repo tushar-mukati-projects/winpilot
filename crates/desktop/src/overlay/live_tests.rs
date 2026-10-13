@@ -22,8 +22,9 @@ use windows::{
 };
 
 use super::{
+    activity::{Activity, Cue, OutOfSight},
     client::Overlay,
-    monitor_at::{primary_work_area, scale_at},
+    monitor_at::{foreground_work_area, primary_work_area, scale_at},
     options::OverlayOptions,
 };
 use crate::{com::ComApartment, dpi::enable_dpi_awareness, window_identity::class_name};
@@ -191,6 +192,29 @@ fn every_effect_runs_and_shuts_down_cleanly() {
     let started = Instant::now();
     drop(overlay);
     assert!(started.elapsed() < Duration::from_secs(1));
+}
+
+#[test]
+#[ignore = "shows the overlay"]
+fn background_effects_and_the_activity_pill_show_then_fade() {
+    let (probe, rect) = probe_and_window();
+    let overlay = Overlay::spawn(OverlayOptions { label: "Claude".to_string(), ..OverlayOptions::default() }).unwrap();
+    overlay.begin_in_background(rect);
+    overlay.ripple(probe, 1);
+    thread::sleep(Duration::from_millis(800));
+    let behind = |cue| Activity { app: "CapCut".to_string(), out_of_sight: OutOfSight::Behind, cue };
+    overlay.background_activity(behind(None));
+    thread::sleep(Duration::from_millis(600));
+    overlay.background_activity(behind(Some(Cue::Click(1))));
+    thread::sleep(Duration::from_millis(600));
+    overlay.background_activity(behind(Some(Cue::Keys(vec![vec!["Enter".to_string()]]))));
+    let area = foreground_work_area().or_else(primary_work_area).unwrap();
+    let pill = Point::new(area.center().x, area.bottom() - 30);
+    thread::sleep(SETTLE);
+    assert!(visible_overlay_covers(pill), "the activity pill should sit at the bottom centre");
+    thread::sleep(Duration::from_millis(2600));
+    assert!(!visible_overlay_covers(pill), "the activity pill should fade two seconds after the last step");
+    overlay.end();
 }
 
 #[test]

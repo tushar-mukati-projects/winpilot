@@ -2,7 +2,10 @@ use std::time::Duration;
 
 use deckhand_core::{Point, Rect};
 
-use super::{chip_text::ChipText, focus_outline::FocusLook, glow_tints::GlowLook, presence::Tone, trail::TrailDot};
+use super::{
+    chip_text::ChipText, driving::Driving, focus_outline::FocusLook, glow_tints::GlowLook, presence::Tone,
+    trail::TrailDot,
+};
 
 pub(crate) const MAX_RIPPLES: usize = 4;
 
@@ -21,6 +24,19 @@ pub(crate) struct PillFrame {
     pub(crate) anchor: Rect,
     pub(crate) label_anchor: Rect,
     pub(crate) tone: Tone,
+    pub(crate) driving: Driving,
+    pub(crate) scale: f32,
+    pub(crate) alpha: f32,
+    pub(crate) pulse: f32,
+    pub(crate) spin: f32,
+    pub(crate) entrance: f32,
+    pub(crate) steady: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ActivityFrame<'a> {
+    pub(crate) anchor: Rect,
+    pub(crate) hint: &'a str,
     pub(crate) scale: f32,
     pub(crate) alpha: f32,
     pub(crate) pulse: f32,
@@ -99,6 +115,7 @@ pub(crate) struct ViewfinderFrame {
 pub(crate) struct Frame<'a> {
     pub(crate) border: Option<BorderFrame>,
     pub(crate) pill: Option<PillFrame>,
+    pub(crate) activity: Option<ActivityFrame<'a>>,
     pub(crate) ripples: [Option<RippleFrame>; MAX_RIPPLES],
     pub(crate) trail: Option<TrailFrame<'a>>,
     pub(crate) focus: Option<FocusFrame>,

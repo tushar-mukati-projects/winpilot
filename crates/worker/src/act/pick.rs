@@ -1,3 +1,4 @@
+mod behind;
 mod dialog;
 mod dialog_kind;
 mod folder;
@@ -12,13 +13,20 @@ use deckhand_core::{
 };
 
 use self::{
+    behind::{DialogBehind, dialog_family},
     dialog::FileDialog,
     dialog_kind::DialogKind,
     folder::{Destination, folder_ready, listed_files},
     message_box::Prompt,
     selection::{Requested, Selection},
 };
-use super::{click_target, done::Done, foreground::owner_chain, summary::file_count};
+use super::{
+    click_target,
+    done::Done,
+    foreground::owner_chain,
+    mode::{Mode, check_before},
+    summary::file_count,
+};
 use crate::{
     app_windows::app_windows, call_scope::CallScope, default_window::default_window, engine::Engine, guard::Guard,
     overlay, until::until, watch::Watch, window_classes::is_dialog,
@@ -60,19 +68,29 @@ pub(crate) fn check_paths(paths: &[String], guard: &Guard) -> Result<()> {
     Selection::parse(paths, |path| guard.checked_path(path))?.check_folder()
 }
 
-pub(crate) fn step(engine: &Engine, request: &PickRequest<'_>, step: &Step, call: &CallScope) -> Result<Done> {
+pub(crate) fn step(
+    engine: &Engine,
+    request: &PickRequest<'_>,
+    step: &Step,
+    mode: Mode,
+    call: &CallScope,
+) -> Result<Done> {
     let selection = Selection::parse(request.paths, |path| engine.guard.checked_path(path))?;
     selection.check_folder()?;
     let requested = selection.requested();
-    engine.guard.before_input(None, call)?;
-    let opened = open_dialog(engine, request, step, call)?;
+    check_before(engine, None, mode, call)?;
+    let kept_behind = (mode == Mode::Background).then(|| DialogBehind::record(&engine.guard));
+    let opened = open_dialog(engine, request, step, mode, call)?;
+    let family = dialog_family(&opened.dialog.window);
+    let behind = kept_behind.as_ref().and_then(|kept| kept.on_opening(&opened.dialog.window, &family));
     overlay::begin(engine, &opened.dialog.window, call);
     let picked = pick(engine, &opened.dialog, &selection, &requested, request.overwrite, call);
     if picked.is_err() && opened.ours {
         abandon(engine, &opened.dialog);
     }
+    let handed_back = kept_behind.as_ref().and_then(|kept| kept.after_closing(&family));
     picked?;
-    Ok(Done::noting(picked_note(opened.dialog.kind, &selection.files)))
+    Ok(Done::noting(picked_note(opened.dialog.kind, &selection.files)).with_note(behind).with_note(handed_back))
 }
 
 fn picked_note(kind: DialogKind, files: &[String]) -> String {
@@ -100,12 +118,18 @@ fn pick(
     confirm(engine, dialog, requested, overwrite, call)
 }
 
-fn open_dialog(engine: &Engine, request: &PickRequest<'_>, step: &Step, call: &CallScope) -> Result<Opened> {
+fn open_dialog(
+    engine: &Engine,
+    request: &PickRequest<'_>,
+    step: &Step,
+    mode: Mode,
+    call: &CallScope,
+) -> Result<Opened> {
     let Some(opener) = request.open_with else {
         return existing_dialog(engine, call).map(|dialog| Opened { dialog, ours: false });
     };
     let existing: HashSet<WindowRef> = dialog_windows(engine)?.iter().map(|window| window.hwnd).collect();
-    let clicked = click_target(engine, opener, step, call)?;
+    let clicked = click_target(engine, opener, step, mode, call)?;
     let timeout = pick_wait(request.timeout_ms);
     let fresh = |window: &WindowInfo| !existing.contains(&window.hwnd) && belongs_to(window, clicked.hwnd);
     let found = until(engine, call, timeout, &Watch::window(&clicked), || find_dialog(engine, fresh))?;
@@ -299,13 +323,30 @@ mod tests {
         Step::Pick { paths, open_with, overwrite, timeout_ms: Some(10_000) }
     }
 
+    fn run_pick_in(step: &Step, mode: Mode) -> Result<Done> {
+        super::step(engine(), &PickRequest::try_from(step)?, step, mode, &CallScope::relaxed())
+    }
+
     fn run_pick(step: &Step) -> Result<Done> {
-        super::step(engine(), &PickRequest::try_from(step)?, step, &CallScope::relaxed())
+        run_pick_in(step, Mode::Foreground)
+    }
+
+    fn opener(app: &FixtureApp, button: u32) -> TargetSpec {
+        TargetSpec::Text(app.selector(&format!("id:{button}")))
     }
 
     fn pick(app: &FixtureApp, button: u32, paths: Vec<String>, overwrite: bool) -> Result<Done> {
-        let opener = TargetSpec::Text(app.selector(&format!("id:{button}")));
-        run_pick(&pick_step(paths, Some(opener), overwrite))
+        run_pick(&pick_step(paths, Some(opener(app, button)), overwrite))
+    }
+
+    fn pick_behind(app: &FixtureApp, button: u32, paths: Vec<String>, overwrite: bool) -> Result<Done> {
+        run_pick_in(&pick_step(paths, Some(opener(app, button)), overwrite), Mode::Background)
+    }
+
+    fn assert_user_kept(front: Option<WindowRef>, app: &FixtureApp) {
+        let now = deckhand_desktop::foreground_window();
+        assert!(now != Some(app.hwnd()), "the fixture took the foreground");
+        assert_eq!(now, front, "the user's foreground window changed");
     }
 
     #[test]
@@ -398,5 +439,46 @@ mod tests {
         pick(&app, 2013, vec![text(&existing)], true).unwrap();
         let saved = app.settled_text(2014, |shown| shown.contains(&text(&existing)));
         assert!(saved.contains(&text(&existing)), "{saved}");
+    }
+
+    #[test]
+    #[ignore = "opens dialogs behind the foreground window"]
+    fn opens_one_file_in_the_background() {
+        let file = temp_file("behind.txt");
+        let _cleanup = TempFiles(vec![file.clone()]);
+        let Some(app) = FixtureApp::launch_on_screen() else { return };
+        let front = deckhand_desktop::foreground_window();
+        let cursor = deckhand_input::cursor_position().unwrap();
+        let done = pick_behind(&app, 2011, vec![text(&file)], false).unwrap();
+        assert!(done.note.unwrap().starts_with("picked 1 file in the Open dialog"));
+        let opened = app.settled_text(2012, |shown| shown.contains(&text(&file)));
+        assert!(opened.contains(&text(&file)), "{opened}");
+        assert_eq!(deckhand_input::cursor_position().unwrap(), cursor, "background pick moved the mouse");
+        assert_user_kept(front, &app);
+    }
+
+    #[test]
+    #[ignore = "opens dialogs behind the foreground window"]
+    fn replaces_a_file_in_the_background_with_overwrite() {
+        let existing = temp_file("behind-replace.txt");
+        let _cleanup = TempFiles(vec![existing.clone()]);
+        let Some(app) = FixtureApp::launch_on_screen() else { return };
+        let front = deckhand_desktop::foreground_window();
+        pick_behind(&app, 2013, vec![text(&existing)], true).unwrap();
+        let saved = app.settled_text(2014, |shown| shown.contains(&text(&existing)));
+        assert!(saved.contains(&text(&existing)), "{saved}");
+        assert_user_kept(front, &app);
+    }
+
+    #[test]
+    #[ignore = "opens dialogs behind the foreground window"]
+    fn refuses_to_replace_in_the_background_without_overwrite() {
+        let existing = temp_file("behind-existing.txt");
+        let _cleanup = TempFiles(vec![existing.clone()]);
+        let Some(app) = FixtureApp::launch_on_screen() else { return };
+        let front = deckhand_desktop::foreground_window();
+        let error = pick_behind(&app, 2013, vec![text(&existing)], false).unwrap_err();
+        assert_eq!(error.code, ErrorCode::NeedsUser);
+        assert_user_kept(front, &app);
     }
 }

@@ -21,8 +21,8 @@ pub(crate) fn step(engine: &Engine, prepared: &Prepared, text: &str, call: &Call
         )));
     }
     if prepared.window.on_current_desktop {
-        overlay::focus_field(engine, element.rect);
-        overlay::typing(engine, &prepared.window);
+        overlay::focus_field(engine, call, element.rect);
+        overlay::typing(engine, call, &prepared.window);
     }
     let id = element.id;
     let (value, note) = appended(read_value(engine, id)?.as_deref(), text);

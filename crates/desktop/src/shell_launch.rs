@@ -8,18 +8,25 @@ use windows::{
             Com::{CLSCTX_ALL, CoCreateInstance},
             Threading::GetProcessId,
         },
-        UI::{
-            Shell::{
-                AO_NONE, ApplicationActivationManager, IApplicationActivationManager, SEE_MASK_FLAG_NO_UI,
-                SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW,
-            },
-            WindowsAndMessaging::SW_SHOWNORMAL,
+        UI::Shell::{
+            AO_NONE, ApplicationActivationManager, IApplicationActivationManager, SEE_MASK_FLAG_NO_UI,
+            SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW,
         },
     },
     core::{HSTRING, PCWSTR},
 };
 
-use crate::handle::{adopt, raw};
+use crate::{
+    activation::Activation,
+    handle::{adopt, raw},
+};
+
+pub(crate) struct ShellRequest<'a> {
+    pub(crate) file: &'a str,
+    pub(crate) verb: Option<&'a str>,
+    pub(crate) args: Option<&'a str>,
+    pub(crate) activation: Activation,
+}
 
 pub(crate) fn activate_packaged(aumid: &str, args: Option<&str>) -> Result<u32> {
     let manager: IApplicationActivationManager =
@@ -31,20 +38,20 @@ pub(crate) fn activate_packaged(aumid: &str, args: Option<&str>) -> Result<u32> 
         .map_err(|error| launch_error(&error, aumid))
 }
 
-pub(crate) fn shell_execute(file: &str, verb: Option<&str>, args: Option<&str>) -> Result<Option<u32>> {
-    let file_text = HSTRING::from(file);
-    let verb_text = verb.map(HSTRING::from);
-    let args_text = args.map(HSTRING::from);
+pub(crate) fn shell_execute(shell: &ShellRequest<'_>) -> Result<Option<u32>> {
+    let file_text = HSTRING::from(shell.file);
+    let verb_text = shell.verb.map(HSTRING::from);
+    let args_text = shell.args.map(HSTRING::from);
     let mut request = SHELLEXECUTEINFOW {
         cbSize: size_of::<SHELLEXECUTEINFOW>() as u32,
         fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC,
         lpVerb: optional_text(verb_text.as_ref()),
         lpFile: PCWSTR(file_text.as_ptr()),
         lpParameters: optional_text(args_text.as_ref()),
-        nShow: SW_SHOWNORMAL.0,
+        nShow: shell.activation.launch_command().0,
         ..SHELLEXECUTEINFOW::default()
     };
-    unsafe { ShellExecuteExW(&raw mut request) }.map_err(|error| launch_error(&error, file))?;
+    unsafe { ShellExecuteExW(&raw mut request) }.map_err(|error| launch_error(&error, shell.file))?;
     Ok(launched_pid(&request))
 }
 

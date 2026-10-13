@@ -6,9 +6,11 @@ use std::{
 use deckhand_core::{Point, Rect, Result};
 
 use super::{
+    activity::Activity,
     capture_hide::CaptureHideGuard,
     chip_text::ChipText,
     command::OverlayCommand,
+    driving::Driving,
     options::OverlayOptions,
     render_thread::{OverlayThread, WAKE_OVERLAY},
     wake_flag::WakeFlag,
@@ -35,7 +37,11 @@ impl Overlay {
     }
 
     pub fn begin(&self, rect: Rect) {
-        self.send(OverlayCommand::Begin(rect));
+        self.send(OverlayCommand::Begin(rect, Driving::Foreground));
+    }
+
+    pub fn begin_in_background(&self, rect: Rect) {
+        self.send(OverlayCommand::Begin(rect, Driving::Background));
     }
 
     pub fn end(&self) {
@@ -44,6 +50,14 @@ impl Overlay {
 
     pub fn click(&self, point: Point, count: u8) {
         self.send(OverlayCommand::Click(point, count));
+    }
+
+    pub fn ripple(&self, point: Point, count: u8) {
+        self.send(OverlayCommand::Ripple(point, count));
+    }
+
+    pub fn background_activity(&self, activity: Activity) {
+        self.send(OverlayCommand::Activity(activity));
     }
 
     pub fn glide(&self, from: Point, to: Point, duration: Duration) {

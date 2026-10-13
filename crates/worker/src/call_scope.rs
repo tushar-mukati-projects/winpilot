@@ -6,7 +6,7 @@ use std::{
 use deckhand_core::{Error, Point, Result, keys::Chord, protocol::MouseButton};
 use parking_lot::Mutex;
 
-use crate::{cancel::Cancel, ocr_read::OcrReading};
+use crate::{cancel::Cancel, ocr_read::OcrReading, overlay_plan::Staged};
 
 const SLACK: Duration = Duration::from_secs(1);
 const OUT_OF_TIME: &str =
@@ -16,7 +16,9 @@ pub(crate) struct CallScope {
     cancel: Cancel,
     deadline: Instant,
     acting: AtomicBool,
+    background: AtomicBool,
     overlay_shown: AtomicBool,
+    staged: Mutex<Option<Staged>>,
     held: Mutex<Vec<HeldButton>>,
     held_keys: Mutex<Vec<Chord>>,
     ocr: Mutex<Option<OcrReading>>,
@@ -34,7 +36,9 @@ impl CallScope {
             cancel,
             deadline,
             acting: AtomicBool::new(false),
+            background: AtomicBool::new(false),
             overlay_shown: AtomicBool::new(false),
+            staged: Mutex::new(None),
             held: Mutex::new(Vec::new()),
             held_keys: Mutex::new(Vec::new()),
             ocr: Mutex::new(None),
@@ -105,6 +109,22 @@ impl CallScope {
 
     pub(crate) fn is_acting(&self) -> bool {
         self.acting.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn note_background(&self) {
+        self.background.store(true, Ordering::SeqCst);
+    }
+
+    pub(crate) fn in_background(&self) -> bool {
+        self.background.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn stage(&self, staged: Staged) {
+        *self.staged.lock() = Some(staged);
+    }
+
+    pub(crate) fn staged(&self) -> Option<Staged> {
+        self.staged.lock().clone()
     }
 
     pub(crate) fn note_overlay_shown(&self) {
@@ -212,5 +232,20 @@ mod tests {
         assert!(!scope.showed_overlay());
         scope.note_overlay_shown();
         assert!(scope.showed_overlay());
+        assert!(!scope.in_background());
+        scope.note_background();
+        assert!(scope.in_background());
+    }
+
+    #[test]
+    fn the_latest_staged_window_is_kept() {
+        use crate::{overlay_plan::View, test_fixture::window};
+        let scope = CallScope::relaxed();
+        assert_eq!(scope.staged(), None);
+        let first = window(1, "a.exe", "A", deckhand_core::Rect::new(0, 0, 10, 10));
+        let second = window(2, "b.exe", "B", deckhand_core::Rect::new(0, 0, 10, 10));
+        scope.stage(Staged { window: first, view: View::Watched });
+        scope.stage(Staged { window: second.clone(), view: View::Driven });
+        assert_eq!(scope.staged(), Some(Staged { window: second, view: View::Driven }));
     }
 }

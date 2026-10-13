@@ -20,6 +20,7 @@ mod keys;
 mod landing;
 mod launch;
 mod launch_args;
+mod launch_behind;
 mod launch_match;
 mod lift;
 mod locate;
@@ -44,6 +45,7 @@ mod select;
 mod select_check;
 mod set;
 mod shortcut;
+mod stacking;
 mod steps;
 mod summary;
 mod target;
@@ -54,6 +56,7 @@ mod validate;
 mod value;
 mod wait_step;
 mod window;
+mod window_behind;
 
 #[cfg(test)]
 mod fixture_tests;
@@ -63,7 +66,7 @@ mod input_tests;
 use std::time::{Duration, Instant};
 
 use deckhand_core::{
-    Error, Result, TargetSpec, WindowInfo,
+    Error, ErrorCode, Result, TargetSpec, WindowInfo,
     protocol::{ActArgs, ActReport, After, AfterMode, Step, StepOutcome},
 };
 
@@ -89,11 +92,13 @@ pub(crate) fn run(engine: &Engine, args: &ActArgs, call: &CallScope) -> Result<A
     report
 }
 
-fn click_target(engine: &Engine, target: &TargetSpec, step: &Step, call: &CallScope) -> Result<WindowInfo> {
-    let prepared = target::prepare(engine, target, Mode::Foreground, call)?;
-    mode::for_window(Mode::Foreground, &prepared.window, step)?;
-    click::click_prepared(engine, &prepared, ClickOptions::default(), call)?;
-    Ok(prepared.window)
+fn click_target(engine: &Engine, target: &TargetSpec, step: &Step, mode: Mode, call: &CallScope) -> Result<WindowInfo> {
+    let prepared = target::prepare(engine, target, mode, call)?;
+    let mode = mode::for_window(mode, &prepared.window, step)?;
+    match click::step(engine, &prepared, ClickOptions::default(), mode, call) {
+        Err(error) if error.code != ErrorCode::TargetNotResponding => Err(error),
+        Ok(_) | Err(_) => Ok(prepared.window),
+    }
 }
 
 pub(crate) fn settle(engine: &Engine, window: &WindowInfo, call: &CallScope) {
@@ -107,6 +112,9 @@ fn run_holding_actor(engine: &Engine, args: &ActArgs, call: &CallScope, started:
     args.validate()?;
     let mode = Mode::requested(args.background.unwrap_or(engine.config.act.background));
     validate::validate(args, &engine.guard, mode)?;
+    if mode == Mode::Background {
+        call.note_background();
+    }
     let _actor = if steps::needs_actor(&args.steps) { Some(engine.guard.acquire_actor(call)?) } else { None };
     let before = WindowsBefore::now(engine);
     let baseline = Baseline::capture(engine, args.after);

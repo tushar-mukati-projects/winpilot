@@ -19,8 +19,8 @@ const UNREADABLE: &str = "the field does not expose its value, so it was not rea
 pub(crate) fn step(engine: &Engine, prepared: &Prepared, value: &str, mode: Mode, call: &CallScope) -> Result<Done> {
     let element = prepared.require_element("set value")?;
     if prepared.window.on_current_desktop {
-        overlay::focus_field(engine, element.rect);
-        overlay::typing(engine, &prepared.window);
+        overlay::focus_field(engine, call, element.rect);
+        overlay::typing(engine, call, &prepared.window);
     }
     if mode == Mode::Background {
         return set_in_background(engine, prepared, element, value, call);

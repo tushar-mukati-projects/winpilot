@@ -10,6 +10,7 @@ use windows::Win32::{
 };
 
 use crate::{
+    activation::Activation,
     frame::FrameInsets,
     timeouts::{later, poll_until},
     window_geometry::{frame_bounds, outer_rect, visible_rect},
@@ -23,13 +24,13 @@ const PLACEMENT_TIMEOUT: Duration = Duration::from_secs(1);
 const PLACEMENT_POLL: Duration = Duration::from_millis(10);
 const SETTLE_TIME: Duration = Duration::from_millis(40);
 
-pub fn move_window(hwnd: WindowRef, rect: Rect) -> Result<()> {
+pub fn move_window(hwnd: WindowRef, rect: Rect, activation: Activation) -> Result<()> {
     if rect.is_empty() {
         return Err(Error::invalid("a window needs a positive width and height"));
     }
     let handle = live_hwnd(hwnd)?;
     ensure_responsive(handle, hwnd)?;
-    restore_to_normal(handle, hwnd)?;
+    restore_to_normal(handle, hwnd, activation)?;
     for _ in 0..PLACEMENT_PASSES {
         request_placement(handle, hwnd, rect)?;
         if wait_for_placement(handle, rect) {
@@ -118,8 +119,14 @@ mod tests {
 
     #[test]
     fn missing_or_empty_targets_are_rejected() {
-        assert_eq!(move_window(WindowRef(0), Rect::new(0, 0, 10, 10)).unwrap_err().code, ErrorCode::NotFound);
-        assert_eq!(move_window(WindowRef(0), Rect::new(0, 0, 0, 10)).unwrap_err().code, ErrorCode::InvalidArgument);
+        assert_eq!(
+            move_window(WindowRef(0), Rect::new(0, 0, 10, 10), Activation::Activate).unwrap_err().code,
+            ErrorCode::NotFound
+        );
+        assert_eq!(
+            move_window(WindowRef(0), Rect::new(0, 0, 0, 10), Activation::Activate).unwrap_err().code,
+            ErrorCode::InvalidArgument
+        );
     }
 
     #[test]
@@ -130,7 +137,7 @@ mod tests {
         let title = format!("Deckhand Fixture placement {}", std::process::id());
         let Some(fixture) = FixtureProcess::launch(&exe, &title, Placement::OnScreen) else { return };
         let target = Rect::new(160, 140, 720, 520);
-        move_window(ref_of(fixture.hwnd()), target).unwrap();
+        move_window(ref_of(fixture.hwnd()), target, Activation::KeepForeground).unwrap();
         let placed = visible_rect(fixture.hwnd()).unwrap();
         assert!(within_tolerance(placed, target), "{placed:?}");
     }

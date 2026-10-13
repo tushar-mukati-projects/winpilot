@@ -5,13 +5,15 @@ use deckhand_core::{
     format::window_line,
     protocol::{Step, WindowAction},
 };
+use deckhand_desktop::Activation;
 
 use super::{
     done::Done,
     launch,
-    mode::{check_before, for_window},
+    mode::{Mode, check_before, for_window},
     settle,
     steps::StepContext,
+    window_behind,
 };
 use crate::{
     app_windows::app_windows, call_scope::CallScope, engine::Engine, overlay, resolve, until::until, watch::Watch,
@@ -48,14 +50,19 @@ pub(crate) fn step(
     let call = context.call;
     if request.action == WindowAction::Launch {
         let app = request.app.ok_or_else(|| Error::invalid("window action=launch needs \"app\""))?;
-        return launch::launch(engine, app, request.args, call);
+        return launch::launch(engine, app, request.args, context.mode, call);
     }
     let target = request.target.ok_or_else(|| Error::invalid("this window action needs \"target\""))?;
     let window = target_window(engine, target, call)?;
     let mode = for_window(context.mode, &window, step)?;
     check_before(engine, Some(&window), mode, call)?;
     overlay::begin(engine, &window, call);
-    let done = perform(engine, request, &window, call)?;
+    let done = match mode {
+        Mode::Background if request.action != WindowAction::Close => {
+            window_behind::perform(engine, request, &window, call)?
+        }
+        Mode::Background | Mode::Foreground => perform(engine, request, &window, call)?,
+    };
     let after = deckhand_desktop::window(window.hwnd).ok();
     if let Some(after) = after.filter(|after| after.state != WindowState::Minimized) {
         overlay::begin(engine, &after, call);
@@ -120,13 +127,13 @@ fn close(engine: &Engine, window: &WindowInfo, call: &CallScope) -> Result<Done>
 }
 
 fn change_state(engine: &Engine, window: &WindowInfo, state: WindowState, call: &CallScope) -> Result<Done> {
-    deckhand_desktop::set_window_state(window.hwnd, state)?;
+    deckhand_desktop::set_window_state(window.hwnd, state, Activation::Activate)?;
     settle(engine, window, call);
     let after = deckhand_desktop::window(window.hwnd)?;
     Ok(Done::noting(format!("{} {}", state_word(state), window_line(&after))))
 }
 
-const fn state_word(state: WindowState) -> &'static str {
+pub(crate) const fn state_word(state: WindowState) -> &'static str {
     match state {
         WindowState::Minimized => "minimized",
         WindowState::Maximized => "maximized",
@@ -135,7 +142,7 @@ const fn state_word(state: WindowState) -> &'static str {
 }
 
 fn move_to(engine: &Engine, window: &WindowInfo, rect: Rect, call: &CallScope) -> Result<Done> {
-    deckhand_desktop::move_window(window.hwnd, rect)?;
+    deckhand_desktop::move_window(window.hwnd, rect, Activation::Activate)?;
     settle(engine, window, call);
     let after = deckhand_desktop::window(window.hwnd)?;
     Ok(Done::noting(format!("moved {}", window_line(&after))))

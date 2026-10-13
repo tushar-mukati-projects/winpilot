@@ -2,7 +2,7 @@ use deckhand_core::{
     Error, ErrorCode, WindowInfo,
     format::other_desktop,
     keys::parse_keys,
-    protocol::{ClickHow, KeyAction, MouseAction, Step, TypeHow, WindowAction},
+    protocol::{ClickHow, KeyAction, MouseAction, Step, TypeHow},
 };
 
 const MOUSE: &str = "the real mouse";
@@ -24,9 +24,12 @@ pub(crate) fn background_refusal(step: &Step) -> Option<Refusal> {
         Step::Key { keys, target, action, .. } => key_refusal(keys, target.is_some(), *action),
         Step::Mouse { action, target, .. } => mouse_refusal(*action, target.is_some()),
         Step::Focus { .. } => Some(refused("focus", FOCUS, None)),
-        Step::Window { action, .. } => window_refusal(*action),
-        Step::Pick { .. } => Some(refused("pick", "a file dialog in the foreground", None)),
-        Step::Set { .. } | Step::Wait(_) | Step::Clipboard { .. } | Step::Notify { .. } => None,
+        Step::Window { .. }
+        | Step::Pick { .. }
+        | Step::Set { .. }
+        | Step::Wait(_)
+        | Step::Clipboard { .. }
+        | Step::Notify { .. } => None,
     }
 }
 
@@ -96,17 +99,6 @@ fn mouse_refusal(action: MouseAction, targeted: bool) -> Option<Refusal> {
     }
 }
 
-fn window_refusal(action: WindowAction) -> Option<Refusal> {
-    match action {
-        WindowAction::Close => None,
-        WindowAction::Launch
-        | WindowAction::Minimize
-        | WindowAction::Maximize
-        | WindowAction::Restore
-        | WindowAction::Move => Some(refused(format!("window {}", action.name()), FOCUS, None)),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use deckhand_core::Rect;
@@ -139,6 +131,13 @@ mod tests {
             r#"{"do":"mouse","action":"scroll","target":"e1","direction":"down"}"#,
             r#"{"do":"mouse","action":"drag","target":"e1","to":"e2"}"#,
             r#"{"do":"window","action":"close","target":"w1"}"#,
+            r#"{"do":"window","action":"launch","app":"Notepad"}"#,
+            r#"{"do":"window","action":"minimize","target":"w1"}"#,
+            r#"{"do":"window","action":"maximize","target":"w1"}"#,
+            r#"{"do":"window","action":"restore","target":"w1"}"#,
+            r#"{"do":"window","action":"move","target":"w1","rect":{"x":0,"y":0,"width":10,"height":10}}"#,
+            r#"{"do":"pick","paths":["C:\\a.txt"]}"#,
+            r#"{"do":"pick","paths":["C:\\a.txt"],"open_with":"e1","overwrite":true}"#,
             r#"{"do":"wait","ms":10}"#,
             r#"{"do":"clipboard","text":"x"}"#,
             r#"{"do":"notify","title":"a","message":"b"}"#,
@@ -175,20 +174,12 @@ mod tests {
                 "mouse down needs the real mouse; background mode never touches it (drop background or use click or mouse drag)",
             ),
             (
-                r#"{"do":"pick","paths":["C:\\a.txt"]}"#,
-                "pick needs a file dialog in the foreground; background mode never touches it (drop background)",
-            ),
-            (
                 r#"{"do":"click","target":"e1","modifiers":"ctrl"}"#,
                 "a click with modifiers needs the real keyboard, because apps read ctrl, alt, shift and win from it; background mode never touches it (drop background)",
             ),
             (
                 r#"{"do":"type","text":"hi"}"#,
                 "type without a target needs the keyboard focus; background mode never touches it (drop background or give the field as target)",
-            ),
-            (
-                r#"{"do":"window","action":"launch","app":"Notepad"}"#,
-                "window launch needs the user's focus; background mode never touches it (drop background)",
             ),
         ];
         for (json, expected) in cases {
@@ -199,7 +190,6 @@ mod tests {
         assert!(refusal(r#"{"do":"mouse","action":"scroll","direction":"up"}"#).is_some());
         assert!(refusal(r#"{"do":"mouse","action":"drag","to":"e2"}"#).is_some());
         assert!(refusal(r#"{"do":"key","keys":"end ctrl+a","target":"w1"}"#).is_some());
-        assert!(refusal(r#"{"do":"window","action":"maximize","target":"w1"}"#).is_some());
     }
 
     #[test]

@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use deckhand_core::Rect;
 
 use super::{
+    driving::Driving,
     easing::{breath, lap_fraction, progress},
     fade::Fade,
     glow_tints::GlowLook,
@@ -46,6 +47,7 @@ pub(crate) struct Presence {
     stopped_at: Option<Instant>,
     animated: bool,
     anchor: Anchor,
+    driving: Driving,
 }
 
 impl Presence {
@@ -59,6 +61,7 @@ impl Presence {
             stopped_at: None,
             animated,
             anchor: Anchor::Window,
+            driving: Driving::Foreground,
         }
     }
 
@@ -97,6 +100,10 @@ impl Presence {
         if self.anchor == Anchor::Window && rect != self.glide.target() {
             self.glide = self.glide.toward(rect, timed(GLIDE, self.animated), now);
         }
+    }
+
+    pub(crate) fn drive(&mut self, driving: Driving) {
+        self.driving = driving;
     }
 
     pub(crate) fn leave(&mut self, now: Instant) {
@@ -156,6 +163,7 @@ impl Presence {
             anchor: self.glide.at(now),
             label_anchor: self.glide.target(),
             tone: self.tone,
+            driving: self.driving,
             scale: self.scale,
             alpha: self.fade.level(now),
             pulse: if lively { breath(age, BREATH) } else { 1.0 },
@@ -244,6 +252,15 @@ mod tests {
         assert!(midway != RECT && midway != target);
         assert_eq!(presence.border(start + MS(660)).unwrap().rect, target);
         assert_eq!(presence.pill(start + MS(560)).label_anchor, target);
+    }
+
+    #[test]
+    fn the_pill_says_how_the_window_is_driven() {
+        let start = Instant::now();
+        let mut presence = Presence::working(RECT, 1.0, true, start);
+        assert_eq!(presence.pill(start).driving, Driving::Foreground);
+        presence.drive(Driving::Background);
+        assert_eq!(presence.pill(start).driving, Driving::Background);
     }
 
     #[test]

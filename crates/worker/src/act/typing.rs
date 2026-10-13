@@ -96,10 +96,10 @@ fn type_for_real(
         refuse_non_text_focus(engine)?;
     }
     if let Some(element) = &focused.element {
-        overlay::focus_field(engine, element.rect);
+        overlay::focus_field(engine, call, element.rect);
     }
     let chars = request.text.chars().count();
-    overlay::typing(engine, &focused.window);
+    overlay::typing(engine, call, &focused.window);
     let typing =
         choose_typing(request.how, chars, || readback(engine, focused.element.as_ref()), clipboard_holds_only_text);
     let instead = typing.note();

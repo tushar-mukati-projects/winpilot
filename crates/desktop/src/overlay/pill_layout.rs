@@ -56,6 +56,16 @@ impl PillMetrics {
 pub(crate) enum Align {
     TopCenter,
     TopRight,
+    BottomCenter,
+}
+
+impl Align {
+    pub(crate) const fn entrance_lift(self, slide: i32) -> i32 {
+        match self {
+            Self::TopCenter | Self::TopRight => slide,
+            Self::BottomCenter => -slide,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -121,14 +131,20 @@ pub(crate) fn spring(progress: f32) -> f32 {
 fn place_window(anchor: Rect, metrics: &PillMetrics, align: Align, size: (i32, i32), bounds: Rect) -> Rect {
     let (width, height) = size;
     let left = match align {
-        Align::TopCenter => anchor.center().x.saturating_sub(width / 2),
+        Align::TopCenter | Align::BottomCenter => anchor.center().x.saturating_sub(width / 2),
         Align::TopRight => {
             anchor.right().saturating_sub(metrics.inset).saturating_add(metrics.shadow).saturating_sub(width)
         }
     };
-    let below_top = anchor.y.saturating_add(metrics.inset).saturating_sub(metrics.shadow);
+    let top = match align {
+        Align::TopCenter | Align::TopRight => anchor.y.saturating_add(metrics.inset).saturating_sub(metrics.shadow),
+        Align::BottomCenter => {
+            let gap = metrics.margin.saturating_add(metrics.inset);
+            anchor.bottom().saturating_sub(gap).saturating_sub(height).saturating_add(metrics.shadow)
+        }
+    };
     let x = clamp_into(left, bounds.x, bounds.right().saturating_sub(width));
-    let y = clamp_into(below_top, bounds.y.saturating_sub(metrics.shadow), bounds.bottom().saturating_sub(height));
+    let y = clamp_into(top, bounds.y.saturating_sub(metrics.shadow), bounds.bottom().saturating_sub(height));
     Rect::new(x, y, width, height)
 }
 
@@ -170,6 +186,24 @@ mod tests {
         let layout = layout_pill(anchor, &metrics, Align::TopRight, (120, 17), SCREEN);
         let body = body_on_screen(&layout);
         assert_eq!((body.right(), body.y), (anchor.right() - 8, 108));
+    }
+
+    #[test]
+    fn bottom_pills_sit_centred_twenty_pixels_above_the_work_area_bottom() {
+        let metrics = PillMetrics::at_scale(1.0);
+        let work_area = Rect::new(0, 0, 2560, 1552);
+        let layout = layout_pill(work_area, &metrics, Align::BottomCenter, (400, 17), work_area);
+        let body = body_on_screen(&layout);
+        assert_eq!(body.bottom(), work_area.bottom() - 20);
+        assert!((body.center().x - work_area.center().x).abs() <= 1);
+        assert!(layout.window.bottom() <= work_area.bottom());
+    }
+
+    #[test]
+    fn top_pills_drop_into_place_and_bottom_pills_rise() {
+        assert_eq!(Align::TopCenter.entrance_lift(12), 12);
+        assert_eq!(Align::TopRight.entrance_lift(12), 12);
+        assert_eq!(Align::BottomCenter.entrance_lift(12), -12);
     }
 
     #[test]

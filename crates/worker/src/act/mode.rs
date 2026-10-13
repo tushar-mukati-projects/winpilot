@@ -1,4 +1,5 @@
 use deckhand_core::{Result, WindowInfo, protocol::Step};
+use deckhand_desktop::Activation;
 
 use super::refusal::background_refusal;
 use crate::{call_scope::CallScope, engine::Engine};
@@ -12,6 +13,13 @@ pub(crate) enum Mode {
 impl Mode {
     pub(crate) const fn requested(background: bool) -> Self {
         if background { Self::Background } else { Self::Foreground }
+    }
+
+    pub(crate) const fn activation(self) -> Activation {
+        match self {
+            Self::Foreground => Activation::Activate,
+            Self::Background => Activation::KeepForeground,
+        }
     }
 }
 
@@ -81,5 +89,22 @@ mod tests {
     fn the_flag_picks_the_mode() {
         assert_eq!(Mode::requested(true), Mode::Background);
         assert_eq!(Mode::requested(false), Mode::Foreground);
+    }
+
+    #[test]
+    fn only_background_mode_keeps_the_users_foreground() {
+        assert_eq!(Mode::Background.activation(), Activation::KeepForeground);
+        assert_eq!(Mode::Foreground.activation(), Activation::Activate);
+    }
+
+    #[test]
+    fn window_actions_and_picks_on_another_desktop_run_in_the_background() {
+        for json in [
+            r#"{"do":"window","action":"move","target":"w5","rect":{"x":0,"y":0,"width":10,"height":10}}"#,
+            r#"{"do":"window","action":"maximize","target":"w5"}"#,
+            r#"{"do":"pick","paths":["C:\\a.txt"],"open_with":"w5"}"#,
+        ] {
+            assert_eq!(for_window(Mode::Foreground, &elsewhere(), &step(json)).unwrap(), Mode::Background, "{json}");
+        }
     }
 }

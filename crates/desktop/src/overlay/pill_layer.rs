@@ -43,6 +43,7 @@ pub(crate) struct PillVoice {
 pub(crate) struct PillLayer {
     layer: Layer,
     voice: PillVoice,
+    detail: String,
     alarm: Palette,
     fonts: FontCache,
     art: Option<Art>,
@@ -50,7 +51,7 @@ pub(crate) struct PillLayer {
 
 impl PillLayer {
     pub(crate) fn new(layer: Layer, voice: PillVoice) -> Self {
-        Self { layer, voice, alarm: Palette::crimson(), fonts: FontCache::default(), art: None }
+        Self { layer, voice, detail: String::new(), alarm: Palette::crimson(), fonts: FontCache::default(), art: None }
     }
 
     pub(crate) fn show(&mut self, request: &PillShow, bounds: Rect) {
@@ -62,8 +63,10 @@ impl PillLayer {
         }
         let Some(art) = &self.art else { return };
         let settled = spring(request.entrance);
-        let lift = (art.metrics.slide as f32 * (1.0 - settled)).round() as i32;
-        let layout = art.layout.moved_to(request.anchor, &art.metrics, request.kind.align(), bounds).lifted(lift);
+        let slide = (art.metrics.slide as f32 * (1.0 - settled)).round() as i32;
+        let align = request.kind.align();
+        let layout =
+            art.layout.moved_to(request.anchor, &art.metrics, align, bounds).lifted(align.entrance_lift(slide));
         let appear = ease_out_cubic(progress_of(request.entrance, 0.45));
         let alpha = alpha_byte(request.alpha * appear);
         let resized = self.layer.placement().is_none_or(|shown| shown.width != layout.window.width);
@@ -93,6 +96,13 @@ impl PillLayer {
         self.art = None;
     }
 
+    pub(crate) fn describe(&mut self, detail: &str) {
+        if self.detail != detail {
+            detail.clone_into(&mut self.detail);
+            self.art = None;
+        }
+    }
+
     pub(crate) fn release_memory(&mut self) {
         self.art = None;
         self.fonts.release();
@@ -110,7 +120,7 @@ impl PillLayer {
     fn prepare(&mut self, request: &PillShow, bounds: Rect) -> Result<()> {
         let metrics = PillMetrics::at_scale(request.scale);
         let fonts = self.fonts.at(metrics.font_px)?;
-        let speaker = Speaker { label: &self.voice.label, hotkey: self.voice.hotkey.as_deref() };
+        let speaker = Speaker { label: &self.voice.label, hotkey: self.voice.hotkey.as_deref(), detail: &self.detail };
         let label = request.kind.label(fonts, &metrics, &speaker)?;
         let size = (label.width(), label.height());
         let layout = layout_pill(request.anchor, &metrics, request.kind.align(), size, bounds);

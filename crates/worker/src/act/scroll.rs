@@ -73,7 +73,7 @@ fn wheel(
     }
     motion.check()?;
     deckhand_input::scroll(point, request.direction, amount(request))?;
-    overlay::click(engine, point, 1);
+    overlay::scroll(engine, call, Some(point));
     settle(engine, window, call);
     Ok(Done::by("wheel"))
 }
@@ -88,6 +88,7 @@ fn scroll_by_pattern(
     let (id, direction, amount) = (element.id, request.direction, amount(request));
     let (moved, note) =
         by_pattern(engine, window, call, || engine.uia.run(move |uia| uia.scroll(id, direction, amount)))?;
+    overlay::scroll(engine, call, None);
     Ok(Done::by("pattern").with_note(edge_note(moved)).with_note(note))
 }
 

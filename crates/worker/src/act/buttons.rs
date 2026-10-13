@@ -22,7 +22,7 @@ pub(crate) fn mouse_down(engine: &Engine, target: Option<&Prepared>, press: Pres
     let point = Motion::start(engine, call).approach(&prepared, &located, press.glide_ms)?;
     deckhand_input::button_down(point, press.button)?;
     call.note_held(press.button, point);
-    overlay::click(engine, point, 1);
+    overlay::click(engine, call, point, 1);
     Ok(Done::by("mouse"))
 }
 
@@ -36,7 +36,7 @@ pub(crate) fn mouse_up(engine: &Engine, target: Option<&Prepared>, press: Press,
     }
     deckhand_input::button_up(point, press.button)?;
     call.note_released(press.button);
-    overlay::click(engine, point, 1);
+    overlay::click(engine, call, point, 1);
     Ok(Done::by("mouse"))
 }
 

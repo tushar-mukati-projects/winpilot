@@ -8,6 +8,7 @@ use super::{
     canvas::Bitmap,
     chip_text::ChipText,
     cursor_badge::{BadgeMetrics, layout_badge, paint_badge},
+    driving::Driving,
     edge_strips::border_strips,
     focus_outline::{FocusLook, FocusMetrics, paint_focus},
     glow_profile::GlowProfile,
@@ -16,6 +17,7 @@ use super::{
     palette::Palette,
     perimeter::Perimeter,
     pill_kind::PillKind,
+    pill_label::PresenceLook,
     pill_layout::{Align, PillMetrics, layout_pill},
     pill_paint::{PillArt, paint_dot, paint_pill, paint_rim, paint_sparkle, pill_rim, rest_rim_on},
     presence::Tone,
@@ -69,8 +71,12 @@ fn border_strips_start_clean() {
 fn pills_start_clean_with_rounded_corners() {
     let metrics = PillMetrics::at_scale(1.0);
     for (kind, align) in [
-        (PillKind::Presence { tone: Tone::Working, room: 800 }, Align::TopCenter),
+        (
+            PillKind::Presence(PresenceLook { tone: Tone::Working, driving: Driving::Foreground, room: 800 }),
+            Align::TopCenter,
+        ),
         (PillKind::Recording { seconds: 3 }, Align::TopRight),
+        (PillKind::Activity, Align::BottomCenter),
     ] {
         let layout = layout_pill(Rect::new(0, 0, 800, 600), &metrics, align, (120, 17), Rect::new(0, 0, 1920, 1080));
         let mut bitmap = Bitmap::new(layout.window.width as usize, layout.window.height as usize);

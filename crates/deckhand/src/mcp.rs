@@ -51,7 +51,7 @@ const INSTRUCTIONS: &str = "Deckhand controls the Windows desktop through UI Aut
 - Take a screenshot only when text is not enough. Give a point in it with its img id so it maps back to the screen: {\"x\":640,\"y\":360,\"img\":\"i7\"}; without img, x and y are physical screen pixels.\n\
 - observe mode=record saves an MP4 with the PC's sound by default (audio: system, mic, both or none); GIFs are silent.\n\
 - observe mode=listen transcribes speech on this PC: max_seconds (default 10, at most 90) of system audio, the mic or both, or a recording or other media file given as path; language picks it (default: detected) and translate gives English.\n\
-- act background:true works without the real mouse, keyboard or focus: UI Automation patterns first, and window messages for apps without them (clicks, drags, scrolls, typing and plain keys at a target); modifier chords and file pickers still need the foreground. Windows on other virtual desktops always get that.\n\
+- act background:true works without the real mouse, keyboard or focus: UI Automation patterns first, and window messages for apps without them (clicks, drags, scrolls, typing and plain keys at a target); launches, window changes and file pickers stay behind the user's window; modifier chords still need the foreground. Windows on other virtual desktops always get that.\n\
 - The user can stop all input with the kill hotkey ({hotkey}); act then fails with stopped_by_user. Tell the user instead of retrying.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,5 +1,6 @@
 mod act;
 mod app_catalog;
+mod app_label;
 mod app_match;
 mod app_windows;
 mod blackout;
@@ -22,6 +23,7 @@ mod ocr_read;
 mod ocr_target;
 mod on_screen;
 mod overlay;
+mod overlay_plan;
 mod process_tree;
 mod read_target;
 mod resolve;

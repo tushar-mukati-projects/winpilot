@@ -1,6 +1,7 @@
 use super::keycaps::Item;
 
 const TYPING: &str = "typing\u{2026}";
+const SPOKEN_TYPING: &str = "typing";
 const SHIFT: &str = "Shift";
 const MODIFIERS: [&str; 4] = ["Ctrl", "Alt", SHIFT, "Win"];
 const SPACE: &str = "Space";
@@ -33,6 +34,18 @@ impl ChipText {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    pub(crate) fn spoken(&self) -> String {
+        let words: Vec<String> = self
+            .0
+            .iter()
+            .map(|chip| match chip {
+                KeyChip::Typing => SPOKEN_TYPING.to_string(),
+                KeyChip::Chord(keys) => keys.join("+"),
+            })
+            .collect();
+        words.join(", ")
     }
 
     pub(crate) fn items(&self) -> Vec<Item> {
@@ -124,6 +137,14 @@ mod tests {
         ]);
         assert_eq!(text.items().iter().filter(|item| **item == Item::Cap(TYPING.to_string())).count(), 0);
         assert_eq!(caps(&text)[0], "\u{2193}");
+    }
+
+    #[test]
+    fn spoken_chips_join_keys_with_plus_and_chips_with_commas() {
+        let mixed = ChipText::keys(vec![chord(&["Ctrl", "A"]), chord(&["H"]), chord(&["Enter"])]);
+        assert_eq!(mixed.spoken(), "Ctrl+A, typing, Enter");
+        assert_eq!(ChipText::typing().spoken(), "typing");
+        assert_eq!(ChipText::keys(Vec::new()).spoken(), "");
     }
 
     #[test]

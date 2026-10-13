@@ -1,8 +1,9 @@
-use super::presence::Tone;
+use super::{driving::Driving, presence::Tone};
 
 const STOPPED: &str = "Stopped";
-const SEPARATOR: &str = " \u{00B7} ";
+pub(crate) const SEPARATOR: &str = " \u{00B7} ";
 const CONTROLLING: &str = " is controlling";
+const IN_THE_BACKGROUND: &str = " \u{00B7} in the background";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Wording {
@@ -21,14 +22,24 @@ pub(crate) fn hotkey_label(spec: &str) -> Option<String> {
     (!keys.is_empty()).then(|| keys.join("+"))
 }
 
-pub(crate) fn pill_words(tone: Tone, wording: Wording, label: &str, hotkey: Option<&str>) -> PillWords {
+pub(crate) fn pill_words(
+    tone: Tone,
+    driving: Driving,
+    wording: Wording,
+    label: &str,
+    hotkey: Option<&str>,
+) -> PillWords {
     let hotkey = hotkey.filter(|_| wording == Wording::Full);
+    let doing = match driving {
+        Driving::Foreground => CONTROLLING,
+        Driving::Background => IN_THE_BACKGROUND,
+    };
     match tone {
         Tone::Working => PillWords {
             lead: label.to_string(),
             hint: Some(match hotkey {
-                Some(hotkey) => format!("{CONTROLLING}{SEPARATOR}{hotkey} to stop"),
-                None => CONTROLLING.to_string(),
+                Some(hotkey) => format!("{doing}{SEPARATOR}{hotkey} to stop"),
+                None => doing.to_string(),
             }),
         },
         Tone::Stopped => PillWords {
@@ -86,27 +97,42 @@ mod tests {
         assert_eq!(hotkey_label("+"), None);
     }
 
+    fn foreground(tone: Tone, wording: Wording, label: &str, hotkey: Option<&str>) -> PillWords {
+        pill_words(tone, Driving::Foreground, wording, label, hotkey)
+    }
+
     #[test]
     fn the_full_label_names_the_agent_and_the_stop_hotkey() {
-        let words = pill_words(Tone::Working, Wording::Full, "Codex", HOTKEY);
+        let words = foreground(Tone::Working, Wording::Full, "Codex", HOTKEY);
         assert_eq!(words.lead, "Codex");
         assert_eq!(joined(&words), "Codex is controlling \u{00B7} Ctrl+Alt+Esc to stop");
     }
 
     #[test]
     fn the_stopped_label_names_the_resume_hotkey() {
-        let words = pill_words(Tone::Stopped, Wording::Full, "Codex", HOTKEY);
+        let words = foreground(Tone::Stopped, Wording::Full, "Codex", HOTKEY);
         assert_eq!(joined(&words), "Stopped \u{00B7} press Ctrl+Alt+Esc to resume");
     }
 
     #[test]
     fn short_labels_and_missing_hotkeys_drop_the_hint() {
-        assert_eq!(joined(&pill_words(Tone::Working, Wording::Short, "Claude", HOTKEY)), "Claude is controlling");
-        assert_eq!(joined(&pill_words(Tone::Working, Wording::Full, "Claude", None)), "Claude is controlling");
+        assert_eq!(joined(&foreground(Tone::Working, Wording::Short, "Claude", HOTKEY)), "Claude is controlling");
+        assert_eq!(joined(&foreground(Tone::Working, Wording::Full, "Claude", None)), "Claude is controlling");
         assert_eq!(
-            pill_words(Tone::Stopped, Wording::Full, "Claude", None),
+            foreground(Tone::Stopped, Wording::Full, "Claude", None),
             PillWords { lead: STOPPED.to_string(), hint: None }
         );
+    }
+
+    #[test]
+    fn background_work_on_a_visible_window_says_so() {
+        let background = |tone, wording| pill_words(tone, Driving::Background, wording, "Claude", HOTKEY);
+        assert_eq!(
+            joined(&background(Tone::Working, Wording::Full)),
+            "Claude \u{00B7} in the background \u{00B7} Ctrl+Alt+Esc to stop"
+        );
+        assert_eq!(joined(&background(Tone::Working, Wording::Short)), "Claude \u{00B7} in the background");
+        assert_eq!(joined(&background(Tone::Stopped, Wording::Full)), "Stopped \u{00B7} press Ctrl+Alt+Esc to resume");
     }
 
     #[test]

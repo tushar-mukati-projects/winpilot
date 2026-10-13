@@ -124,8 +124,8 @@ fn clicked_by_pattern(
     }
     let (method, note) = by_pattern(engine, &prepared.window, call, || click_by_pattern(engine, element))?;
     let Some(method) = method else { return Ok(None) };
-    if !element.rect.is_empty() && prepared.window.on_current_desktop {
-        overlay::click(engine, element.rect.center(), 1);
+    if !element.rect.is_empty() {
+        overlay::click(engine, call, element.rect.center(), 1);
     }
     Ok(Some(Done::by(method).with_note(note)))
 }

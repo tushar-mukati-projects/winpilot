@@ -30,9 +30,9 @@ pub(crate) fn type_text(
     let keyboard = keyboard(engine, prepared, call)?;
     if keyboard.window.on_current_desktop {
         if let Some(element) = &keyboard.element {
-            overlay::focus_field(engine, element.rect);
+            overlay::focus_field(engine, call, element.rect);
         }
-        overlay::typing(engine, &keyboard.window);
+        overlay::typing(engine, call, &keyboard.window);
     }
     let typed = if enter { format!("{text}{ENTER}") } else { text.to_string() };
     let check = || engine.guard.check_running(call);
@@ -53,7 +53,7 @@ pub(crate) fn press(
 ) -> Result<Done> {
     let keyboard = keyboard(engine, prepared, call)?;
     if keyboard.window.on_current_desktop {
-        overlay::key_chips(engine, &keyboard.window, key_chips(chords));
+        overlay::key_chips(engine, call, &keyboard.window, key_chips(chords));
     }
     let check = || engine.guard.check_running(call);
     let ((), note) = by_pattern(engine, &keyboard.window, call, || {

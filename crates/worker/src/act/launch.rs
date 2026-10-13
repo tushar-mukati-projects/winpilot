@@ -4,13 +4,18 @@ use std::{
 };
 
 use deckhand_core::{Error, ErrorCode, Result, WindowInfo, WindowRef, config::GuardConfig, format::window_line};
-use deckhand_desktop::apps::{self, AppEntry, AppLaunch};
+use deckhand_desktop::{
+    Activation,
+    apps::{self, AppEntry, AppLaunch},
+};
 
 use super::{
     done::Done,
     foreground::bring_forward,
     launch_args::check_launch_args,
+    launch_behind::LaunchedBehind,
     launch_match::{AppIdentity, Before, Expected, LaunchHints, WindowFacts, is_fresh, pick_launched, switched_to},
+    mode::{Mode, check_before},
     settle,
     shortcut::refuse_shortcut,
 };
@@ -55,27 +60,36 @@ struct Started {
     since: u64,
 }
 
-pub(crate) fn launch(engine: &Engine, app: &str, args: Option<&str>, call: &CallScope) -> Result<Done> {
+pub(crate) fn launch(engine: &Engine, app: &str, args: Option<&str>, mode: Mode, call: &CallScope) -> Result<Done> {
     let target = launch_target(engine, app.trim())?;
     check_args(engine, args)?;
     let plan = plan(&engine.config.guard, target, args)?;
-    engine.guard.before_input(None, call)?;
+    check_before(engine, None, mode, call)?;
+    let kept_behind = (mode == Mode::Background).then(|| LaunchedBehind::record(&engine.guard));
     let before = before_launch()?;
-    let started = start(plan)?;
-    let found = until(engine, call, WINDOW_WAIT, &Watch::any(), || launched_window(&before, &started))?;
-    let window = found.ok_or_else(|| {
+    let started = start(plan, mode.activation())?;
+    let window = await_window(engine, &before, &started, call)?;
+    engine.guard.check_window(&window)?;
+    let placed = match &kept_behind {
+        Some(kept_behind) => kept_behind.on_appearing(&window),
+        None => bring_to_front(&window),
+    };
+    overlay::begin(engine, &window, call);
+    settle(engine, &window, call);
+    let window = deckhand_desktop::window(window.hwnd)?;
+    let settled = kept_behind.and_then(|kept_behind| kept_behind.once_settled(&window));
+    Ok(Done::noting(format!("launched {}", window_line(&window))).with_note(placed).with_note(settled))
+}
+
+fn await_window(engine: &Engine, before: &Before, started: &Started, call: &CallScope) -> Result<WindowInfo> {
+    let found = until(engine, call, WINDOW_WAIT, &Watch::any(), || launched_window(before, started))?;
+    found.ok_or_else(|| {
         Error::timeout(format!(
             "launched {} but no window of it appeared within {} s",
             started.label,
             WINDOW_WAIT.as_secs()
         ))
-    })?;
-    engine.guard.check_window(&window)?;
-    let behind = bring_to_front(&window);
-    overlay::begin(engine, &window, call);
-    settle(engine, &window, call);
-    let window = deckhand_desktop::window(window.hwnd)?;
-    Ok(Done::noting(format!("launched {}", window_line(&window))).with_note(behind))
+    })
 }
 
 fn launch_target(engine: &Engine, app: &str) -> Result<LaunchTarget> {
@@ -145,11 +159,11 @@ const fn expecting(identity: AppIdentity, hints: LaunchHints) -> Expected {
     Expected { identity, pid: None, hints }
 }
 
-fn start(plan: Plan) -> Result<Started> {
+fn start(plan: Plan, activation: Activation) -> Result<Started> {
     let since = system_time_now();
     let pid = match &plan.command {
-        Command::Run { file, args } => apps::launch_path(file, args.as_deref())?,
-        Command::Activate { app, args } => apps::launch(app, args.as_deref())?,
+        Command::Run { file, args } => apps::launch_path(file, args.as_deref(), activation)?,
+        Command::Activate { app, args } => apps::launch(app, args.as_deref(), activation)?,
     };
     Ok(Started { label: plan.label, expected: Expected { pid, ..plan.expected }, since })
 }

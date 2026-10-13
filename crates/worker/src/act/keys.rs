@@ -71,9 +71,9 @@ fn send_to_focus(
 ) -> Result<Done> {
     let focused = keyboard_target(engine, target, call)?;
     if let Some(element) = &focused.element {
-        overlay::focus_field(engine, element.rect);
+        overlay::focus_field(engine, call, element.rect);
     }
-    overlay::key_chips(engine, &focused.window, key_chips(chords));
+    overlay::key_chips(engine, call, &focused.window, key_chips(chords));
     let note = send()?;
     settle(engine, &focused.window, call);
     Ok(Done::by(via_focus_click("keys", focused.clicked)).with_note(note))

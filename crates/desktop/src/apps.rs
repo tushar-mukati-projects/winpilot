@@ -3,10 +3,11 @@ use std::path::{Path, PathBuf};
 use deckhand_core::{Error, Result};
 
 use crate::{
+    activation::Activation,
     app_shortcut::Shortcut,
     apps_folder::list_apps_folder,
     com::ComApartment,
-    shell_launch::{activate_packaged, shell_execute},
+    shell_launch::{ShellRequest, activate_packaged, shell_execute},
 };
 
 pub(crate) const APPS_FOLDER_PREFIX: &str = "shell:AppsFolder\\";
@@ -59,17 +60,21 @@ pub fn program_of(app: &AppEntry) -> Option<PathBuf> {
     Shortcut::of_app(&app.id, &app.name).ok()?.program()
 }
 
-pub fn launch(app: &AppEntry, args: Option<&str>) -> Result<Option<u32>> {
+pub fn launch(app: &AppEntry, args: Option<&str>, activation: Activation) -> Result<Option<u32>> {
     let _com = ComApartment::enter_any()?;
     match app.kind {
         AppKind::Packaged => activate_packaged(&app.id, args).map(Some),
-        AppKind::Desktop => shell_execute(&format!("{APPS_FOLDER_PREFIX}{}", app.id), None, args),
+        AppKind::Desktop => {
+            let file = format!("{APPS_FOLDER_PREFIX}{}", app.id);
+            shell_execute(&ShellRequest { file: &file, verb: None, args, activation })
+        }
     }
 }
 
-pub fn launch_path(path: &Path, args: Option<&str>) -> Result<Option<u32>> {
+pub fn launch_path(path: &Path, args: Option<&str>, activation: Activation) -> Result<Option<u32>> {
     let _com = ComApartment::enter_any()?;
-    shell_execute(&path.to_string_lossy(), Some(OPEN_VERB), args)
+    let file = path.to_string_lossy();
+    shell_execute(&ShellRequest { file: &file, verb: Some(OPEN_VERB), args, activation })
 }
 
 fn program_launch(app: &AppEntry, shortcut: &Shortcut, args: &str) -> Result<AppLaunch> {
@@ -219,7 +224,7 @@ mod tests {
         let apps = installed_apps().unwrap();
         let Some(calculator) = apps.iter().find(|app| app.name == CALCULATOR) else { return };
         launch_and_close(CALCULATOR, || {
-            launch(calculator, None).unwrap();
+            launch(calculator, None, Activation::Activate).unwrap();
         });
     }
 
@@ -230,7 +235,7 @@ mod tests {
         let title = format!("Deckhand Fixture launch {}", std::process::id());
         let args = format!("--title \"{title}\" --pos 120,120");
         launch_and_close(&title, || {
-            launch_path(&exe, Some(&args)).unwrap();
+            launch_path(&exe, Some(&args), Activation::Activate).unwrap();
         });
     }
 }

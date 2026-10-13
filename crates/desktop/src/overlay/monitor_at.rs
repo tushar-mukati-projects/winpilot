@@ -1,11 +1,16 @@
 use deckhand_core::{Point, Rect};
 use windows::Win32::{
     Foundation::{POINT, RECT},
-    Graphics::Gdi::{MONITOR_DEFAULTTONEAREST, MonitorFromPoint, MonitorFromRect},
+    Graphics::Gdi::{
+        MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY, MonitorFromPoint, MonitorFromRect, MonitorFromWindow,
+    },
 };
 
 use super::scale::scale_from_dpi;
-use crate::monitors::{Monitor, describe_monitor, effective_dpi, monitors};
+use crate::{
+    monitors::{Monitor, describe_monitor, effective_dpi, monitors},
+    window_foreground::current_foreground,
+};
 
 pub(crate) fn scale_at(point: Point) -> f32 {
     let monitor = unsafe { MonitorFromPoint(POINT { x: point.x, y: point.y }, MONITOR_DEFAULTTONEAREST) };
@@ -19,6 +24,11 @@ pub(crate) fn monitor_around(rect: Rect) -> Option<Monitor> {
 
 pub(crate) fn work_area_around(rect: Rect) -> Option<Rect> {
     monitor_around(rect).map(|monitor| monitor.work_area)
+}
+
+pub(crate) fn foreground_work_area() -> Option<Rect> {
+    let window = current_foreground()?;
+    describe_monitor(unsafe { MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY) }).map(|monitor| monitor.work_area)
 }
 
 pub(crate) fn primary_work_area() -> Option<Rect> {
@@ -39,5 +49,6 @@ mod tests {
         assert_eq!(work_area_around(Rect::new(area.x + 10, area.y + 10, 200, 100)), Some(area));
         assert!(monitor_around(Rect::new(-90_000, -90_000, 10, 10)).is_some());
         assert!(scale_at(Point::new(-90_000, -90_000)) >= 1.0);
+        assert!(foreground_work_area().is_none_or(|work_area| !work_area.is_empty()));
     }
 }

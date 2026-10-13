@@ -1,10 +1,10 @@
-use deckhand_core::{Context, Rect, Result, WindowInfo, WindowRef};
+use deckhand_core::{Context, Point, Rect, Result, WindowInfo, WindowRef};
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM},
+        Foundation::{HWND, LPARAM, POINT},
         UI::{
             Input::KeyboardAndMouse::IsWindowEnabled,
-            WindowsAndMessaging::{EnumWindows, GW_OWNER, GetWindow},
+            WindowsAndMessaging::{EnumWindows, GA_ROOT, GW_OWNER, GetAncestor, GetWindow, WindowFromPoint},
         },
     },
     core::BOOL,
@@ -81,6 +81,15 @@ pub fn is_enabled(hwnd: WindowRef) -> bool {
 
 pub fn foreground_window() -> Option<WindowRef> {
     current_foreground().map(ref_of)
+}
+
+pub fn window_at(point: Point) -> Option<WindowRef> {
+    let hit = unsafe { WindowFromPoint(POINT { x: point.x, y: point.y }) };
+    if hit.is_invalid() {
+        return None;
+    }
+    let root = unsafe { GetAncestor(hit, GA_ROOT) };
+    (!root.is_invalid()).then(|| ref_of(root))
 }
 
 pub fn owner_of(hwnd: WindowRef) -> Option<WindowRef> {
@@ -174,6 +183,16 @@ mod tests {
         assert!(list.iter().filter(|info| info.foreground).all(|info| info.on_current_desktop));
         let current = DesktopLookup::new().current_number();
         assert!(list.iter().filter(|info| info.on_current_desktop).all(|info| info.desktop == current));
+    }
+
+    #[test]
+    fn the_window_at_a_point_is_a_live_top_level_window() {
+        let Some(first) = windows().unwrap().into_iter().find(|info| info.on_current_desktop) else { return };
+        if let Some(hit) = window_at(first.rect.center()) {
+            assert!(is_window(hit));
+            assert_eq!(window_at(first.rect.center()), Some(hit));
+        }
+        assert_eq!(window_at(Point::new(-90_000, -90_000)), None);
     }
 
     #[test]

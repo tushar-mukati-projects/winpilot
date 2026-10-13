@@ -3,7 +3,9 @@ use std::time::{Duration, Instant};
 use deckhand_core::{Point, Rect};
 
 use super::{
+    activity_pill::ActivityPill,
     chip_text::ChipText,
+    driving::Driving,
     fade::Fade,
     pointer_badge::PointerBadge,
     presence::{FRAME, Presence, timed},
@@ -19,6 +21,7 @@ const REMEMBERED_SCANS: usize = 16;
 #[derive(Debug, Default)]
 pub(crate) struct Scene {
     presence: Option<Presence>,
+    activity: Option<ActivityPill>,
     ripples: [Option<Ripple>; MAX_RIPPLES],
     trail: Option<Trail>,
     focus: Option<Focus>,
@@ -33,12 +36,26 @@ pub(crate) struct Scene {
 }
 
 impl Scene {
-    pub(crate) fn begin(&mut self, rect: Rect, look: Look, now: Instant) {
+    pub(crate) fn begin(&mut self, rect: Rect, look: Look, driving: Driving, now: Instant) {
         match (&mut self.presence, self.halted) {
             (Some(presence), true) => presence.retarget_stopped(rect, now),
             (Some(presence), false) => presence.retarget(rect, look.scale, look.animated, now),
             (None, true) => self.presence = Some(Presence::stopped(rect, look.scale, look.animated, now)),
             (None, false) => self.presence = Some(Presence::working(rect, look.scale, look.animated, now)),
+        }
+        if let Some(presence) = &mut self.presence {
+            presence.drive(driving);
+        }
+    }
+
+    pub(crate) fn activity(&mut self, area: Rect, hint: String, look: Look, now: Instant) {
+        if self.halted {
+            return;
+        }
+        self.end(now);
+        match &mut self.activity {
+            Some(activity) => activity.update(area, hint, look, now),
+            None => self.activity = Some(ActivityPill::new(area, hint, look, now)),
         }
     }
 
@@ -64,6 +81,9 @@ impl Scene {
         if let Some(pointer) = &mut self.pointer {
             pointer.leave(now);
         }
+        if let Some(activity) = &mut self.activity {
+            activity.dismiss(now);
+        }
     }
 
     pub(crate) fn resumed(&mut self, now: Instant) {
@@ -74,8 +94,12 @@ impl Scene {
     }
 
     pub(crate) fn click(&mut self, center: Point, count: u8, look: Look, now: Instant) {
-        self.clear_focus(now);
         self.point_at(center, center, Duration::ZERO, look, now);
+        self.ripple(center, count, look, now);
+    }
+
+    pub(crate) fn ripple(&mut self, center: Point, count: u8, look: Look, now: Instant) {
+        self.clear_focus(now);
         let serial = self.next_serial();
         let ripple = Ripple { center, rings: count.clamp(1, 2), look, started: now, serial };
         let slot = self.free_ripple_slot();
@@ -148,6 +172,12 @@ impl Scene {
         if self.presence.is_some_and(|presence| presence.is_gone(now)) {
             self.presence = None;
         }
+        if let Some(activity) = &mut self.activity {
+            activity.advance(now);
+        }
+        if self.activity.as_ref().is_some_and(|activity| activity.is_gone(now)) {
+            self.activity = None;
+        }
         for slot in &mut self.ripples {
             if slot.is_some_and(|ripple| ripple.is_over(now)) {
                 *slot = None;
@@ -180,6 +210,7 @@ impl Scene {
         Frame {
             border: self.presence.and_then(|presence| presence.border(now)),
             pill: self.presence.map(|presence| presence.pill(now)),
+            activity: self.activity.as_ref().map(|activity| activity.frame(now)),
             ripples: self.ripples.map(|slot| slot.map(|ripple| ripple.frame(now))),
             trail: self.trail.as_ref().map(|trail| trail.frame(now)),
             focus: self.focus.map(|focus| focus.frame(now)),
@@ -193,6 +224,7 @@ impl Scene {
 
     pub(crate) fn next_wake(&self, now: Instant) -> Option<Duration> {
         let presence = self.presence.and_then(|presence| presence.next_wake(now));
+        let activity = self.activity.as_ref().map(|activity| activity.wake(now));
         let ripples = self.ripples.iter().flatten().map(|ripple| ripple.wake(now));
         let trail = self.trail.as_ref().map(|_| FRAME);
         let focus = self.focus.and_then(|focus| focus.wake(now));
@@ -201,12 +233,13 @@ impl Scene {
         let pointer = self.pointer.map(|pointer| pointer.wake(now));
         let chips = self.chips.as_ref().map(|chips| chips.wake(now));
         let scan = self.scan.map(|scan| scan.wake(now));
-        let effects = [trail, recording, viewfinder, pointer, chips, scan];
+        let effects = [activity, trail, recording, viewfinder, pointer, chips, scan];
         presence.into_iter().chain(ripples).chain(focus).chain(effects.into_iter().flatten()).min()
     }
 
     pub(crate) fn is_empty(&self) -> bool {
         self.presence.is_none()
+            && self.activity.is_none()
             && self.ripples.iter().all(Option::is_none)
             && self.trail.is_none()
             && self.focus.is_none()
@@ -279,12 +312,57 @@ mod tests {
     fn begin_animates_until_end_then_goes_idle() {
         let start = Instant::now();
         let mut scene = Scene::default();
-        scene.begin(RECT, ANIMATED, start);
+        scene.begin(RECT, ANIMATED, Driving::Foreground, start);
         assert_eq!(scene.next_wake(start), Some(FRAME));
         scene.end(start + MS(1000));
         scene.advance(start + MS(1300));
         assert!(scene.is_empty());
         assert_eq!(scene.next_wake(start + MS(1300)), None);
+    }
+
+    #[test]
+    fn background_ripples_carry_no_pointer_badge() {
+        let start = Instant::now();
+        let mut scene = Scene::default();
+        scene.begin(RECT, ANIMATED, Driving::Background, start);
+        scene.ripple(Point::new(300, 300), 1, ANIMATED, start);
+        let frame = scene.frame(start + MS(50));
+        assert!(frame.badge.is_none() && frame.ripples[0].is_some());
+        assert_eq!(frame.pill.map(|pill| pill.driving), Some(Driving::Background));
+        scene.click(Point::new(300, 300), 1, ANIMATED, start + MS(60));
+        assert!(scene.frame(start + MS(70)).badge.is_some());
+    }
+
+    #[test]
+    fn background_activity_replaces_the_window_frame_and_fades_after_two_seconds() {
+        let start = Instant::now();
+        let mut scene = Scene::default();
+        let area = Rect::new(0, 0, 1920, 1032);
+        scene.begin(RECT, ANIMATED, Driving::Background, start);
+        scene.activity(area, " \u{00B7} working in CapCut".to_string(), ANIMATED, start + MS(100));
+        scene.advance(start + MS(500));
+        let frame = scene.frame(start + MS(500));
+        assert!(frame.pill.is_none() && frame.border.is_none());
+        let shown = frame.activity.map(|activity| (activity.anchor, activity.hint));
+        assert_eq!(shown, Some((area, " \u{00B7} working in CapCut")));
+        scene.advance(start + MS(2100));
+        assert!(scene.frame(start + MS(2100)).activity.is_some());
+        scene.advance(start + MS(2450));
+        assert!(scene.is_empty());
+    }
+
+    #[test]
+    fn the_kill_switch_dismisses_activity_and_ignores_more() {
+        let start = Instant::now();
+        let mut scene = Scene::default();
+        let area = Rect::new(0, 0, 1920, 1032);
+        scene.activity(area, " \u{00B7} working in CapCut".to_string(), ANIMATED, start);
+        scene.stopped(area, ANIMATED, start + MS(100));
+        scene.activity(area, " \u{00B7} click".to_string(), ANIMATED, start + MS(200));
+        scene.advance(start + MS(450));
+        let frame = scene.frame(start + MS(450));
+        assert!(frame.activity.is_none());
+        assert_eq!(frame.pill.map(|pill| pill.tone), Some(Tone::Stopped));
     }
 
     #[test]
@@ -372,19 +450,19 @@ mod tests {
     fn a_later_begin_keeps_showing_stopped_until_resumed() {
         let start = Instant::now();
         let mut scene = Scene::default();
-        scene.begin(RECT, ANIMATED, start);
+        scene.begin(RECT, ANIMATED, Driving::Foreground, start);
         scene.stopped(Rect::new(0, 0, 1920, 1032), ANIMATED, start + MS(100));
-        scene.begin(Rect::new(50, 50, 600, 400), ANIMATED, start + MS(300));
+        scene.begin(Rect::new(50, 50, 600, 400), ANIMATED, Driving::Foreground, start + MS(300));
         let tone = |scene: &Scene, at: Instant| scene.frame(at).pill.map(|pill| pill.tone);
         assert_eq!(tone(&scene, start + MS(400)), Some(Tone::Stopped));
         scene.advance(start + MS(1800));
         scene.advance(start + MS(2100));
         assert!(scene.is_empty());
-        scene.begin(RECT, ANIMATED, start + MS(2200));
+        scene.begin(RECT, ANIMATED, Driving::Foreground, start + MS(2200));
         assert_eq!(tone(&scene, start + MS(2300)), Some(Tone::Stopped));
         assert!(scene.frame(start + MS(2300)).border.is_some_and(|border| border.tone == Tone::Stopped));
         scene.resumed(start + MS(2400));
-        scene.begin(RECT, ANIMATED, start + MS(2500));
+        scene.begin(RECT, ANIMATED, Driving::Foreground, start + MS(2500));
         assert_eq!(tone(&scene, start + MS(2600)), Some(Tone::Working));
     }
 
@@ -392,10 +470,10 @@ mod tests {
     fn resuming_before_the_banner_fades_lets_the_next_begin_work() {
         let start = Instant::now();
         let mut scene = Scene::default();
-        scene.begin(RECT, ANIMATED, start);
+        scene.begin(RECT, ANIMATED, Driving::Foreground, start);
         scene.stopped(Rect::new(0, 0, 1920, 1032), ANIMATED, start + MS(100));
         scene.resumed(start + MS(500));
-        scene.begin(RECT, ANIMATED, start + MS(550));
+        scene.begin(RECT, ANIMATED, Driving::Foreground, start + MS(550));
         assert_eq!(scene.frame(start + MS(800)).pill.map(|pill| pill.tone), Some(Tone::Working));
     }
 
@@ -403,7 +481,7 @@ mod tests {
     fn reduced_motion_only_wakes_for_deadlines() {
         let start = Instant::now();
         let mut scene = Scene::default();
-        scene.begin(RECT, STILL, start);
+        scene.begin(RECT, STILL, Driving::Foreground, start);
         scene.focus_field(Rect::new(10, 10, 100, 20), STILL, start);
         assert_eq!(scene.next_wake(start), None);
         scene.click(Point::new(5, 5), 1, STILL, start);
@@ -449,7 +527,7 @@ mod tests {
         assert!(!scene.scan(RECT, ANIMATED, start + MS(1000)));
         assert!(scene.scan(Rect::new(0, 0, 300, 300), ANIMATED, start + MS(1000)));
         assert!(scene.scan(RECT, ANIMATED, start + MS(1600)));
-        scene.begin(Rect::new(5, 5, 400, 400), ANIMATED, start + MS(2000));
+        scene.begin(Rect::new(5, 5, 400, 400), ANIMATED, Driving::Foreground, start + MS(2000));
         assert!(!scene.scan(Rect::new(900, 0, 300, 300), ANIMATED, start + MS(4000)));
     }
 

@@ -28,6 +28,13 @@ pub(crate) fn joined(earlier: Option<String>, note: String) -> String {
     }
 }
 
+pub(crate) fn both_notes(first: Option<String>, second: Option<String>) -> Option<String> {
+    match second {
+        Some(second) => Some(joined(first, second)),
+        None => first,
+    }
+}
+
 pub(crate) fn via_focus_click(method: &str, clicked: bool) -> String {
     if clicked { format!("click-focus+{method}") } else { method.to_string() }
 }
@@ -35,6 +42,15 @@ pub(crate) fn via_focus_click(method: &str, clicked: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn two_optional_notes_join_in_order() {
+        let note = |text: &str| Some(text.to_string());
+        assert_eq!(both_notes(note("a"), note("b")), note("a; b"));
+        assert_eq!(both_notes(None, note("b")), note("b"));
+        assert_eq!(both_notes(note("a"), None), note("a"));
+        assert_eq!(both_notes(None, None), None);
+    }
 
     #[test]
     fn notes_accumulate_in_order() {

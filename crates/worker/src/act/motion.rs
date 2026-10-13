@@ -39,7 +39,7 @@ impl<'a> Motion<'a> {
         self.check()?;
         let duration = self.glide_duration(glide_ms);
         let from = deckhand_input::cursor_position().unwrap_or(to);
-        overlay::glide(self.engine, from, to, duration);
+        overlay::glide(self.engine, self.call, from, to, duration);
         if duration.is_zero() || from == to {
             return deckhand_input::move_to(to);
         }

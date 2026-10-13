@@ -4,24 +4,19 @@ use deckhand_core::{Context, Result, WindowRef, WindowState};
 use windows::Win32::{
     Foundation::{LPARAM, WPARAM},
     UI::WindowsAndMessaging::{
-        PostMessageW, SMTO_ABORTIFHUNG, SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SendMessageTimeoutW, ShowWindowAsync,
-        WM_CLOSE, WM_NULL,
+        PostMessageW, SMTO_ABORTIFHUNG, SendMessageTimeoutW, ShowWindowAsync, WM_CLOSE, WM_NULL,
     },
 };
 
 use crate::{
+    activation::Activation,
     timeouts::finite_millis,
     window_identity::{hwnd_of, is_live, live_hwnd},
 };
 
-pub fn set_window_state(hwnd: WindowRef, state: WindowState) -> Result<()> {
+pub fn set_window_state(hwnd: WindowRef, state: WindowState, activation: Activation) -> Result<()> {
     let handle = live_hwnd(hwnd)?;
-    let command = match state {
-        WindowState::Minimized => SW_MINIMIZE,
-        WindowState::Maximized => SW_MAXIMIZE,
-        WindowState::Normal => SW_RESTORE,
-    };
-    if unsafe { ShowWindowAsync(handle, command) }.as_bool() {
+    if unsafe { ShowWindowAsync(handle, activation.state_command(state)) }.as_bool() {
         return Ok(());
     }
     Err(windows::core::Error::from_thread()).context(&format!("changing the state of {hwnd}"))
@@ -67,16 +62,16 @@ mod tests {
     fn missing_windows_are_rejected() {
         assert!(!wait_until_responsive(WindowRef(0), Duration::from_millis(10)));
         assert!(close_window(WindowRef(0)).is_err());
-        assert!(set_window_state(WindowRef(0), WindowState::Normal).is_err());
+        assert!(set_window_state(WindowRef(0), WindowState::Normal, Activation::Activate).is_err());
     }
 
     #[test]
     #[ignore = "minimizes and restores a real window"]
     fn minimize_and_restore_foreground_window() {
         let foreground = foreground_window().unwrap();
-        set_window_state(foreground, WindowState::Minimized).unwrap();
+        set_window_state(foreground, WindowState::Minimized, Activation::Activate).unwrap();
         std::thread::sleep(Duration::from_millis(300));
-        set_window_state(foreground, WindowState::Normal).unwrap();
+        set_window_state(foreground, WindowState::Normal, Activation::Activate).unwrap();
     }
 
     #[test]

@@ -1,3 +1,6 @@
+mod activity;
+mod activity_pill;
+mod activity_words;
 mod badge_layer;
 mod border_geometry;
 mod border_layers;
@@ -10,6 +13,7 @@ mod client;
 mod color;
 mod command;
 mod cursor_badge;
+mod driving;
 mod easing;
 mod edge_strips;
 mod fade;
@@ -64,6 +68,7 @@ mod viewfinder_layers;
 mod wake_flag;
 mod window;
 
+pub use activity::{Activity, Cue, OutOfSight};
 pub use capture_hide::CaptureHideGuard;
 pub use client::Overlay;
 pub use options::OverlayOptions;

@@ -1,4 +1,4 @@
-use deckhand_core::{WindowInfo, WindowRef};
+use deckhand_core::{Point, WindowInfo, WindowRef};
 
 use crate::{
     engine::Engine,
@@ -54,6 +54,10 @@ pub(crate) fn window_covers(engine: &Engine, target: WindowRef, hit: WindowRef) 
     };
     let owned = owned_by(hit.hwnd, target.hwnd);
     covers(cover_facts(&target, &hit, owned, engine.host.contains(hit.pid)))
+}
+
+pub(crate) fn uncovered_at(engine: &Engine, window: &WindowInfo, spot: Point) -> bool {
+    deckhand_desktop::window_at(spot).is_some_and(|hit| !window_covers(engine, window.hwnd, hit))
 }
 
 fn owned_by(window: WindowRef, owner: WindowRef) -> bool {

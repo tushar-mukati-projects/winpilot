@@ -10,10 +10,13 @@ use windows::Win32::{
 };
 
 use super::{
+    activity::Activity,
+    activity_words::activity_hint,
     border_geometry::{BorderMetrics, fit_on_screen, is_framable, sides_open_within},
     command::OverlayCommand,
+    driving::Driving,
     frame_clock::FrameClock,
-    monitor_at::{monitor_around, primary_work_area, scale_at},
+    monitor_at::{foreground_work_area, monitor_around, primary_work_area, scale_at},
     motion::system_animations_enabled,
     options::OverlayOptions,
     palette::Palette,
@@ -73,7 +76,8 @@ impl OverlayThread {
         let mut raise = false;
         let mut applied = 0usize;
         while let Ok(command) = self.commands.try_recv() {
-            raise |= matches!(command, OverlayCommand::Begin(_) | OverlayCommand::Stopped);
+            raise |=
+                matches!(command, OverlayCommand::Begin(..) | OverlayCommand::Activity(_) | OverlayCommand::Stopped);
             self.apply(command, now);
             applied += 1;
         }
@@ -88,9 +92,11 @@ impl OverlayThread {
 
     fn apply(&mut self, command: OverlayCommand, now: Instant) {
         match command {
-            OverlayCommand::Begin(rect) => self.begin(rect, now),
+            OverlayCommand::Begin(rect, driving) => self.begin(rect, driving, now),
             OverlayCommand::End => self.scene.end(now),
             OverlayCommand::Click(point, count) => self.scene.click(point, count, self.look_at(point), now),
+            OverlayCommand::Ripple(point, count) => self.scene.ripple(point, count, self.look_at(point), now),
+            OverlayCommand::Activity(activity) => self.activity(&activity, now),
             OverlayCommand::Glide(from, to, duration) => self.scene.glide(from, to, duration, self.look_at(to), now),
             OverlayCommand::FocusField(rect) => self.scene.focus_field(rect, self.look_at(top_centre(rect)), now),
             OverlayCommand::Stopped => self.stop(now),
@@ -124,11 +130,17 @@ impl OverlayThread {
         self.clock.schedule(timer_window, self.scene.next_wake(now));
     }
 
-    fn begin(&mut self, rect: Rect, now: Instant) {
+    fn begin(&mut self, rect: Rect, driving: Driving, now: Instant) {
         if is_framable(rect) {
             let (frame, look) = self.framed(rect);
-            self.scene.begin(frame, look, now);
+            self.scene.begin(frame, look, driving, now);
         }
+    }
+
+    fn activity(&mut self, activity: &Activity, now: Instant) {
+        let area = foreground_work_area().or_else(primary_work_area).unwrap_or_else(virtual_screen);
+        let look = self.look_at(Point::new(area.center().x, area.bottom().saturating_sub(1)));
+        self.scene.activity(area, activity_hint(activity), look, now);
     }
 
     fn stop(&mut self, now: Instant) {
