@@ -4,6 +4,7 @@ mod decoder;
 mod ggml;
 mod languages;
 mod logits;
+mod looping;
 mod media;
 mod options;
 mod paths;

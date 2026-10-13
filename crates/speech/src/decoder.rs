@@ -3,6 +3,7 @@ use candle_transformers::models::whisper::model::Whisper;
 use winpilot_core::{Context, Error, Result};
 
 use crate::logits::{apply_rules, greedy, log_sum_exp};
+use crate::looping::loop_start;
 use crate::text_decoder::{CachedDecoder, last_position};
 use crate::vocab::SpecialTokens;
 
@@ -58,6 +59,10 @@ impl SpeechModel {
                 break;
             }
             sampled.push(token);
+            if let Some(cut) = loop_start(&sampled) {
+                sampled.truncate(cut);
+                break;
+            }
             logits = self.step(&[token], features)?;
         }
         let average_logprob = logprob_sum / (sampled.len() + 1) as f64;
