@@ -15,6 +15,14 @@ An MCP server that lets AI agents use a Windows PC: read apps, click, type, fill
 
 3. Restart Claude Code, or run `/mcp`. Any other MCP client works the same way: the command is `winpilot.exe mcp`.
 
+From WSL, point Claude Code in the distro at the same Windows exe:
+
+```bash
+claude mcp add -s user winpilot -e WSLENV=WSL_DISTRO_NAME/u -- /mnt/c/Users/<you>/AppData/Local/Programs/winpilot/winpilot.exe mcp
+```
+
+Linux paths are translated for you: `/mnt/c/...` becomes `C:\...` and `/home/...` becomes `\\wsl.localhost\<distro>\home\...`.
+
 From source (Rust and the VS Build Tools): `.\scripts\install.ps1 -Register`.
 
 For `listen` (speech-to-text), download the model once: `.\scripts\install.ps1 -SpeechModel base`.

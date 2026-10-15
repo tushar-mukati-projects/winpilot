@@ -24,6 +24,7 @@ use crate::{
     status,
     summary::{self, Redaction},
     supervisor::Supervisor,
+    wsl_paths,
 };
 
 const SERVER_NAME: &str = "winpilot";
@@ -168,12 +169,12 @@ impl WinPilotServer {
         context: RequestContext<RoleServer>,
     ) -> CallToolResult {
         let view = args.view();
-        self.run(Call::Observe(args), view, &context).await
+        self.run(wsl_paths::translated(Call::Observe(args)), view, &context).await
     }
 
     #[tool(description = ACT, annotations(open_world_hint = false), meta = always_load())]
     async fn act(&self, Parameters(args): Parameters<ActArgs>, context: RequestContext<RoleServer>) -> CallToolResult {
-        self.run(Call::Act(args), ObserveFormat::default(), &context).await
+        self.run(wsl_paths::translated(Call::Act(args)), ObserveFormat::default(), &context).await
     }
 }
 

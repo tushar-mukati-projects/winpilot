@@ -15,6 +15,7 @@ mod summary;
 mod supervisor;
 #[cfg(test)]
 mod testing;
+mod wsl_paths;
 
 use std::{process::ExitCode, time::Duration};
 
