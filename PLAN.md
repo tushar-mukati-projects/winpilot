@@ -13,7 +13,7 @@ MCP client ──stdio──> winpilot mcp ──pipe──> winpilot worker ─
 ```
 
 - The **server** holds no Windows state. It validates arguments, gives each call a deadline, logs a redacted audit line and restarts the worker if it hangs or crashes.
-- **WSL:** Claude Code inside WSL runs the same Windows exe through interop. The server translates Linux paths in `path`, `pick` and `launch` (`/mnt/c/...` to `C:\...`, `/home/...` to `\\wsl.localhost\<distro>\...`, with the distro from `WSLENV=WSL_DISTRO_NAME`).
+- **WSL:** Claude Code inside WSL runs the same Windows exe through interop. The server turns `/mnt/<drive>/...` paths in `path`, `pick` and `launch` into `<DRIVE>:\...`, and refuses Linux-only paths with a hint to copy the file under `/mnt/c`, because WSL symlinks and `\\wsl.localhost` paths could otherwise reach folders the deny list blocks.
 - The **worker** is a child process inside a Job Object, so a crash or hang never takes the server down with it. It is Per-Monitor-V2 DPI aware, and every coordinate is a physical pixel.
 
 ## Crates

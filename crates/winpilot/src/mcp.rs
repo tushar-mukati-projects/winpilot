@@ -199,6 +199,7 @@ impl ServerHandler for WinPilotServer {
 }
 
 fn checked(call: &Call) -> Result<()> {
+    wsl_paths::check(call)?;
     match call {
         Call::Observe(args) => args.request().map(drop),
         Call::Act(args) => args.validate(),

@@ -18,10 +18,10 @@ An MCP server that lets AI agents use a Windows PC: read apps, click, type, fill
 From WSL, point Claude Code in the distro at the same Windows exe:
 
 ```bash
-claude mcp add -s user winpilot -e WSLENV=WSL_DISTRO_NAME/u -- /mnt/c/Users/<you>/AppData/Local/Programs/winpilot/winpilot.exe mcp
+claude mcp add -s user winpilot -- /mnt/c/Users/<you>/AppData/Local/Programs/winpilot/winpilot.exe mcp
 ```
 
-Linux paths are translated for you: `/mnt/c/...` becomes `C:\...` and `/home/...` becomes `\\wsl.localhost\<distro>\home\...`.
+Paths under `/mnt/c/...` are translated to `C:\...`. Files that live only inside WSL (like `/home/...`) have to be copied under `/mnt/c` first, so WinPilot's deny list always applies.
 
 From source (Rust and the VS Build Tools): `.\scripts\install.ps1 -Register`.
 
