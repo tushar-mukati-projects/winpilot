@@ -2,7 +2,7 @@
 
 An MCP server that lets AI agents use a Windows PC: read apps, click, type, fill forms, record the screen and listen to audio. Written in Rust, runs locally, nothing leaves the machine.
 
-![WinPilot driving Calculator and a form](assets/demo.gif)
+![WinPilot reading, clicking, typing, uploading a file, dragging and working in the background](assets/demo.gif)
 
 ## Install
 
