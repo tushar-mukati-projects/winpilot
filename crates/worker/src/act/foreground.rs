@@ -4,12 +4,12 @@ use std::{
 };
 
 use winpilot_core::{Error, ErrorCode, Result, WindowInfo, WindowRef, format::other_desktop};
+use winpilot_win32::owner_chain;
 
 use crate::window_classes::is_popup;
 
 const FOREGROUND_SETTLE: Duration = Duration::from_millis(200);
 const FOREGROUND_POLL: Duration = Duration::from_millis(10);
-const MAX_OWNERS: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Seen {
@@ -53,7 +53,7 @@ pub(crate) fn require_foreground(target: WindowRef) -> Result<()> {
 }
 
 pub(crate) fn require_no_dialog_on_top(target: WindowRef) -> Result<()> {
-    if !winpilot_desktop::is_window(target) {
+    if !winpilot_win32::window_exists(target) {
         return Ok(());
     }
     match front(target, &seen(target, winpilot_desktop::foreground_window())) {
@@ -81,25 +81,12 @@ pub(crate) fn popup_showing(hwnd: WindowRef) -> bool {
     winpilot_desktop::all_visible_windows().is_ok_and(|windows| windows.iter().any(|window| window.hwnd == hwnd))
 }
 
-pub(crate) fn owner_chain(window: Option<WindowRef>) -> Vec<WindowRef> {
-    let mut chain = Vec::new();
-    let mut current = window;
-    while let Some(owner) = current.and_then(winpilot_desktop::owner_of) {
-        if chain.contains(&owner) || chain.len() >= MAX_OWNERS {
-            break;
-        }
-        chain.push(owner);
-        current = Some(owner);
-    }
-    chain
-}
-
 fn require_popup_in_front(popup: &WindowInfo) -> Result<()> {
     if !popup_showing(popup.hwnd) {
         return Err(Error::not_found(format!("{} is a menu or dropdown that is no longer showing", popup.hwnd)));
     }
     let foreground = winpilot_desktop::foreground_window().and_then(|hwnd| winpilot_desktop::window(hwnd).ok());
-    if popup_belongs_to(popup, &owner_chain(Some(popup.hwnd)), foreground.as_ref()) {
+    if popup_belongs_to(popup, &owner_chain(popup.hwnd), foreground.as_ref()) {
         return Ok(());
     }
     let other = foreground.map(|window| window.hwnd);
@@ -117,7 +104,7 @@ fn refuse_other_desktop(window: &WindowInfo) -> Result<()> {
 fn seen(target: WindowRef, foreground: Option<WindowRef>) -> Seen {
     Seen {
         foreground,
-        owners_of_foreground: owner_chain(foreground),
+        owners_of_foreground: foreground.map(owner_chain).unwrap_or_default(),
         target_enabled: winpilot_desktop::is_enabled(target),
     }
 }
@@ -191,12 +178,6 @@ mod tests {
         assert_eq!(front(TARGET, &seen(Some(20), &[5], true)), Front::Elsewhere(Some(WindowRef(20))));
         assert_eq!(front(TARGET, &seen(None, &[], true)), Front::Elsewhere(None));
         assert!(elsewhere_message(TARGET, Some(WindowRef(20))).contains("(w20 is)"));
-    }
-
-    #[test]
-    fn missing_windows_have_no_owners() {
-        assert!(owner_chain(None).is_empty());
-        assert!(owner_chain(Some(WindowRef(0))).is_empty());
     }
 
     #[test]

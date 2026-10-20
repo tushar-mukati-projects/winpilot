@@ -1,22 +1,19 @@
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBD_EVENT_FLAGS, KEYBDINPUT, MOUSE_EVENT_FLAGS, MOUSEINPUT,
-    VIRTUAL_KEY,
-};
-use winpilot_core::INJECTION_MARK;
+use windows::Win32::UI::Input::KeyboardAndMouse::{INPUT, KEYBD_EVENT_FLAGS, MOUSE_EVENT_FLAGS, VIRTUAL_KEY};
+use winpilot_win32::{marked_key, marked_mouse};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct KeyStroke {
-    pub vk: VIRTUAL_KEY,
-    pub scan: u16,
-    pub flags: KEYBD_EVENT_FLAGS,
+    pub(crate) vk: VIRTUAL_KEY,
+    pub(crate) scan: u16,
+    pub(crate) flags: KEYBD_EVENT_FLAGS,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct MouseAction {
-    pub dx: i32,
-    pub dy: i32,
-    pub data: u32,
-    pub flags: MOUSE_EVENT_FLAGS,
+    pub(crate) dx: i32,
+    pub(crate) dy: i32,
+    pub(crate) data: u32,
+    pub(crate) flags: MOUSE_EVENT_FLAGS,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,35 +25,19 @@ pub(crate) enum InputEvent {
 impl InputEvent {
     pub(crate) fn to_win32(self) -> INPUT {
         match self {
-            Self::Key(stroke) => keyboard_input(stroke),
-            Self::Mouse(action) => mouse_input(action),
+            Self::Key(stroke) => marked_key(stroke.vk, stroke.scan, stroke.flags),
+            Self::Mouse(action) => marked_mouse(action.dx, action.dy, action.data, action.flags),
         }
     }
 }
 
-fn keyboard_input(stroke: KeyStroke) -> INPUT {
-    let ki =
-        KEYBDINPUT { wVk: stroke.vk, wScan: stroke.scan, dwFlags: stroke.flags, time: 0, dwExtraInfo: INJECTION_MARK };
-    INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki } }
-}
-
-fn mouse_input(action: MouseAction) -> INPUT {
-    let mi = MOUSEINPUT {
-        dx: action.dx,
-        dy: action.dy,
-        mouseData: action.data,
-        dwFlags: action.flags,
-        time: 0,
-        dwExtraInfo: INJECTION_MARK,
-    };
-    INPUT { r#type: INPUT_MOUSE, Anonymous: INPUT_0 { mi } }
-}
-
 #[cfg(test)]
 mod tests {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{KEYEVENTF_UNICODE, MOUSEEVENTF_MOVE, VK_RETURN};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        INPUT_KEYBOARD, INPUT_MOUSE, KEYEVENTF_UNICODE, MOUSEEVENTF_MOVE, VK_RETURN,
+    };
     use winpilot_core::{
-        Point,
+        INJECTION_MARK, Point, Rect,
         keys::{Chord, Key, Modifiers, NamedKey},
         protocol::Direction,
     };
@@ -64,7 +45,7 @@ mod tests {
     use super::*;
     use crate::{
         chord::chord_batch, mouse::click_batch, mouse::scroll_events, physical_button::PhysicalButton,
-        test_layout::FakeLayout, text::text_events, virtual_desktop::VirtualDesktop,
+        test_layout::FakeLayout, text::text_events,
     };
 
     fn extra_info(input: &INPUT) -> usize {
@@ -77,12 +58,11 @@ mod tests {
 
     fn every_kind_of_event() -> Vec<InputEvent> {
         let layout = FakeLayout;
-        let desktop = VirtualDesktop { x: 0, y: 0, width: 2560, height: 1600 };
+        let screen = Rect::new(0, 0, 2560, 1600);
         let ctrl = Modifiers { ctrl: true, ..Modifiers::NONE };
         let chord = Chord { modifiers: ctrl, key: Some(Key::Named(NamedKey::Left)) };
-        let mut events =
-            click_batch(desktop, Point::new(5, 5), PhysicalButton::Right, 2, ctrl, &layout).unwrap().events;
-        events.extend(scroll_events(desktop, Point::new(5, 5), Direction::Left, 3).unwrap());
+        let mut events = click_batch(screen, Point::new(5, 5), PhysicalButton::Right, 2, ctrl, &layout).unwrap().events;
+        events.extend(scroll_events(screen, Point::new(5, 5), Direction::Left, 3).unwrap());
         events.extend(chord_batch(&chord, &layout).unwrap().events);
         events.extend(text_events("a\nb\t😀", &layout));
         events

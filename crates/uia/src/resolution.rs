@@ -46,7 +46,7 @@ impl Uia {
         Resolved { info: props.into_element(id, depth), element: live }
     }
 
-    fn refresh(&self, live: &IUIAutomationElement) -> windows_core::Result<NodeProps> {
+    fn refresh(&self, live: &IUIAutomationElement) -> windows::core::Result<NodeProps> {
         let updated = unsafe { live.BuildUpdatedCache(&self.requests.element_props) }?;
         Ok(NodeProps::read(&updated))
     }

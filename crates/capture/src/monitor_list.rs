@@ -4,10 +4,9 @@ use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW,
 };
 use windows::Win32::UI::WindowsAndMessaging::MONITORINFOF_PRIMARY;
-use windows_core::{BOOL, PCWSTR};
+use windows::core::{BOOL, PCWSTR};
 use winpilot_core::{Context, Rect, Result};
-
-use crate::convert::rect_from_win32;
+use winpilot_win32::rect_from_win32;
 
 const UNKNOWN_ORIENTATION: u32 = u32::MAX;
 
@@ -36,13 +35,15 @@ unsafe extern "system" fn collect_handle(monitor: HMONITOR, _: HDC, _: *mut RECT
     BOOL::from(true)
 }
 
-fn describe(monitor: HMONITOR) -> Option<Monitor> {
+pub(crate) fn monitor_info(monitor: HMONITOR) -> Option<MONITORINFOEXW> {
     let mut info = MONITORINFOEXW::default();
     info.monitorInfo.cbSize = size_of::<MONITORINFOEXW>() as u32;
     let described = unsafe { GetMonitorInfoW(monitor, (&raw mut info).cast::<MONITORINFO>()) };
-    if !described.as_bool() {
-        return None;
-    }
+    described.as_bool().then_some(info)
+}
+
+fn describe(monitor: HMONITOR) -> Option<Monitor> {
+    let info = monitor_info(monitor)?;
     Some(Monitor {
         id: monitor.0 as isize,
         rect: rect_from_win32(info.monitorInfo.rcMonitor),

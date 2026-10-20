@@ -3,6 +3,16 @@ use winpilot_core::{Error, Result};
 use super::layout::Size;
 use crate::pixels::BYTES_PER_PIXEL;
 
+const LUMA_WEIGHTS: [i32; 3] = [47, 157, 16];
+const BLUE_DIFFERENCE_WEIGHTS: [i32; 3] = [-26, -86, 112];
+const RED_DIFFERENCE_WEIGHTS: [i32; 3] = [112, -102, -10];
+const WEIGHT_SHIFT: u32 = 8;
+const BLOCK_SHIFT: u32 = 2;
+const LUMA_BLACK: i32 = 16;
+const CHROMA_NEUTRAL: i32 = 128;
+const CHROMA_MIN: i32 = 16;
+const CHROMA_MAX: i32 = 240;
+
 pub(crate) const fn nv12_len(size: Size) -> usize {
     size.pixels() + size.pixels() / 2
 }
@@ -43,16 +53,29 @@ fn convert_row_pair(source: &[u8], width: usize, luma_rows: &mut [u8], chroma_ro
 }
 
 fn luma([blue, green, red, _]: [u8; 4]) -> u8 {
-    let weighted = 47 * i32::from(red) + 157 * i32::from(green) + 16 * i32::from(blue);
-    (16 + ((weighted + 128) >> 8)) as u8
+    let rgb = [i32::from(red), i32::from(green), i32::from(blue)];
+    (LUMA_BLACK + rounded_shift(weighted(rgb, LUMA_WEIGHTS), WEIGHT_SHIFT)) as u8
 }
 
 fn chroma(block: [[u8; 4]; 4]) -> [u8; 2] {
     let sum = |channel: usize| block.iter().map(|pixel| i32::from(pixel[channel])).sum::<i32>();
-    let (blue, green, red) = (sum(0), sum(1), sum(2));
-    let blue_difference = (-26 * red - 86 * green + 112 * blue + 512) >> 10;
-    let red_difference = (112 * red - 102 * green - 10 * blue + 512) >> 10;
-    [(128 + blue_difference).clamp(16, 240) as u8, (128 + red_difference).clamp(16, 240) as u8]
+    let rgb = [sum(2), sum(1), sum(0)];
+    let shift = WEIGHT_SHIFT + BLOCK_SHIFT;
+    let blue_difference = rounded_shift(weighted(rgb, BLUE_DIFFERENCE_WEIGHTS), shift);
+    let red_difference = rounded_shift(weighted(rgb, RED_DIFFERENCE_WEIGHTS), shift);
+    [limited_chroma(blue_difference), limited_chroma(red_difference)]
+}
+
+const fn weighted([red, green, blue]: [i32; 3], [red_weight, green_weight, blue_weight]: [i32; 3]) -> i32 {
+    red_weight * red + green_weight * green + blue_weight * blue
+}
+
+const fn rounded_shift(value: i32, shift: u32) -> i32 {
+    (value + (1 << (shift - 1))) >> shift
+}
+
+fn limited_chroma(difference: i32) -> u8 {
+    (CHROMA_NEUTRAL + difference).clamp(CHROMA_MIN, CHROMA_MAX) as u8
 }
 
 #[cfg(test)]

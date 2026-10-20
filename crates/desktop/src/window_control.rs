@@ -2,17 +2,12 @@ use std::time::Duration;
 
 use windows::Win32::{
     Foundation::{LPARAM, WPARAM},
-    UI::WindowsAndMessaging::{
-        PostMessageW, SMTO_ABORTIFHUNG, SendMessageTimeoutW, ShowWindowAsync, WM_CLOSE, WM_NULL,
-    },
+    UI::WindowsAndMessaging::{PostMessageW, SMTO_ABORTIFHUNG, ShowWindowAsync, WM_CLOSE, WM_NULL},
 };
 use winpilot_core::{Context, Result, WindowRef, WindowState};
+use winpilot_win32::{finite_millis, hwnd_exists, hwnd_of, live_hwnd, send_message_timeout};
 
-use crate::{
-    activation::Activation,
-    timeouts::finite_millis,
-    window_identity::{hwnd_of, is_live, live_hwnd},
-};
+use crate::activation::Activation;
 
 pub fn set_window_state(hwnd: WindowRef, state: WindowState, activation: Activation) -> Result<()> {
     let handle = live_hwnd(hwnd)?;
@@ -29,22 +24,10 @@ pub fn close_window(hwnd: WindowRef) -> Result<()> {
 
 pub fn wait_until_responsive(hwnd: WindowRef, timeout: Duration) -> bool {
     let handle = hwnd_of(hwnd);
-    if !is_live(handle) {
+    if !hwnd_exists(handle) {
         return false;
     }
-    let mut reply = 0usize;
-    let sent = unsafe {
-        SendMessageTimeoutW(
-            handle,
-            WM_NULL,
-            WPARAM(0),
-            LPARAM(0),
-            SMTO_ABORTIFHUNG,
-            finite_millis(timeout),
-            Some(&raw mut reply),
-        )
-    };
-    sent.0 != 0
+    send_message_timeout(handle, WM_NULL, WPARAM(0), LPARAM(0), SMTO_ABORTIFHUNG, finite_millis(timeout)).is_some()
 }
 
 #[cfg(test)]
@@ -53,6 +36,7 @@ mod tests {
     use crate::window_list::foreground_window;
 
     #[test]
+    #[ignore = "reads the user's windows"]
     fn foreground_window_is_responsive() {
         let foreground = foreground_window().unwrap();
         assert!(wait_until_responsive(foreground, Duration::from_secs(2)));

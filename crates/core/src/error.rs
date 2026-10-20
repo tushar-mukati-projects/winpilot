@@ -81,6 +81,14 @@ impl Error {
         Self::new(ErrorCode::Timeout, message)
     }
 
+    pub fn target_not_responding(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::TargetNotResponding, message)
+    }
+
+    pub fn cancelled(message: impl Into<String>) -> Self {
+        Self::new(ErrorCode::Cancelled, message)
+    }
+
     pub fn internal(message: impl Into<String>) -> Self {
         Self::new(ErrorCode::Internal, message)
     }

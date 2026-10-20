@@ -1,6 +1,9 @@
 use super::{border_geometry::BorderMetrics, easing::smoothstep};
 
 const SUBSTEPS: f32 = 4.0;
+const TIGHT_BLOOM_ALPHA: f32 = 0.55;
+const WIDE_BLOOM_ALPHA: f32 = 0.42;
+const BLOOM_TAIL: f32 = 3.0;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct GlowProfile {
@@ -41,9 +44,9 @@ fn core_alpha(metrics: &BorderMetrics, distance: f32) -> f32 {
 }
 
 fn bloom_alpha(metrics: &BorderMetrics, distance: f32) -> f32 {
-    let tight = 0.55 * (-(distance / metrics.tight_spread()).powi(2)).exp();
-    let wide = 0.42 * (-(distance / metrics.wide_spread()).powi(2)).exp();
-    let tail = 1.0 - smoothstep(metrics.band as f32 - 3.0, metrics.band as f32, distance);
+    let tight = TIGHT_BLOOM_ALPHA * (-(distance / metrics.tight_spread()).powi(2)).exp();
+    let wide = WIDE_BLOOM_ALPHA * (-(distance / metrics.wide_spread()).powi(2)).exp();
+    let tail = 1.0 - smoothstep(metrics.band as f32 - BLOOM_TAIL, metrics.band as f32, distance);
     ((tight + wide) * tail).min(1.0)
 }
 

@@ -1,7 +1,7 @@
 use windows::Win32::UI::Accessibility::{
     IUIAutomationTextPattern, IUIAutomationValuePattern, UIA_TextPatternId, UIA_ValuePatternId,
 };
-use winpilot_core::{ElementRef, Result, Role};
+use winpilot_core::{ElementRef, Result, Role, text_limit::truncated};
 
 use crate::{
     automation::Uia, failure::UiaResult, pattern::current_pattern, properties::cached_text, resolved::Resolved,
@@ -22,7 +22,7 @@ impl Uia {
     }
 
     fn names_inside(&self, target: &Resolved, max_chars: usize) -> Result<String> {
-        let requests = self.requests.names();
+        let requests = &self.requests.names;
         let (root, mut read) =
             self.read_tree(&target.element, requests).uia(&target.doing("reading the names inside"))?;
         Ok(names_in_pre_order(
@@ -74,7 +74,7 @@ fn document_text(target: &Resolved, max_chars: usize) -> Result<Option<String>> 
     let range = unsafe { pattern.DocumentRange() }.uia(&reading)?;
     let units = i32::try_from(max_chars.saturating_mul(2)).unwrap_or(i32::MAX);
     let text = unsafe { range.GetText(units) }.uia(&reading)?;
-    Ok(non_empty(truncate_chars(text.to_string(), max_chars)))
+    Ok(non_empty(truncated(text.to_string(), max_chars).0))
 }
 
 fn value_text(target: &Resolved, max_chars: usize) -> Result<Option<String>> {
@@ -84,7 +84,7 @@ fn value_text(target: &Resolved, max_chars: usize) -> Result<Option<String>> {
         return Ok(None);
     };
     let value = unsafe { pattern.CurrentValue() }.uia(&reading)?;
-    Ok(non_empty(truncate_chars(value.to_string(), max_chars)))
+    Ok(non_empty(truncated(value.to_string(), max_chars).0))
 }
 
 const fn value_is_content(role: Role) -> bool {
@@ -93,13 +93,6 @@ const fn value_is_content(role: Role) -> bool {
 
 fn non_empty(text: String) -> Option<String> {
     (!text.is_empty()).then_some(text)
-}
-
-pub(crate) fn truncate_chars(mut text: String, max_chars: usize) -> String {
-    if let Some((cut, _)) = text.char_indices().nth(max_chars) {
-        text.truncate(cut);
-    }
-    text
 }
 
 struct Lines {
@@ -129,20 +122,13 @@ impl Lines {
     }
 
     fn finish(self) -> String {
-        truncate_chars(self.text, self.max_chars)
+        truncated(self.text, self.max_chars).0
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn truncates_on_char_boundaries() {
-        assert_eq!(truncate_chars("héllo".to_string(), 2), "hé");
-        assert_eq!(truncate_chars("hi".to_string(), 5), "hi");
-        assert_eq!(truncate_chars("日本語".to_string(), 0), "");
-    }
 
     #[test]
     fn a_document_value_is_its_address_not_its_text() {

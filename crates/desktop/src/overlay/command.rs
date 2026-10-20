@@ -2,7 +2,7 @@ use std::{sync::mpsc::Sender, time::Duration};
 
 use winpilot_core::{Point, Rect};
 
-use super::{activity::Activity, chip_text::ChipText, driving::Driving};
+use super::{activity::Activity, chip_text::ChipText, presence::Driving};
 
 #[derive(Debug)]
 pub(crate) enum OverlayCommand {

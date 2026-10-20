@@ -1,27 +1,20 @@
-use windows::{
-    Win32::{
-        Foundation::{HWND, LPARAM, POINT},
-        UI::{
-            Input::KeyboardAndMouse::IsWindowEnabled,
-            WindowsAndMessaging::{EnumWindows, GA_ROOT, GW_OWNER, GetAncestor, GetWindow, WindowFromPoint},
-        },
-    },
-    core::BOOL,
+use windows::Win32::{Foundation::HWND, UI::Input::KeyboardAndMouse::IsWindowEnabled};
+use winpilot_core::{Rect, Result, WindowInfo, WindowRef};
+use winpilot_win32::{
+    class_name, foreground_hwnd, hwnd_exists, hwnd_of, is_visible, live_hwnd, owning_pid, ref_of, title,
+    top_level_windows,
 };
-use winpilot_core::{Context, Point, Rect, Result, WindowInfo, WindowRef};
 
 use crate::{
     process::ProcessLookup,
     virtual_desktops::{DesktopLookup, Placement},
-    window_foreground::{Foreground, current_foreground},
+    window_foreground::Foreground,
     window_geometry::visible_rect,
-    window_identity::{class_name, hwnd_of, is_live, live_hwnd, owning_pid, ref_of, title},
-    window_visibility::{is_tool_window, is_visible, show_state},
+    window_visibility::{is_tool_window, show_state},
 };
 
 const DIALOG_CLASS: &str = "#32770";
 const POPUP_MENU_CLASS: &str = "#32768";
-const EXPECTED_TOP_LEVEL_WINDOWS: usize = 512;
 
 struct Candidate {
     hwnd: HWND,
@@ -70,44 +63,13 @@ impl Lookups {
     }
 }
 
-pub fn is_window(hwnd: WindowRef) -> bool {
-    is_live(hwnd_of(hwnd))
-}
-
 pub fn is_enabled(hwnd: WindowRef) -> bool {
     let handle = hwnd_of(hwnd);
-    is_live(handle) && unsafe { IsWindowEnabled(handle) }.as_bool()
+    hwnd_exists(handle) && unsafe { IsWindowEnabled(handle) }.as_bool()
 }
 
 pub fn foreground_window() -> Option<WindowRef> {
-    current_foreground().map(ref_of)
-}
-
-pub fn window_at(point: Point) -> Option<WindowRef> {
-    let hit = unsafe { WindowFromPoint(POINT { x: point.x, y: point.y }) };
-    if hit.is_invalid() {
-        return None;
-    }
-    let root = unsafe { GetAncestor(hit, GA_ROOT) };
-    (!root.is_invalid()).then(|| ref_of(root))
-}
-
-pub fn owner_of(hwnd: WindowRef) -> Option<WindowRef> {
-    let owner = unsafe { GetWindow(hwnd_of(hwnd), GW_OWNER) }.ok()?;
-    (!owner.is_invalid()).then(|| ref_of(owner))
-}
-
-pub(crate) fn top_level_windows() -> Result<Vec<HWND>> {
-    let mut handles: Vec<HWND> = Vec::with_capacity(EXPECTED_TOP_LEVEL_WINDOWS);
-    unsafe { EnumWindows(Some(collect_window), LPARAM(std::ptr::from_mut(&mut handles) as isize)) }
-        .context("enumerating top-level windows")?;
-    Ok(handles)
-}
-
-unsafe extern "system" fn collect_window(hwnd: HWND, handles: LPARAM) -> BOOL {
-    let handles = unsafe { &mut *(handles.0 as *mut Vec<HWND>) };
-    handles.push(hwnd);
-    BOOL::from(true)
+    foreground_hwnd().map(ref_of)
 }
 
 fn app_window(hwnd: HWND, own_pid: u32, desktops: &DesktopLookup) -> Option<Candidate> {
@@ -165,9 +127,13 @@ fn describe(candidate: Candidate, lookups: &mut Lookups) -> WindowInfo {
 mod tests {
     use std::time::{Duration, Instant};
 
+    use winpilot_core::Point;
+    use winpilot_win32::{window_at, window_exists};
+
     use super::*;
 
     #[test]
+    #[ignore = "reads the user's windows"]
     fn windows_have_visible_rects_and_exclude_this_process() {
         let list = windows().unwrap();
         assert!(!list.is_empty(), "no app windows found");
@@ -177,6 +143,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "reads the user's windows"]
     fn listed_windows_say_where_they_are() {
         let list = windows().unwrap();
         assert!(list.iter().any(|info| info.on_current_desktop));
@@ -186,21 +153,24 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "reads the user's windows"]
     fn the_window_at_a_point_is_a_live_top_level_window() {
         let Some(first) = windows().unwrap().into_iter().find(|info| info.on_current_desktop) else { return };
         if let Some(hit) = window_at(first.rect.center()) {
-            assert!(is_window(hit));
+            assert!(window_exists(hit));
             assert_eq!(window_at(first.rect.center()), Some(hit));
         }
         assert_eq!(window_at(Point::new(-90_000, -90_000)), None);
     }
 
     #[test]
+    #[ignore = "reads the user's windows"]
     fn foreground_window_exists() {
         assert!(foreground_window().is_some());
     }
 
     #[test]
+    #[ignore = "reads the user's windows"]
     fn window_round_trips_the_first_window() {
         let list = windows().unwrap();
         let first = list.first().unwrap();
@@ -209,7 +179,7 @@ mod tests {
         assert!(again.pid == first.pid, "pid differs");
         assert!(again.class_name == first.class_name, "class differs");
         assert!(again.process == first.process, "process differs");
-        assert!(is_window(first.hwnd));
+        assert!(window_exists(first.hwnd));
         let _either_state_is_valid = is_enabled(first.hwnd);
     }
 
@@ -217,9 +187,8 @@ mod tests {
     fn missing_window_is_not_found() {
         let error = window(WindowRef(0)).unwrap_err();
         assert_eq!(error.code, winpilot_core::ErrorCode::NotFound);
-        assert!(!is_window(WindowRef(0)));
+        assert!(!window_exists(WindowRef(0)));
         assert!(!is_enabled(WindowRef(0)));
-        assert!(owner_of(WindowRef(0)).is_none());
     }
 
     #[test]
@@ -231,6 +200,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "reads the user's windows"]
     fn enumeration_is_fast() {
         let best = (0..5)
             .map(|_| {

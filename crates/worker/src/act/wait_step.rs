@@ -1,14 +1,14 @@
 use std::time::Duration;
 
 use winpilot_core::{
-    Error, Result,
+    Error, Result, millis,
     protocol::{WaitArgs, WaitCondition},
 };
 
 use super::{done::Done, key_labels::chord_text};
 use crate::{
     call_scope::CallScope,
-    engine::{Engine, duration_ms},
+    engine::Engine,
     wait::{self, WaitReport, WindowsBefore},
 };
 
@@ -43,10 +43,10 @@ fn refuse_long_hold(longest: Duration, held: &[String]) -> Result<()> {
     }
     Err(Error::invalid(format!(
         "this wait can last up to {} ms while {} {} held down, which would change the user's own keys and clicks; release first (key up, mouse up) or keep the wait at {} ms or less",
-        duration_ms(longest),
+        millis(longest),
         held.join(" and "),
         if held.len() == 1 { "is" } else { "are" },
-        duration_ms(LONGEST_WAIT_WHILE_HELD)
+        millis(LONGEST_WAIT_WHILE_HELD)
     )))
 }
 

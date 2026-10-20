@@ -45,12 +45,9 @@ impl EndpointStream {
             Endpoint::Loopback => AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_LOOPBACK,
             Endpoint::Microphone => AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
         };
-        unsafe { client.Initialize(AUDCLNT_SHAREMODE_SHARED, flags, BUFFER_HNS, 0, mix.as_ptr(), None) }
-            .map_err(|error| audio_error(endpoint, &error, "opening"))?;
+        initialize_shared(&client, flags, &mix).map_err(|error| audio_error(endpoint, &error, "opening"))?;
         let event = AudioEvent::new()?;
-        unsafe { client.SetEventHandle(event.handle()) }.map_err(|error| audio_error(endpoint, &error, "opening"))?;
-        let capture = unsafe { client.GetService::<IAudioCaptureClient>() }
-            .map_err(|error| audio_error(endpoint, &error, "opening"))?;
+        let capture = signalled_capture(&client, &event).map_err(|error| audio_error(endpoint, &error, "opening"))?;
         Ok(Self { endpoint, client, capture, event, format, running: false })
     }
 
@@ -92,7 +89,7 @@ impl Drop for EndpointStream {
 }
 
 impl<'a> CapturedBuffer<'a> {
-    fn take(capture: &'a IAudioCaptureClient) -> windows_core::Result<Self> {
+    fn take(capture: &'a IAudioCaptureClient) -> windows::core::Result<Self> {
         let mut buffer = Self { capture, data: std::ptr::null_mut(), frames: 0, flags: 0, qpc: 0 };
         unsafe {
             capture.GetBuffer(
@@ -125,4 +122,13 @@ impl Drop for CapturedBuffer<'_> {
     fn drop(&mut self) {
         let _ = unsafe { self.capture.ReleaseBuffer(self.frames) };
     }
+}
+
+fn initialize_shared(client: &IAudioClient, flags: u32, mix: &MixFormat) -> windows::core::Result<()> {
+    unsafe { client.Initialize(AUDCLNT_SHAREMODE_SHARED, flags, BUFFER_HNS, 0, mix.as_ptr(), None) }
+}
+
+fn signalled_capture(client: &IAudioClient, event: &AudioEvent) -> windows::core::Result<IAudioCaptureClient> {
+    unsafe { client.SetEventHandle(event.handle()) }?;
+    unsafe { client.GetService::<IAudioCaptureClient>() }
 }

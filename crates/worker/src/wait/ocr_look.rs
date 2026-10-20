@@ -6,7 +6,7 @@ use super::check::{Presence, Shown, unless_gone};
 use crate::{
     call_scope::CallScope,
     engine::Engine,
-    ocr_read::{Freshness, window_lines},
+    ocr_read::{Freshness, window_lines, window_matches},
 };
 
 const OCR_EVERY: Duration = Duration::from_millis(400);
@@ -51,8 +51,13 @@ impl<'a> OcrLook<'a> {
         nth: Option<u32>,
     ) -> Result<Presence> {
         let call = self.call;
-        self.paced.get(Instant::now(), || read_presence(engine, windows, text, nth, call))
+        let confirm_miss = confirms_a_miss(self.paced.last.as_ref().map(|(_, last)| last));
+        self.paced.get(Instant::now(), || read_presence(engine, windows, text, nth, call, confirm_miss))
     }
+}
+
+fn confirms_a_miss(last: Option<&Presence>) -> bool {
+    last.is_none_or(|last| last.shown.is_some())
 }
 
 fn read_presence(
@@ -61,12 +66,18 @@ fn read_presence(
     text: &str,
     nth: Option<u32>,
     call: &CallScope,
+    confirm_miss: bool,
 ) -> Result<Presence> {
     let wanted = position(nth);
     for window in windows {
         let fresh = Freshness::TakenAfter(Instant::now());
-        let Some(lines) = unless_gone(window_lines(engine, window, Some(call), fresh))? else { continue };
-        if let Some(found) = find_matches(&lines, text).into_iter().nth(wanted) {
+        let read = if confirm_miss {
+            window_matches(engine, window, text, Some(call), fresh)
+        } else {
+            window_lines(engine, window, Some(call), fresh).map(|lines| find_matches(&lines, text))
+        };
+        let Some(matches) = unless_gone(read)? else { continue };
+        if let Some(found) = matches.into_iter().nth(wanted) {
             return Ok(Presence::certain(Some(Shown::Text { text: found.text, rect: found.rect })));
         }
     }
@@ -114,6 +125,14 @@ mod tests {
         let start = Instant::now();
         assert!(paced.get(start, || Err(Error::unsupported("no OCR language installed"))).is_err());
         assert_eq!(paced.get(start + MS(10), || Ok(7)).unwrap(), 7);
+    }
+
+    #[test]
+    fn a_miss_is_confirmed_by_every_pass_unless_the_text_was_already_missing() {
+        let shown = Shown::Text { text: "Export".to_string(), rect: winpilot_core::Rect::new(1, 2, 3, 4) };
+        assert!(confirms_a_miss(None));
+        assert!(confirms_a_miss(Some(&Presence::certain(Some(shown)))));
+        assert!(!confirms_a_miss(Some(&Presence::certain(None))));
     }
 
     #[test]

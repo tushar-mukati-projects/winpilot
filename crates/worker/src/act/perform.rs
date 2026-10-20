@@ -32,7 +32,8 @@ pub(crate) fn perform(engine: &Engine, step: &Step, context: &StepContext<'_>) -
         Some(prepared) => for_window(context.mode, &prepared.window, step)?,
         None => context.mode,
     };
-    dispatch(engine, step, prepared.as_ref(), mode, context)
+    let note = primary_target(step).and_then(|spec| engine.images.lock().bare_point_note(spec));
+    dispatch(engine, step, prepared.as_ref(), mode, context).map(|done| done.with_note(note))
 }
 
 fn primary_target(step: &Step) -> Option<&TargetSpec> {
@@ -81,10 +82,7 @@ pub(crate) fn required<'a>(prepared: Option<&'a Prepared>, step: &Step) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn step(json: &str) -> Step {
-        serde_json::from_str(json).unwrap()
-    }
+    use crate::test_fixture::step;
 
     #[test]
     fn input_steps_resolve_their_target_first_and_the_rest_do_not() {

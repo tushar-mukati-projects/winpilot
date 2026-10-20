@@ -18,7 +18,6 @@ mod message_input;
 mod message_packing;
 mod message_plan;
 mod message_spot;
-mod message_thread;
 mod mouse;
 mod physical_button;
 mod physical_hotkey;
@@ -30,9 +29,8 @@ mod stuck_inputs;
 #[cfg(test)]
 mod test_layout;
 mod text;
-mod thread_timer;
 mod timed_moves;
-mod virtual_desktop;
+mod virtual_screen;
 
 pub use activity::ActivityMonitor;
 pub use chord::press_chord;

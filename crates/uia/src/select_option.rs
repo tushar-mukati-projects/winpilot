@@ -63,7 +63,7 @@ impl Uia {
     }
 
     fn listed_options(&self, target: &Resolved) -> Result<Vec<ListedOption>> {
-        let requests = self.requests.options();
+        let requests = &self.requests.options;
         let (root, mut read) =
             self.read_tree(&target.element, requests).uia(&target.doing("listing the options of"))?;
         let mut options = Vec::new();

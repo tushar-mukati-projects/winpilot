@@ -1,6 +1,6 @@
 use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_FAILED};
 use windows::Win32::System::Threading::{CreateEventW, WaitForMultipleObjects};
-use windows_core::PCWSTR;
+use windows::core::PCWSTR;
 use winpilot_core::{Context, Error, Result};
 
 pub(crate) struct AudioEvent(HANDLE);
@@ -28,7 +28,7 @@ pub(crate) fn wait_for_any(handles: &[HANDLE], timeout_ms: u32) -> Result<()> {
     }
     let outcome = unsafe { WaitForMultipleObjects(handles, false, timeout_ms) };
     if outcome == WAIT_FAILED {
-        return Err(Error::internal(format!("waiting for audio: {}", windows_core::Error::from_thread())));
+        return Err(Error::internal(format!("waiting for audio: {}", windows::core::Error::from_thread())));
     }
     Ok(())
 }

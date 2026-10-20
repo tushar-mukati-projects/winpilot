@@ -5,10 +5,10 @@ use std::{
 
 use parking_lot::Mutex;
 use winpilot_core::Result;
+use winpilot_win32::MessageThread;
 
 use crate::{
     input_clock::{last_user_input, last_user_press, start_clock},
-    message_thread::MessageThread,
     raw_input_sink::RawInputSink,
 };
 

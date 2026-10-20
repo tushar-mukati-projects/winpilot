@@ -14,8 +14,7 @@ use windows::{
     core::{PCWSTR, w},
 };
 use winpilot_core::{Context, Result};
-
-use crate::window_class::register_window_class;
+use winpilot_win32::register_window_class;
 
 const OVERLAY_CLASS: PCWSTR = w!("WinPilotOverlay");
 const TINT_CLASS: PCWSTR = w!("WinPilotOverlayTint");

@@ -1,12 +1,8 @@
 use windows::Win32::{
     Foundation::HWND,
-    UI::WindowsAndMessaging::{GA_ROOTOWNER, GetAncestor, GetForegroundWindow},
+    UI::WindowsAndMessaging::{GA_ROOTOWNER, GetAncestor},
 };
-
-pub(crate) fn current_foreground() -> Option<HWND> {
-    let hwnd = unsafe { GetForegroundWindow() };
-    (!hwnd.is_invalid()).then_some(hwnd)
-}
+use winpilot_win32::foreground_hwnd;
 
 fn root_owner(hwnd: HWND) -> HWND {
     unsafe { GetAncestor(hwnd, GA_ROOTOWNER) }
@@ -20,7 +16,7 @@ pub(crate) struct Foreground {
 
 impl Foreground {
     pub(crate) fn now() -> Self {
-        let window = current_foreground();
+        let window = foreground_hwnd();
         let root_owner = window.map(root_owner).filter(|owner| !owner.is_invalid());
         Self { window, root_owner }
     }

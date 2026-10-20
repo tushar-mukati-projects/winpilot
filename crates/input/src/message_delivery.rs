@@ -2,9 +2,10 @@ use std::thread;
 
 use windows::Win32::{
     Foundation::{ERROR_ACCESS_DENIED, ERROR_TIMEOUT, GetLastError, HWND, LPARAM, WIN32_ERROR, WPARAM},
-    UI::WindowsAndMessaging::{SMTO_ABORTIFHUNG, SendMessageTimeoutW},
+    UI::WindowsAndMessaging::SMTO_ABORTIFHUNG,
 };
 use winpilot_core::{Error, ErrorCode, Result, WindowRef};
+use winpilot_win32::{ref_of, send_message_timeout};
 
 use crate::message_plan::Sent;
 
@@ -35,22 +36,10 @@ pub(crate) fn deliver_releasing(
 }
 
 fn send_one(hwnd: HWND, id: u32, wparam: usize, lparam: isize) -> Result<()> {
-    let mut answer = 0usize;
-    let sent = unsafe {
-        SendMessageTimeoutW(
-            hwnd,
-            id,
-            WPARAM(wparam),
-            LPARAM(lparam),
-            SMTO_ABORTIFHUNG,
-            ANSWER_TIMEOUT_MS,
-            Some(&raw mut answer),
-        )
-    };
-    if sent.0 != 0 {
+    if send_message_timeout(hwnd, id, WPARAM(wparam), LPARAM(lparam), SMTO_ABORTIFHUNG, ANSWER_TIMEOUT_MS).is_some() {
         return Ok(());
     }
-    Err(unanswered(last_error(), WindowRef(hwnd.0 as isize as i64), id))
+    Err(unanswered(last_error(), ref_of(hwnd), id))
 }
 
 fn last_error() -> WIN32_ERROR {
@@ -63,10 +52,9 @@ fn unanswered(error: WIN32_ERROR, window: WindowRef, id: u32) -> Error {
             ErrorCode::ElevatedTarget,
             format!("Windows blocked window messages to {window} (it runs at a higher integrity level)"),
         ),
-        ERROR_TIMEOUT => Error::new(
-            ErrorCode::TargetNotResponding,
-            format!("{window} did not answer a window message within a second; it may be busy or hung"),
-        ),
+        ERROR_TIMEOUT => Error::target_not_responding(format!(
+            "{window} did not answer a window message within a second; it may be busy or hung"
+        )),
         other => {
             Error::internal(format!("sending window message 0x{id:04X} to {window} failed (Win32 error {})", other.0))
         }

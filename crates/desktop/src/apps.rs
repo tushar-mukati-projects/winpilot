@@ -1,12 +1,12 @@
 use std::path::{Path, PathBuf};
 
 use winpilot_core::{Error, Result};
+use winpilot_win32::ComApartment;
 
 use crate::{
     activation::Activation,
     app_shortcut::Shortcut,
     apps_folder::list_apps_folder,
-    com::ComApartment,
     shell_launch::{ShellRequest, activate_packaged, shell_execute},
 };
 

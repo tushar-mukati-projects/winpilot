@@ -11,7 +11,8 @@ use crate::{
 };
 
 const DEFAULT_WAIT: Duration = Duration::from_secs(5);
-pub(crate) const MAX_WAIT: Duration = Duration::from_secs(60);
+pub(crate) const MAX_WAIT_MS: u64 = 60_000;
+pub(crate) const MAX_WAIT: Duration = Duration::from_millis(MAX_WAIT_MS);
 const DEFAULT_IDLE: Duration = Duration::from_millis(300);
 const MAX_PLAIN_WAIT_MS: u64 = 5_000;
 pub(crate) const MAX_PLAIN_WAIT: Duration = Duration::from_millis(MAX_PLAIN_WAIT_MS);
@@ -40,7 +41,7 @@ pub struct WaitArgs {
     #[serde(default)]
     #[schemars(
         description = "time: milliseconds to pause, at most 5000. idle: how long the UI must stay quiet (default 300).",
-        range(max = 60_000)
+        range(max = MAX_WAIT_MS)
     )]
     pub ms: Option<u64>,
     #[serde(default)]
@@ -55,7 +56,7 @@ pub struct WaitArgs {
     )]
     pub window: Option<String>,
     #[serde(default)]
-    #[schemars(description = "Give up after this long (default 5000, max 60000).", range(max = 60_000))]
+    #[schemars(description = "Give up after this long (default 5000, max 60000).", range(max = MAX_WAIT_MS))]
     pub timeout_ms: Option<u64>,
 }
 

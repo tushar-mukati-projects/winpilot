@@ -11,12 +11,9 @@ use windows::{
     },
     core::{GUID, PCWSTR, w},
 };
+use winpilot_win32::{ComApartment, cloak_flags};
 
-use crate::{
-    com::ComApartment,
-    desktop_ids::{Cloak, cloak_of, desktop_number, guid_from_bytes, parse_desktop_ids},
-    window_visibility::cloak_flags,
-};
+use crate::desktop_ids::{Cloak, cloak_of, desktop_number, guid_from_bytes, parse_desktop_ids};
 
 const DESKTOPS_KEY: PCWSTR = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VirtualDesktops");
 const DESKTOP_IDS: PCWSTR = w!("VirtualDesktopIDs");
@@ -139,8 +136,9 @@ fn read_binary(value: PCWSTR) -> Option<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
+    use winpilot_win32::{is_visible, top_level_windows};
+
     use super::*;
-    use crate::{window_list::top_level_windows, window_visibility::is_visible};
 
     #[test]
     fn the_registry_names_at_most_as_many_desktops_as_it_lists() {

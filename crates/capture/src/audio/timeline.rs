@@ -1,4 +1,5 @@
-const HNS_PER_SECOND: i128 = 10_000_000;
+use crate::time_units::HNS_PER_SECOND;
+
 const TOLERANCE_HNS: i64 = 300_000;
 const IDLE_MARGIN_HNS: i64 = 2_500_000;
 const MAX_IDLE_FILL_HNS: i64 = 10_000_000;
@@ -57,11 +58,11 @@ impl Timeline {
 
     fn frames_until(&self, at_hns: i64) -> i128 {
         let since_origin = i128::from(at_hns) - i128::from(self.origin_hns);
-        since_origin * i128::from(self.rate) / HNS_PER_SECOND - i128::from(self.emitted)
+        since_origin * i128::from(self.rate) / i128::from(HNS_PER_SECOND) - i128::from(self.emitted)
     }
 
     fn frames_of(&self, hns: i64) -> u64 {
-        (i128::from(hns) * i128::from(self.rate) / HNS_PER_SECOND) as u64
+        (i128::from(hns) * i128::from(self.rate) / i128::from(HNS_PER_SECOND)) as u64
     }
 }
 

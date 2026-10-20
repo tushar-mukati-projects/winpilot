@@ -7,8 +7,9 @@ use super::{
     chords::with_ctrl,
     field::{is_readable, read_value},
     lift::with_held_modifiers_lifted,
+    pacing::{Unreadable, wait_for_value},
 };
-use crate::{call_scope::CallScope, engine::Engine, until::until, watch::Watch};
+use crate::{call_scope::CallScope, engine::Engine};
 
 const CHANGED_DURING_PASTE: &str =
     "something else changed the clipboard during the paste, so WinPilot left the new contents alone";
@@ -63,11 +64,11 @@ fn press_and_confirm(
 ) -> Result<()> {
     with_held_modifiers_lifted(call, || winpilot_input::press_chord(&with_ctrl('v')))?;
     let limit = Duration::from_millis(engine.config.act.settle_max_ms);
-    let landed = until(engine, call, limit, &Watch::window(window), || {
-        let now = read_value(engine, readback.id).ok().flatten();
-        Ok(now.filter(|now| paste_landed(&readback.before, now, text)).map(drop))
+    let landed = wait_for_value(engine, window, call, readback.id, limit, Unreadable::KeepWaiting, |now| {
+        paste_landed(&readback.before, now, text)
     })?;
     landed
+        .then_some(())
         .ok_or_else(|| Error::unsupported(format!("pasting did not change the value of {}; try how=keys", readback.id)))
 }
 

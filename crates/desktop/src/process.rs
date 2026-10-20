@@ -9,11 +9,9 @@ use windows::{
     },
     core::PWSTR,
 };
+use winpilot_win32::{adopt, raw};
 
-use crate::{
-    handle::{adopt, raw},
-    token::{own_integrity_level, process_integrity_level},
-};
+use crate::token::{own_integrity_level, process_integrity_level};
 
 const UNKNOWN_PROCESS: &str = "?";
 const IMAGE_PATH_CAPACITIES: [usize; 2] = [1024, 32_768];
@@ -64,7 +62,7 @@ fn outranks(target: Option<u32>, own: Option<u32>) -> bool {
 
 pub(crate) fn open_for_query(pid: u32) -> Option<OwnedHandle> {
     let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
-    adopt(handle)
+    unsafe { adopt(handle) }
 }
 
 enum ImagePath {

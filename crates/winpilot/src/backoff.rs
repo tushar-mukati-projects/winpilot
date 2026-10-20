@@ -1,12 +1,13 @@
 use std::time::{Duration, Instant};
 
-use winpilot_core::{Error, ErrorCode};
+use winpilot_core::{Error, millis};
 
 use crate::death::seconds;
 
 const FIRST_RETRY: Duration = Duration::from_millis(500);
 const LONGEST_RETRY: Duration = Duration::from_secs(10);
 const MAX_DOUBLINGS: u32 = 5;
+const MILLIS_PER_TENTH: u64 = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Failure {
@@ -26,7 +27,7 @@ impl Failure {
     pub fn error(&self, now: Instant) -> Error {
         let wait = round_up_to_tenth(self.retry_at.saturating_duration_since(now));
         let message = format!("the desktop worker failed to start: {}; retrying in {}", self.cause, seconds(wait));
-        Error::new(ErrorCode::TargetNotResponding, message)
+        Error::target_not_responding(message)
     }
 }
 
@@ -36,11 +37,13 @@ fn delay(failures: u32) -> Duration {
 }
 
 fn round_up_to_tenth(duration: Duration) -> Duration {
-    Duration::from_millis(duration.as_millis().div_ceil(100) as u64 * 100)
+    Duration::from_millis(millis(duration).div_ceil(MILLIS_PER_TENTH) * MILLIS_PER_TENTH)
 }
 
 #[cfg(test)]
 mod tests {
+    use winpilot_core::ErrorCode;
+
     use super::*;
 
     #[test]

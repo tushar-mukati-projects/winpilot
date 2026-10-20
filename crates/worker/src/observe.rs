@@ -20,7 +20,7 @@ use crate::{call_scope::CallScope, engine::Engine};
 
 pub(crate) fn run(engine: &Engine, args: &ObserveArgs, call: &CallScope) -> Result<Reply> {
     match args.request()? {
-        ObserveRequest::Elements(request) => elements::run(engine, &request).map(Reply::Observation),
+        ObserveRequest::Elements(request) => elements::run(engine, &request, call).map(Reply::Observation),
         ObserveRequest::Search(request) => search::run(engine, &request, call).map(Reply::Search),
         ObserveRequest::Text(request) => text::run(engine, &request, call).map(Reply::Text),
         ObserveRequest::Screenshot(request) => screenshot::run(engine, &request, call).map(Reply::Screenshot),

@@ -5,7 +5,7 @@ use windows::Win32::{
         UIA_E_NOTSUPPORTED, UIA_E_PROXYASSEMBLYNOTLOADED, UIA_E_TIMEOUT,
     },
 };
-use windows_core::HRESULT;
+use windows::core::HRESULT;
 use winpilot_core::{Error, ErrorCode, Result};
 
 const RPC_SERVER_UNAVAILABLE: u32 = 0x8007_06BA;
@@ -45,20 +45,24 @@ fn classify(code: HRESULT) -> Failure {
     }
 }
 
-pub(crate) fn is_gone(error: &windows_core::Error) -> bool {
+pub(crate) fn is_gone(error: &windows::core::Error) -> bool {
     classify(error.code()) == Failure::Gone
 }
 
-pub(crate) fn is_null_out_pointer(error: &windows_core::Error) -> bool {
+pub(crate) fn is_not_responding(error: &windows::core::Error) -> bool {
+    classify(error.code()) == Failure::NotResponding
+}
+
+pub(crate) fn is_null_out_pointer(error: &windows::core::Error) -> bool {
     error.code().is_ok()
 }
 
-pub(crate) fn is_pattern_absent(error: &windows_core::Error) -> bool {
+pub(crate) fn is_pattern_absent(error: &windows::core::Error) -> bool {
     let code = error.code().0 as u32;
     is_null_out_pointer(error) || code == NO_INTERFACE || code == UIA_E_NOTSUPPORTED
 }
 
-pub(crate) fn optional<T>(result: windows_core::Result<T>) -> windows_core::Result<Option<T>> {
+pub(crate) fn optional<T>(result: windows::core::Result<T>) -> windows::core::Result<Option<T>> {
     match result {
         Ok(value) => Ok(Some(value)),
         Err(error) if is_null_out_pointer(&error) => Ok(None),
@@ -66,13 +70,13 @@ pub(crate) fn optional<T>(result: windows_core::Result<T>) -> windows_core::Resu
     }
 }
 
-pub(crate) fn uia_error(what: &str, error: &windows_core::Error) -> Error {
+pub(crate) fn uia_error(what: &str, error: &windows::core::Error) -> Error {
     match classify(error.code()) {
         Failure::Gone => {
             Error::new(ErrorCode::StaleRef, format!("{what}: the element no longer exists; observe again"))
         }
         Failure::NotResponding => {
-            Error::new(ErrorCode::TargetNotResponding, format!("{what}: the app did not answer UI Automation in time"))
+            Error::target_not_responding(format!("{what}: the app did not answer UI Automation in time"))
         }
         Failure::AccessDenied => Error::new(
             ErrorCode::ElevatedTarget,
@@ -84,7 +88,7 @@ pub(crate) fn uia_error(what: &str, error: &windows_core::Error) -> Error {
     }
 }
 
-fn describe(error: &windows_core::Error) -> String {
+fn describe(error: &windows::core::Error) -> String {
     let code = error.code().0 as u32;
     let message = uia_message(code).map_or_else(|| error.message(), str::to_string);
     if message.is_empty() { format!("HRESULT 0x{code:08X}") } else { format!("{message} (0x{code:08X})") }
@@ -98,7 +102,7 @@ pub(crate) trait UiaResult<T> {
     fn uia(self, what: &str) -> Result<T>;
 }
 
-impl<T> UiaResult<T> for windows_core::Result<T> {
+impl<T> UiaResult<T> for windows::core::Result<T> {
     fn uia(self, what: &str) -> Result<T> {
         self.map_err(|error| uia_error(what, &error))
     }
@@ -108,8 +112,8 @@ impl<T> UiaResult<T> for windows_core::Result<T> {
 mod tests {
     use super::*;
 
-    fn failure_from(code: u32) -> windows_core::Error {
-        windows_core::Error::from_hresult(HRESULT(code as i32))
+    fn failure_from(code: u32) -> windows::core::Error {
+        windows::core::Error::from_hresult(HRESULT(code as i32))
     }
 
     #[test]
@@ -155,7 +159,7 @@ mod tests {
 
     #[test]
     fn null_out_pointers_become_none() {
-        let empty: windows_core::Result<u8> = Err(windows_core::Error::empty());
+        let empty: windows::core::Result<u8> = Err(windows::core::Error::empty());
         assert_eq!(optional(empty).unwrap(), None);
         assert_eq!(optional(Ok(4)).unwrap(), Some(4));
         assert!(optional::<u8>(Err(failure_from(UIA_E_TIMEOUT))).is_err());
@@ -165,7 +169,7 @@ mod tests {
     fn absent_patterns_are_recognised() {
         assert!(is_pattern_absent(&failure_from(NO_INTERFACE)));
         assert!(is_pattern_absent(&failure_from(UIA_E_NOTSUPPORTED)));
-        assert!(is_pattern_absent(&windows_core::Error::empty()));
+        assert!(is_pattern_absent(&windows::core::Error::empty()));
         assert!(!is_pattern_absent(&failure_from(UIA_E_ELEMENTNOTAVAILABLE)));
     }
 }

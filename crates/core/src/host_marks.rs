@@ -1,5 +1,5 @@
-pub const PROTECTED_ID_PREFIX: &str = "winpilot-protected";
-pub const OPT_IN_MARKER_ID: &str = "winpilot-protects-terminals";
+const PROTECTED_ID_PREFIX: &str = "winpilot-protected";
+const OPT_IN_MARKER_ID: &str = "winpilot-protects-terminals";
 
 pub fn is_protected_id(automation_id: &str) -> bool {
     automation_id.trim().starts_with(PROTECTED_ID_PREFIX)

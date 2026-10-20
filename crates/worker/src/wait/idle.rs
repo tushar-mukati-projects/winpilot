@@ -1,14 +1,9 @@
 use std::time::{Duration, Instant};
 
-use winpilot_core::{Result, WindowInfo, format::window_line};
+use winpilot_core::{Result, WindowInfo, format::window_line, millis};
 
 use super::{WaitReport, check::Check};
-use crate::{
-    call_scope::CallScope,
-    default_window::default_window,
-    engine::{Engine, duration_ms},
-    watch::Watch,
-};
+use crate::{call_scope::CallScope, default_window::default_window, engine::Engine, watch::Watch};
 
 const SLICE: Duration = Duration::from_secs(1);
 
@@ -30,7 +25,7 @@ pub(crate) fn wait(engine: &Engine, quiet: Duration, timeout: Duration, call: &C
 
 fn quiet_check(window: &WindowInfo, quiet: Duration, calm: bool) -> Check {
     if calm {
-        Check::met(format!("{} has been quiet for {} ms", window_line(window), duration_ms(quiet)))
+        Check::met(format!("{} has been quiet for {} ms", window_line(window), millis(quiet)))
     } else {
         Check::unmet(format!("{} is still busy", window_line(window)))
     }

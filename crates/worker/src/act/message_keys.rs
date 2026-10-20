@@ -5,6 +5,7 @@ use super::{
     done::{Done, via_focus_click},
     key_labels::key_chips,
     message::{MESSAGE, click_spot, require_not_in_use, spot},
+    pacing::{editable_field, edits_text, wait_for_edit},
     target::Prepared,
     typing::value_note,
 };
@@ -35,9 +36,11 @@ pub(crate) fn type_text(
         overlay::typing(engine, call, &keyboard.window);
     }
     let typed = if enter { format!("{text}{ENTER}") } else { text.to_string() };
+    let field = if enter { None } else { editable_field(engine, keyboard.element.as_ref()) };
     let check = || engine.guard.check_running(call);
     let ((), note) =
         by_pattern(engine, &keyboard.window, call, || winpilot_input::message_text(keyboard.receiver, &typed, check))?;
+    wait_for_edit(engine, &keyboard.window, call, field.as_ref(), Some(text))?;
     Ok(Done::by(via_focus_click(MESSAGE, keyboard.clicked))
         .with_note(keyboard.note)
         .with_note(note)
@@ -55,10 +58,12 @@ pub(crate) fn press(
     if keyboard.window.on_current_desktop {
         overlay::key_chips(engine, call, &keyboard.window, key_chips(chords));
     }
+    let field = if edits_text(chords) { editable_field(engine, keyboard.element.as_ref()) } else { None };
     let check = || engine.guard.check_running(call);
     let ((), note) = by_pattern(engine, &keyboard.window, call, || {
         winpilot_input::message_keys(keyboard.receiver, chords, repeat, check)
     })?;
+    wait_for_edit(engine, &keyboard.window, call, field.as_ref(), None)?;
     Ok(Done::by(via_focus_click(MESSAGE, keyboard.clicked)).with_note(keyboard.note).with_note(note))
 }
 

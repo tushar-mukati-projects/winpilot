@@ -4,7 +4,7 @@ use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{IsHungAppWindow, ShowWindowAsync},
 };
-use winpilot_core::{Context, Error, ErrorCode, Result, WindowRef, WindowState};
+use winpilot_core::{Context, Error, Result, WindowRef, WindowState};
 
 use crate::{
     activation::Activation,
@@ -60,11 +60,13 @@ fn request_restore(hwnd: HWND, window: WindowRef, activation: Activation) -> Res
 }
 
 fn not_responding(window: WindowRef) -> Error {
-    Error::new(ErrorCode::TargetNotResponding, format!("{window} is not responding"))
+    Error::target_not_responding(format!("{window} is not responding"))
 }
 
 #[cfg(test)]
 mod tests {
+    use winpilot_core::ErrorCode;
+
     use super::*;
 
     #[test]

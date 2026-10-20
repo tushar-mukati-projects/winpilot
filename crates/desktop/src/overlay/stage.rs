@@ -1,28 +1,32 @@
+mod badge_layer;
+mod border_layers;
+mod chips_layer;
+mod focus_layers;
+mod pill_layer;
+mod pills;
+mod ripple_layers;
+mod scan_layers;
+mod strip_layers;
+mod trail_layers;
+mod viewfinder_layers;
+
 use windows::Win32::{Foundation::HINSTANCE, UI::WindowsAndMessaging::MSG};
 use winpilot_core::{Rect, Result};
 
+use badge_layer::BadgeLayer;
+use border_layers::{BorderLayers, BorderLook};
+use chips_layer::ChipsLayer;
+use focus_layers::FocusLayers;
+use pill_layer::{PillLayer, PillVoice};
+use ripple_layers::RippleLayers;
+use scan_layers::ScanLayers;
+use strip_layers::StripLayers;
+use trail_layers::TrailLayers;
+use viewfinder_layers::ViewfinderLayers;
+
 use super::{
-    badge_layer::BadgeLayer,
-    border_geometry::BorderMetrics,
-    border_layers::{BorderLayers, BorderLook},
-    chips_layer::ChipsLayer,
-    color::alpha_byte,
-    focus_layers::FocusLayers,
-    layer::Layer,
-    monitor_at::work_area_around,
-    palette::Palette,
-    pill_kind::PillKind,
-    pill_label::PresenceLook,
-    pill_layer::{PillLayer, PillShow, PillVoice},
-    presence::Tone,
-    ripple_layers::RippleLayers,
-    scan_layers::ScanLayers,
-    scene_frame::Frame,
-    strip_layers::StripLayers,
-    tint_window::TintWindow,
-    trail_layers::TrailLayers,
-    viewfinder_layers::ViewfinderLayers,
-    window::Capture,
+    border_geometry::BorderMetrics, color::alpha_byte, layer::Layer, palette::Palette, presence::Tone,
+    scene_frame::Frame, tint_window::TintWindow, window::Capture,
 };
 
 const STEADY_EVERY: u64 = 3;
@@ -123,7 +127,8 @@ impl Stage {
 
     pub(crate) fn show(&mut self, frame: &Frame<'_>, screen: Rect, concealed: bool, tick: u64) {
         let paint_tick = tick.is_multiple_of(STEADY_EVERY);
-        self.show_presence(frame, screen, tick);
+        self.show_border(frame, screen, tick);
+        self.show_presence(frame, screen, paint_tick);
         self.show_activity(frame, paint_tick);
         self.ripples.show(&frame.ripples, &self.palette);
         self.trail.show(frame.trail.as_ref(), &self.palette);
@@ -143,7 +148,11 @@ impl Stage {
             Some(scan) => self.scan.show(&scan, &self.palette, screen),
             None => self.scan.hide(),
         }
-        self.show_private(frame, screen, paint_tick, concealed);
+        self.show_recording(frame, screen, paint_tick);
+        match frame.viewfinder {
+            Some(viewfinder) => self.viewfinder.show(&viewfinder, &self.palette, screen, concealed),
+            None => self.viewfinder.hide(),
+        }
         self.reveal(concealed);
     }
 
@@ -179,88 +188,22 @@ impl Stage {
         }
     }
 
-    fn show_presence(&mut self, frame: &Frame<'_>, screen: Rect, tick: u64) {
-        let paint_tick = tick.is_multiple_of(STEADY_EVERY);
-        match frame.border {
-            Some(border) => {
-                let palette = if border.tone == Tone::Stopped { &self.alarm } else { &self.palette };
-                let look = BorderLook {
-                    rect: border.rect,
-                    metrics: BorderMetrics::at_scale(border.scale),
-                    palette,
-                    glow: border.glow,
-                    alpha: alpha_byte(border.alpha),
-                    tick,
-                    steady: border.steady,
-                };
-                self.border.show(&look, screen);
-            }
-            None => self.border.hide(),
-        }
-        match frame.pill {
-            Some(pill) => self.pill.show(
-                &PillShow {
-                    kind: PillKind::Presence(PresenceLook {
-                        tone: pill.tone,
-                        driving: pill.driving,
-                        room: pill.label_anchor.width,
-                    }),
-                    anchor: pill.anchor,
-                    scale: pill.scale,
-                    alpha: pill.alpha,
-                    pulse: pill.pulse,
-                    spin: pill.spin,
-                    entrance: pill.entrance,
-                    repaint: paint_tick || !pill.steady,
-                },
-                work_area_around(pill.anchor).unwrap_or(screen),
-            ),
-            None => self.pill.hide(),
-        }
-    }
-
-    fn show_activity(&mut self, frame: &Frame<'_>, paint_tick: bool) {
-        let Some(activity) = frame.activity else {
-            self.activity.hide();
+    fn show_border(&mut self, frame: &Frame<'_>, screen: Rect, tick: u64) {
+        let Some(border) = frame.border else {
+            self.border.hide();
             return;
         };
-        self.activity.describe(activity.hint);
-        self.activity.show(
-            &PillShow {
-                kind: PillKind::Activity,
-                anchor: activity.anchor,
-                scale: activity.scale,
-                alpha: activity.alpha,
-                pulse: activity.pulse,
-                spin: activity.spin,
-                entrance: activity.entrance,
-                repaint: paint_tick || !activity.steady,
-            },
-            activity.anchor,
-        );
-    }
-
-    fn show_private(&mut self, frame: &Frame<'_>, screen: Rect, paint_tick: bool, concealed: bool) {
-        match frame.recording {
-            Some(recording) => self.recording.show(
-                &PillShow {
-                    kind: PillKind::Recording { seconds: recording.seconds },
-                    anchor: recording.rect,
-                    scale: recording.scale,
-                    alpha: 1.0,
-                    pulse: recording.pulse,
-                    spin: recording.pulse * 0.25,
-                    entrance: 1.0,
-                    repaint: paint_tick,
-                },
-                work_area_around(recording.rect).unwrap_or(screen),
-            ),
-            None => self.recording.hide(),
-        }
-        match frame.viewfinder {
-            Some(viewfinder) => self.viewfinder.show(&viewfinder, &self.palette, screen, concealed),
-            None => self.viewfinder.hide(),
-        }
+        let palette = if border.tone == Tone::Stopped { &self.alarm } else { &self.palette };
+        let look = BorderLook {
+            rect: border.rect,
+            metrics: BorderMetrics::at_scale(border.scale),
+            palette,
+            glow: border.glow,
+            alpha: alpha_byte(border.alpha),
+            tick,
+            steady: border.steady,
+        };
+        self.border.show(&look, screen);
     }
 
     fn layers(&self) -> impl Iterator<Item = &Layer> {

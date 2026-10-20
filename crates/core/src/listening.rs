@@ -7,8 +7,8 @@ use crate::{
     recording::RecordAudio,
 };
 
-pub const DEFAULT_LISTEN_SECONDS: u32 = 10;
-pub const MAX_LISTEN_SECONDS: u32 = 90;
+pub(crate) const DEFAULT_LISTEN_SECONDS: u32 = 10;
+const MAX_LISTEN_SECONDS: u32 = 90;
 const LANGUAGE_CODE_LENGTHS: std::ops::RangeInclusive<usize> = 2..=3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -10,6 +10,7 @@ use super::{
     key_labels::key_chips,
     message_keys,
     mode::Mode,
+    pacing::{edits_text, focused_field, wait_for_edit},
     settle,
     target::Prepared,
 };
@@ -74,7 +75,9 @@ fn send_to_focus(
         overlay::focus_field(engine, call, element.rect);
     }
     overlay::key_chips(engine, call, &focused.window, key_chips(chords));
+    let field = if edits_text(chords) { focused_field(engine, &focused) } else { None };
     let note = send()?;
+    wait_for_edit(engine, &focused.window, call, field.as_ref(), None)?;
     settle(engine, &focused.window, call);
     Ok(Done::by(via_focus_click("keys", focused.clicked)).with_note(note))
 }

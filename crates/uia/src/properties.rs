@@ -16,13 +16,11 @@ use windows::Win32::{
         UIA_ValueIsReadOnlyPropertyId, UIA_ValueValuePropertyId,
     },
 };
-use windows_core::{BOOL, BSTR};
-use winpilot_core::{Element, ElementRef, ElementState, Patterns, Rect, Role, WindowRef};
+use windows::core::{BOOL, BSTR};
+use winpilot_core::{Element, ElementRef, ElementState, Patterns, Rect, Role, WindowRef, text_limit::truncated};
+use winpilot_win32::ref_of;
 
-use crate::{
-    fingerprint::Fingerprint, text::truncate_chars, tree_path::TreePath, variant::OwnedVariant, win,
-    window_identity::WindowIdentity,
-};
+use crate::{fingerprint::Fingerprint, tree_path::TreePath, variant::OwnedVariant, window_identity::WindowIdentity};
 
 const VALUE_LIMIT: usize = 4096;
 
@@ -80,7 +78,7 @@ impl NodeProps {
             automation_id: cached_text(unsafe { element.CachedAutomationId() }),
             class_name: cached_text(unsafe { element.CachedClassName() }),
             rect: unsafe { element.CachedBoundingRectangle() }.map(rect_from).unwrap_or_default(),
-            native_window: unsafe { element.CachedNativeWindowHandle() }.map_or(WindowRef(0), win::window_ref),
+            native_window: unsafe { element.CachedNativeWindowHandle() }.map_or(WindowRef(0), ref_of),
             value: read_value(element, &patterns, &state),
             state,
             patterns,
@@ -114,7 +112,7 @@ impl NodeProps {
     }
 }
 
-pub(crate) fn cached_text(result: windows_core::Result<BSTR>) -> String {
+pub(crate) fn cached_text(result: windows::core::Result<BSTR>) -> String {
     result.map(|text| text.to_string()).unwrap_or_default()
 }
 
@@ -130,7 +128,7 @@ pub(crate) fn current_runtime_id(element: &IUIAutomationElement) -> Vec<i32> {
         .unwrap_or_default()
 }
 
-fn cached_flag(result: windows_core::Result<BOOL>) -> bool {
+fn cached_flag(result: windows::core::Result<BOOL>) -> bool {
     result.is_ok_and(BOOL::as_bool)
 }
 
@@ -196,5 +194,5 @@ fn read_value(element: &IUIAutomationElement, patterns: &Patterns, state: &Eleme
         return None;
     }
     let value = cached_variant(element, UIA_ValueValuePropertyId)?.as_string()?;
-    Some(truncate_chars(value, VALUE_LIMIT))
+    Some(truncated(value, VALUE_LIMIT).0)
 }

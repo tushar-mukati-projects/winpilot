@@ -1,17 +1,13 @@
 use windows::Win32::UI::WindowsAndMessaging::WS_EX_TOPMOST;
 use winpilot_core::WindowRef;
-
-use crate::{
-    window_identity::{hwnd_of, is_live},
-    window_visibility::ex_style,
-};
+use winpilot_win32::{hwnd_exists, hwnd_of, window_ex_style};
 
 pub fn is_topmost(hwnd: WindowRef) -> bool {
     let handle = hwnd_of(hwnd);
-    if !is_live(handle) {
+    if !hwnd_exists(handle) {
         return false;
     }
-    ex_style(handle).contains(WS_EX_TOPMOST)
+    window_ex_style(handle).contains(WS_EX_TOPMOST)
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use std::{
 use parking_lot::Mutex;
 use winpilot_capture::Capturer;
 use winpilot_core::{
-    Config, Result, Snapshot, WindowInfo,
+    Config, Result, Snapshot, WindowInfo, millis,
     protocol::{Call, Reply, Timing},
 };
 use winpilot_desktop::{
@@ -16,12 +16,12 @@ use winpilot_desktop::{
     overlay::{Overlay, OverlayOptions},
 };
 use winpilot_uia::{SnapshotOptions, UiaHandle, UiaOptions};
+use winpilot_win32::Cancel;
 
 use crate::{
     act::{self, NotifyLimit},
     app_catalog::AppCatalog,
     call_scope::{CallScope, working_deadline},
-    cancel::Cancel,
     epoch,
     guard::Guard,
     host::HostProcesses,
@@ -144,12 +144,8 @@ impl Engine {
         if timings.len() == RECENT_TIMINGS {
             timings.pop_front();
         }
-        timings.push_back(Timing { tool: tool.to_string(), ms: duration_ms(elapsed), ok });
+        timings.push_back(Timing { tool: tool.to_string(), ms: millis(elapsed), ok });
     }
-}
-
-pub(crate) fn duration_ms(duration: Duration) -> u64 {
-    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 fn spawn_overlay(config: &Config, agent: &str) -> Option<Arc<Overlay>> {

@@ -1,20 +1,27 @@
+mod act;
+mod element;
+mod media;
+mod observation;
+mod quoting;
+mod status;
+mod window;
+
+pub use act::act;
+pub use element::element_line;
+pub use media::{listen, record, screenshot_caption};
+pub use observation::{observation, search};
+pub use status::status;
+pub use window::{apps, monitors, other_desktop, window_line, windows};
+
 use crate::{
-    diff::Change,
-    element::{Element, ElementState, Snapshot, WindowInfo, WindowState},
     error::Error,
-    geometry::{Point, Rect},
-    listening::ListenReport,
-    matching::is_gap,
-    object_marks::without_object_marks,
-    ocr::{self, NO_UIA_NOTE, OcrLine, coords},
-    recording::{RecordReport, RecordState},
-    reports::{
-        ActReport, After, AppInfo, AppKind, AppsReport, ClipboardReport, DiffReport, Found, MonitorInfo,
-        MonitorsReport, Observation, ScreenshotReport, SearchReport, StatusReport, StepOutcome, TextReport, TextSource,
-        Timing, WindowsReport,
-    },
-    role::Role,
+    observe_request::DEFAULT_ELEMENTS,
+    reports::{ClipboardReport, TextReport, TextSource},
 };
+
+const NAME_LIMIT: usize = 80;
+const VALUE_LIMIT: usize = 60;
+pub const MS_PER_SECOND: u64 = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ObserveFormat {
@@ -25,100 +32,8 @@ pub struct ObserveFormat {
 
 impl Default for ObserveFormat {
     fn default() -> Self {
-        Self { all: false, coords: false, max: 300 }
+        Self { all: false, coords: false, max: DEFAULT_ELEMENTS }
     }
-}
-
-const NAME_LIMIT: usize = 80;
-const VALUE_LIMIT: usize = 60;
-const APP_ID_LIMIT: usize = 160;
-const MAX_CHANGES: usize = 40;
-const MAX_LISTED_WINDOWS: usize = 8;
-const RECENT_TIMINGS: usize = 5;
-const PASSWORD_MASK: &str = "•••";
-const ELLIPSIS: char = '…';
-const INDENT: &str = "  ";
-const NO_OCR_TEXT: &str = "(OCR found no text)";
-const TREE_TRUNCATED: &str = "(tree truncated: window has more elements than the snapshot limit)";
-const BYTES_PER_KB: f64 = 1024.0;
-const BYTES_PER_MB: f64 = 1024.0 * 1024.0;
-
-pub fn observation(observation: &Observation, format: &ObserveFormat) -> String {
-    let snapshot = &observation.snapshot;
-    let listed = listed_elements(&snapshot.elements, format.all);
-    let total = listed.iter().filter(|&&keep| keep).count();
-    let mut lines = vec![observation_header(snapshot)];
-    lines.extend(element_lines(&snapshot.elements, &listed, format));
-    if total > format.max {
-        lines.push(format!("… {} more elements (narrow with query, or raise max)", total - format.max));
-    }
-    if snapshot.truncated {
-        lines.push(TREE_TRUNCATED.to_string());
-    }
-    lines.extend(observation.ocr.as_deref().map(ocr_lines).unwrap_or_default());
-    lines.extend(window_list("other windows", &observation.others));
-    lines.join("\n")
-}
-
-pub fn search(report: &SearchReport) -> String {
-    let mut lines: Vec<String> = report.matches.iter().map(found_line).collect();
-    if lines.is_empty() {
-        lines.push("no matches".to_string());
-    }
-    if report.truncated {
-        lines.push("… more matches (raise max)".to_string());
-    }
-    lines.join("\n")
-}
-
-pub fn act(report: &ActReport) -> String {
-    let mut lines: Vec<String> = report.steps.iter().map(step_line).collect();
-    if report.steps.len() < report.total_steps {
-        lines.push(format!("stopped after step {} of {}", report.steps.len(), report.total_steps));
-    }
-    lines.extend(after_lines(&report.after));
-    lines.push(format!("took {} ms", report.elapsed_ms));
-    lines.join("\n")
-}
-
-pub fn windows(report: &WindowsReport) -> String {
-    listed(&report.windows.iter().map(window_line).collect::<Vec<_>>(), "no windows")
-}
-
-pub fn monitors(report: &MonitorsReport) -> String {
-    listed(&report.monitors.iter().map(monitor_line).collect::<Vec<_>>(), "no monitors")
-}
-
-pub fn apps(report: &AppsReport) -> String {
-    let mut lines: Vec<String> = report.note.iter().cloned().collect();
-    lines.extend(report.apps.iter().map(app_line));
-    listed(&lines, "no apps")
-}
-
-fn listed(lines: &[String], when_empty: &str) -> String {
-    if lines.is_empty() {
-        return when_empty.to_string();
-    }
-    lines.join("\n")
-}
-
-fn monitor_line(monitor: &MonitorInfo) -> String {
-    let primary = if monitor.primary { " primary" } else { "" };
-    format!(
-        "monitor {} {} {}%{primary} · work area {}",
-        monitor.index,
-        size_at(monitor.rect),
-        monitor.scale_percent,
-        size_at(monitor.work_area)
-    )
-}
-
-fn app_line(app: &AppInfo) -> String {
-    let kind = match app.kind {
-        AppKind::Packaged => "packaged",
-        AppKind::Desktop => "desktop",
-    };
-    format!("{} {kind} {}", quote(app.name.trim(), NAME_LIMIT), single_line(app.id.trim(), APP_ID_LIMIT))
 }
 
 pub fn text(report: &TextReport) -> String {
@@ -145,528 +60,37 @@ pub fn clipboard(report: &ClipboardReport) -> String {
     text.to_string()
 }
 
-pub fn status(report: &StatusReport) -> String {
-    let mut lines = vec![format!("version: {}", report.version)];
-    lines.extend(report.server_uptime_ms.map(|ms| format!("server uptime: {}", seconds(ms))));
-    lines.extend(report.worker_uptime_ms.map(|ms| format!("worker uptime: {}", seconds(ms))));
-    lines.extend([
-        stopped_line(report),
-        format!("user idle: {}", report.user_idle_ms.map_or_else(|| "unknown".to_string(), seconds)),
-        hotkey_line(report),
-        format!("elevated: {}", yes_no(report.elevated)),
-        format!("secure desktop: {}", yes_no(report.secure_desktop)),
-        format!("worker restarts: {}", report.worker_restarts),
-    ]);
-    lines.extend(recent_line(&report.recent));
-    lines.join("\n")
-}
-
-pub fn screenshot_caption(report: &ScreenshotReport) -> String {
-    let image = report.image;
-    let format = report.mime.strip_prefix("image/").unwrap_or(&report.mime);
-    let Point { x, y } = report.mapping.origin;
-    let quality = report.quality.map(|quality| format!(" · q{quality}")).unwrap_or_default();
-    let caption = format!(
-        "{image} {}x{} {format}{quality} · scale {:.2} · origin {x},{y} · {} · click points as {{\"x\":..,\"y\":..,\"img\":\"{image}\"}}",
-        report.width, report.height, report.mapping.scale, report.source
-    );
-    match &report.note {
-        Some(note) => format!("{caption}\n{note}"),
-        None => caption,
-    }
-}
-
-pub fn listen(report: &ListenReport) -> String {
-    let mut lines = vec![format!("heard {} · language {}", report.heard, report.language)];
-    if report.segments.is_empty() && !report.truncated {
-        lines.push("(no speech heard)".to_string());
-    }
-    lines.extend(report.segments.iter().map(|segment| format!("[{}] {}", timestamp(segment.start_ms), segment.text)));
-    if report.truncated {
-        lines.push("(truncated)".to_string());
-    }
-    lines.extend(report.notes.iter().cloned());
-    lines.join(
-        "
-",
-    )
-}
-
-fn timestamp(ms: u64) -> String {
-    let seconds = ms / 1000;
-    if seconds >= 3600 {
-        return format!("{}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60);
-    }
-    format!("{:02}:{:02}", seconds / 60, seconds % 60)
-}
-
-pub fn record(report: &RecordReport) -> String {
-    let mut lines = vec![record_headline(report)];
-    lines.extend(report.note.clone());
-    lines.join("\n")
-}
-
-fn record_headline(report: &RecordReport) -> String {
-    let path = report.path.as_deref().unwrap_or("(no file)");
-    match report.state {
-        RecordState::Idle => "not recording".to_string(),
-        RecordState::Starting => {
-            "the recording is starting; check again with observe mode=record action=status".to_string()
-        }
-        RecordState::Recording => recording_line(report, path),
-        RecordState::Finished => {
-            let frames = frame_count(report.frames);
-            let saved = format!("saved {path} · {:.1} s · {frames} · {}", report.seconds, byte_size(report.bytes));
-            match report.audio {
-                Some(audio) => format!("{saved} · {}", audio.label()),
-                None => saved,
-            }
-        }
-    }
-}
-
-fn recording_line(report: &RecordReport, path: &str) -> String {
-    let mut parts =
-        vec![format!("recording to {path}"), format!("{}x{} @ {} fps", report.width, report.height, report.fps)];
-    parts.extend(report.audio.map(|audio| audio.label().to_string()));
-    if report.frames > 0 {
-        parts.push(format!("{:.1} s", report.seconds));
-        parts.push(frame_count(report.frames));
-    }
-    parts.push("stop with observe mode=record action=stop".to_string());
-    parts.join(" · ")
-}
-
-fn frame_count(frames: u64) -> String {
-    if frames == 1 { "1 frame".to_string() } else { format!("{frames} frames") }
-}
-
-fn byte_size(bytes: u64) -> String {
-    let size = bytes as f64;
-    if size >= BYTES_PER_MB {
-        return format!("{:.1} MB", size / BYTES_PER_MB);
-    }
-    if size >= BYTES_PER_KB {
-        return format!("{:.0} KB", size / BYTES_PER_KB);
-    }
-    format!("{bytes} B")
-}
-
 pub fn error(error: &Error) -> String {
     format!("error[{}]: {}", error.code, error.message)
 }
 
-pub fn window_line(window: &WindowInfo) -> String {
-    let mut parts = vec![window_tag(window), quote(window.title.trim(), NAME_LIMIT)];
-    parts.extend(window_flags(window).map(str::to_string));
-    parts.extend(other_desktop(window));
-    parts.join(" ")
-}
-
-pub fn other_desktop(window: &WindowInfo) -> Option<String> {
-    if window.on_current_desktop {
-        return None;
-    }
-    Some(window.desktop.map_or_else(|| "another desktop".to_string(), |number| format!("desktop {number}")))
-}
-
-pub fn element_line(element: &Element, coords: bool) -> String {
-    let mut parts = vec![element.id.to_string(), element.role.to_string()];
-    parts.extend(element_label(element));
-    parts.extend(element_value(element));
-    parts.extend(element_flags(element).map(str::to_string));
-    if coords {
-        parts.push(ocr::coords(element.rect));
-    }
-    parts.join(" ")
-}
-
-fn element_label(element: &Element) -> Option<String> {
-    let name = without_object_marks(&element.name);
-    let name = name.trim();
-    if !name.is_empty() {
-        return Some(quote(name, NAME_LIMIT));
-    }
-    let id = element.automation_id.trim();
-    (!id.is_empty()).then(|| format!("#{}", single_line(id, NAME_LIMIT)))
-}
-
-fn element_value(element: &Element) -> Option<String> {
-    let value = element.value.as_deref().filter(|value| !without_object_marks(value).is_empty())?;
-    if element.state.password {
-        return Some(format!("value={PASSWORD_MASK}"));
-    }
-    Some(format!("value={}", quote(value, VALUE_LIMIT)))
-}
-
-fn element_flags(element: &Element) -> impl Iterator<Item = &'static str> {
-    let state = element.state;
-    [
-        state.focused.then_some("focused"),
-        (!state.enabled).then_some("disabled"),
-        state.toggled.map(|on| if on { "checked" } else { "unchecked" }),
-        state.expanded.map(|open| if open { "expanded" } else { "collapsed" }),
-        (state.selected == Some(true)).then_some("selected"),
-        (state.read_only && shows_read_only(element.role)).then_some("readonly"),
-        state.password.then_some("password"),
-        state.offscreen.then_some("offscreen"),
-    ]
-    .into_iter()
-    .flatten()
-}
-
-const fn shows_read_only(role: Role) -> bool {
-    matches!(role, Role::Edit | Role::Combobox | Role::Document)
-}
-
-fn window_tag(window: &WindowInfo) -> String {
-    let process = window.process.trim();
-    if process.is_empty() {
-        return window.hwnd.to_string();
-    }
-    format!("{} {}", window.hwnd, single_line(process, NAME_LIMIT))
-}
-
-fn window_flags(window: &WindowInfo) -> impl Iterator<Item = &'static str> {
-    let placement = match window.state {
-        WindowState::Minimized => Some("minimized"),
-        WindowState::Maximized => Some("maximized"),
-        WindowState::Normal => None,
-    };
-    [placement, window.elevated.then_some("elevated"), window.foreground.then_some("foreground")].into_iter().flatten()
-}
-
-fn window_list(label: &str, windows: &[WindowInfo]) -> Option<String> {
-    if windows.is_empty() {
-        return None;
-    }
-    let mut parts: Vec<String> = windows.iter().take(MAX_LISTED_WINDOWS).map(window_line).collect();
-    if windows.len() > MAX_LISTED_WINDOWS {
-        parts.push(format!("… {} more", windows.len() - MAX_LISTED_WINDOWS));
-    }
-    Some(format!("{label}: {}", parts.join(", ")))
-}
-
-fn ocr_lines(found: &[OcrLine]) -> Vec<String> {
-    let mut lines = vec![NO_UIA_NOTE.to_string()];
-    if found.is_empty() {
-        lines.push(format!("{INDENT}{NO_OCR_TEXT}"));
-    }
-    lines.extend(
-        found.iter().map(|line| format!("{INDENT}ocr {} {}", quote(&line.text, NAME_LIMIT), coords(line.rect))),
-    );
-    lines
-}
-
-fn observation_header(snapshot: &Snapshot) -> String {
-    let focus = snapshot.focused.map(|id| format!(" · focus {id}")).unwrap_or_default();
-    format!("window {} {}{focus}", window_line(&snapshot.window), size_at(snapshot.window.rect))
-}
-
-fn size_at(rect: Rect) -> String {
-    let Rect { x, y, width, height } = rect;
-    format!("{width}x{height}@{x},{y}")
-}
-
-fn element_lines(elements: &[Element], listed: &[bool], format: &ObserveFormat) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut open_depths: Vec<u16> = Vec::new();
-    for (element, &keep) in elements.iter().zip(listed) {
-        if lines.len() >= format.max {
-            break;
-        }
-        while open_depths.last().is_some_and(|&depth| depth >= element.depth) {
-            open_depths.pop();
-        }
-        if keep {
-            lines.push(format!("{}{}", INDENT.repeat(open_depths.len()), element_line(element, format.coords)));
-            open_depths.push(element.depth);
-        }
-    }
-    lines
-}
-
-fn listed_elements(elements: &[Element], all: bool) -> Vec<bool> {
-    if all {
-        return elements.iter().map(listed_in_full).collect();
-    }
-    let base: Vec<bool> = elements.iter().map(listed_by_default).collect();
-    let holds_listed = holds_listed_descendant(elements, &base);
-    elements
-        .iter()
-        .zip(base)
-        .zip(holds_listed)
-        .map(|((element, keep), holds)| keep || (holds && is_named_container(element)))
-        .collect()
-}
-
-fn listed_in_full(element: &Element) -> bool {
-    let identified = has_name(element) || has_value(element) || !element.automation_id.trim().is_empty();
-    element.is_visible() && (identified || element.is_actionable())
-}
-
-fn listed_by_default(element: &Element) -> bool {
-    element.is_visible() && (element.is_actionable() || is_readable_text(element))
-}
-
-fn is_readable_text(element: &Element) -> bool {
-    matches!(element.role, Role::Text | Role::Document | Role::Edit) && (has_name(element) || has_value(element))
-}
-
-fn is_named_container(element: &Element) -> bool {
-    element.is_visible() && element.role.is_container() && has_name(element)
-}
-
-fn has_name(element: &Element) -> bool {
-    !without_object_marks(&element.name).trim().is_empty()
-}
-
-fn has_value(element: &Element) -> bool {
-    element.value.as_deref().is_some_and(|value| !without_object_marks(value).is_empty())
-}
-
-fn holds_listed_descendant(elements: &[Element], listed: &[bool]) -> Vec<bool> {
-    let mut holds = vec![false; elements.len()];
-    let mut open: Vec<(usize, u16)> = Vec::new();
-    for (index, element) in elements.iter().enumerate() {
-        while open.last().is_some_and(|&(_, depth)| depth >= element.depth) {
-            open.pop();
-        }
-        if listed.get(index).copied().unwrap_or(false) {
-            mark_open_ancestors(&open, &mut holds);
-        }
-        open.push((index, element.depth));
-    }
-    holds
-}
-
-fn mark_open_ancestors(open: &[(usize, u16)], holds: &mut [bool]) {
-    for &(ancestor, _) in open.iter().rev() {
-        let Some(slot) = holds.get_mut(ancestor) else { break };
-        if *slot {
-            break;
-        }
-        *slot = true;
-    }
-}
-
-fn found_line(found: &Found) -> String {
-    let mut parts = vec![element_line(&found.element, false), window_tag(&found.window)];
-    if !found.path.is_empty() {
-        let path: Vec<String> = found.path.iter().map(|step| single_line(step.trim(), NAME_LIMIT)).collect();
-        parts.push(path.join(" > "));
-    }
-    parts.join(" · ")
-}
-
-fn step_line(outcome: &StepOutcome) -> String {
-    let number = outcome.index.saturating_add(1);
-    if let Some(failure) = &outcome.error {
-        return format!("✗ {number} {} — {}", outcome.step, error(failure));
-    }
-    let method = outcome.method.as_ref().map(|method| format!(" ({method})")).unwrap_or_default();
-    let note = outcome.note.as_ref().map(|note| format!(": {note}")).unwrap_or_default();
-    format!("✓ {number} {}{method}{note}", outcome.step)
-}
-
-fn after_lines(after: &After) -> Vec<String> {
-    match after {
-        After::None => Vec::new(),
-        After::Diff(report) => diff_lines(report),
-        After::Observation(found) => vec![format!("after: {}", observation(found, &ObserveFormat::default()))],
-        After::Screenshot(shot) => vec![format!("after: {}", screenshot_caption(shot))],
-    }
-}
-
-fn diff_lines(report: &DiffReport) -> Vec<String> {
-    let window = window_line(&report.window);
-    let focus = report.focused.as_ref().map(|element| format!(" · focus {}", element_line(element, false)));
-    let focus = focus.unwrap_or_default();
-    if report.changes.is_empty() && report.opened.is_empty() && report.closed.is_empty() {
-        return vec![format!("after: no visible change in {window}{focus}")];
-    }
-    let mut lines = vec![format!("after: window {window}{focus}")];
-    lines.extend(report.changes.iter().take(MAX_CHANGES).map(change_line));
-    if report.changes.len() > MAX_CHANGES {
-        lines.push(format!("… {} more changes", report.changes.len() - MAX_CHANGES));
-    }
-    lines.extend(window_list("opened", &report.opened));
-    lines.extend(window_list("closed", &report.closed));
-    lines
-}
-
-fn change_line(change: &Change) -> String {
-    match change {
-        Change::Added { element } => format!("+ {}", element_line(element, false)),
-        Change::Removed { element } => format!("- {}", element_line(element, false)),
-        Change::Changed { before, after } => changed_line(before, after),
-    }
-}
-
-fn changed_line(before: &Element, after: &Element) -> String {
-    let line = format!("~ {}", element_line(after, false));
-    let details = change_details(before, after);
-    if details.is_empty() {
-        return line;
-    }
-    format!("{line} ({})", details.join(", "))
-}
-
-fn change_details(before: &Element, after: &Element) -> Vec<String> {
-    let mut details = Vec::new();
-    let (old_name, new_name) = (before.name.trim(), after.name.trim());
-    if old_name != new_name {
-        details.push(format!("name {} → {}", quote(old_name, NAME_LIMIT), quote(new_name, NAME_LIMIT)));
-    }
-    details.extend(value_change(before, after));
-    if before.role != after.role {
-        details.push(format!("role {} → {}", before.role, after.role));
-    }
-    if before.automation_id != after.automation_id {
-        let (old_id, new_id) = (&before.automation_id, &after.automation_id);
-        details.push(format!("id {} → {}", quote(old_id, NAME_LIMIT), quote(new_id, NAME_LIMIT)));
-    }
-    details.extend(state_changes(before.state, after.state).map(str::to_string));
-    details
-}
-
-fn value_change(before: &Element, after: &Element) -> Option<String> {
-    let old = before.value.as_deref().unwrap_or_default();
-    let new = after.value.as_deref().unwrap_or_default();
-    if old == new {
-        return None;
-    }
-    if before.state.password || after.state.password {
-        return Some("value changed".to_string());
-    }
-    Some(format!("value {} → {}", quote(old, VALUE_LIMIT), quote(new, VALUE_LIMIT)))
-}
-
-fn state_changes(before: ElementState, after: ElementState) -> impl Iterator<Item = &'static str> {
-    [
-        flag_change(before.enabled, after.enabled, "now enabled", "now disabled"),
-        option_change(before.toggled, after.toggled, ["now checked", "now unchecked", "no longer checkable"]),
-        option_change(before.expanded, after.expanded, ["now expanded", "now collapsed", "no longer expandable"]),
-        option_change(before.selected, after.selected, ["now selected", "now unselected", "no longer selectable"]),
-        flag_change(before.read_only, after.read_only, "now readonly", "now editable"),
-        flag_change(before.password, after.password, "now password", "no longer password"),
-        flag_change(before.offscreen, after.offscreen, "now offscreen", "now onscreen"),
-        flag_change(before.focusable, after.focusable, "now focusable", "no longer focusable"),
-    ]
-    .into_iter()
-    .flatten()
-}
-
-fn flag_change(before: bool, after: bool, on: &'static str, off: &'static str) -> Option<&'static str> {
-    (before != after).then_some(if after { on } else { off })
-}
-
-fn option_change(before: Option<bool>, after: Option<bool>, words: [&'static str; 3]) -> Option<&'static str> {
-    let [on, off, gone] = words;
-    if before == after {
-        return None;
-    }
-    Some(match after {
-        Some(true) => on,
-        Some(false) => off,
-        None => gone,
-    })
-}
-
-fn seconds(ms: u64) -> String {
-    format!("{:.1} s", ms as f64 / 1000.0)
-}
-
-const fn yes_no(flag: bool) -> &'static str {
-    if flag { "yes" } else { "no" }
-}
-
-fn stopped_line(report: &StatusReport) -> String {
-    if report.stopped {
-        return format!("stopped: yes — press {} again to resume", report.kill_hotkey);
-    }
-    "stopped: no".to_string()
-}
-
-fn hotkey_line(report: &StatusReport) -> String {
-    let suffix = if report.hotkey_registered { "" } else { " (not registered)" };
-    format!("kill hotkey: {}{suffix}", report.kill_hotkey)
-}
-
-fn recent_line(recent: &[Timing]) -> Option<String> {
-    if recent.is_empty() {
-        return None;
-    }
-    let skipped = recent.len().saturating_sub(RECENT_TIMINGS);
-    let timings: Vec<String> = recent.iter().skip(skipped).map(timing).collect();
-    Some(format!("recent: {}", timings.join(", ")))
-}
-
-fn timing(timing: &Timing) -> String {
-    let outcome = if timing.ok { "ok" } else { "err" };
-    format!("{} {} ms {outcome}", timing.tool, timing.ms)
-}
-
-fn quote(text: &str, limit: usize) -> String {
-    let flat = collapse(&without_object_marks(text), is_gap);
-    let (kept, cut) = truncate(&flat, limit);
-    let mut quoted = String::with_capacity(kept.len() + 8);
-    quoted.push('"');
-    for ch in kept.chars() {
-        if matches!(ch, '"' | '\\') {
-            quoted.push('\\');
-        }
-        quoted.push(ch);
-    }
-    quoted.push('"');
-    if cut {
-        quoted.push(ELLIPSIS);
-    }
-    quoted
-}
-
-fn single_line(text: &str, limit: usize) -> String {
-    let flat = collapse(&without_object_marks(text), char::is_control);
-    let (kept, cut) = truncate(&flat, limit);
-    let mut line = kept.to_string();
-    if cut {
-        line.push(ELLIPSIS);
-    }
-    line
-}
-
-fn collapse(text: &str, is_break: fn(char) -> bool) -> String {
-    let mut collapsed = String::with_capacity(text.len());
-    let mut after_gap = false;
-    for ch in text.chars() {
-        let gap = is_break(ch);
-        match (gap, after_gap) {
-            (false, _) => collapsed.push(ch),
-            (true, false) => collapsed.push(' '),
-            (true, true) => {}
-        }
-        after_gap = gap;
-    }
-    collapsed
-}
-
-fn truncate(text: &str, limit: usize) -> (&str, bool) {
-    if text.chars().nth(limit).is_none() {
-        return (text, false);
-    }
-    let cut = text.char_indices().nth(limit.saturating_sub(1)).map_or(0, |(index, _)| index);
-    (&text[..cut], true)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{
+        act::change_line,
+        media::byte_size,
+        observation::{has_name, has_value},
+        window::{APP_ID_LIMIT, app_line},
+        *,
+    };
     use crate::{
-        element::fixtures::{app_window, element, snapshot, window, with_value},
+        diff::Change,
+        element::{
+            Element, ElementState, WindowInfo, WindowState,
+            fixtures::{app_window, element, snapshot, window, with_value},
+        },
         error::ErrorCode,
-        geometry::ImageMapping,
+        geometry::{ImageMapping, Point, Rect},
+        listening::ListenReport,
+        ocr::OcrLine,
         protocol::{RecordAudio, Timing},
+        recording::{RecordReport, RecordState},
         refs::{ElementRef, ImageRef},
+        reports::{
+            ActReport, After, AppInfo, AppKind, AppsReport, DiffReport, Found, MonitorInfo, MonitorsReport,
+            Observation, ScreenshotReport, SearchReport, StatusReport, StepOutcome, WindowsReport,
+        },
+        role::Role,
     };
 
     #[test]

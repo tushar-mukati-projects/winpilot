@@ -13,8 +13,7 @@ use windows::{
     core::{PCWSTR, w},
 };
 use winpilot_core::{Context, Result};
-
-use crate::{module_instance::module_instance, window_class::register_window_class};
+use winpilot_win32::{module_instance, register_window_class};
 
 const BALLOON_CLASS: PCWSTR = w!("WinPilotNotification");
 const EVENT_MASK: isize = 0xFFFF;

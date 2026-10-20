@@ -8,13 +8,13 @@ use windows::Win32::{
     UI::WindowsAndMessaging::{SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos},
 };
 use winpilot_core::{Context, Error, Rect, Result, WindowRef};
+use winpilot_win32::{frame_bounds, live_hwnd};
 
 use crate::{
     activation::Activation,
     frame::FrameInsets,
     timeouts::{later, poll_until},
-    window_geometry::{frame_bounds, outer_rect, visible_rect},
-    window_identity::live_hwnd,
+    window_geometry::{outer_rect, visible_rect},
     window_restore::{ensure_responsive, restore_to_normal},
 };
 
@@ -92,9 +92,10 @@ mod tests {
     use winpilot_core::ErrorCode;
 
     use winpilot_fixture::{FixtureProcess, Placement, fixture_exe};
+    use winpilot_win32::ref_of;
 
     use super::*;
-    use crate::{dpi::enable_dpi_awareness, window_identity::ref_of};
+    use crate::dpi::enable_dpi_awareness;
 
     #[test]
     fn rects_within_two_pixels_count_as_placed() {

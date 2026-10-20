@@ -3,7 +3,10 @@ use std::time::Duration;
 use winpilot_core::{Point, Rect};
 
 use super::{
-    chip_text::ChipText, driving::Driving, focus_outline::FocusLook, glow_tints::GlowLook, presence::Tone,
+    chip_text::ChipText,
+    focus_outline::FocusLook,
+    glow_tints::GlowLook,
+    presence::{Driving, Tone},
     trail::TrailDot,
 };
 

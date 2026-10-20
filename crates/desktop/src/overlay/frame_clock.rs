@@ -4,15 +4,14 @@ use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{MSG, WM_TIMER},
 };
-
-use crate::window_timer::WindowTimer;
+use winpilot_win32::{Timer, finite_millis};
 
 const TIMER_ID: usize = 1;
 const SHORTEST_MS: u32 = 10;
 
 #[derive(Debug, Default)]
 pub(crate) struct FrameClock {
-    timer: Option<WindowTimer>,
+    timer: Option<Timer>,
     interval: Option<u32>,
 }
 
@@ -28,7 +27,7 @@ impl FrameClock {
             return;
         }
         self.timer = None;
-        self.timer = WindowTimer::start(hwnd, TIMER_ID, interval);
+        self.timer = Timer::on_window(hwnd, TIMER_ID, interval);
         self.interval = self.timer.as_ref().map(|_| interval);
     }
 
@@ -46,18 +45,20 @@ impl FrameClock {
 }
 
 fn interval_ms(wake: Duration) -> u32 {
-    u32::try_from(wake.as_millis()).unwrap_or(u32::MAX).max(SHORTEST_MS)
+    finite_millis(wake).max(SHORTEST_MS)
 }
 
 #[cfg(test)]
 mod tests {
+    use windows::Win32::System::Threading::INFINITE;
+
     use super::*;
 
     #[test]
     fn intervals_have_a_floor_and_no_overflow() {
         assert_eq!(interval_ms(Duration::from_millis(15)), 15);
         assert_eq!(interval_ms(Duration::ZERO), SHORTEST_MS);
-        assert_eq!(interval_ms(Duration::from_secs(u64::MAX)), u32::MAX);
+        assert_eq!(interval_ms(Duration::from_secs(u64::MAX)), INFINITE - 1);
     }
 
     #[test]

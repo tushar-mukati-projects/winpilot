@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 winpilot-core.workspace = true
+winpilot-win32.workspace = true
 windows.workspace = true
 candle-core.workspace = true
 candle-nn.workspace = true

@@ -66,6 +66,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "opens the live clipboard"]
     fn reading_the_live_clipboard_never_fails_on_the_guard_alone() {
         let request = ClipboardRequest { max_chars: 5 };
         match read(engine(), request) {

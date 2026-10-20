@@ -4,6 +4,7 @@ use rmcp::model::{CallToolResult, ContentBlock};
 use winpilot_core::{
     Error, Result,
     format::{self, ObserveFormat},
+    millis,
     protocol::{ActReport, After, Reply, ScreenshotReport, StatusReport},
 };
 
@@ -67,7 +68,7 @@ fn status(report: StatusReport, extras: &Extras) -> String {
 
 fn with_server_facts(mut report: StatusReport, extras: &Extras) -> StatusReport {
     report.worker_restarts = extras.restarts;
-    report.server_uptime_ms = Some(u64::try_from(extras.server_uptime.as_millis()).unwrap_or(u64::MAX));
+    report.server_uptime_ms = Some(millis(extras.server_uptime));
     report
 }
 

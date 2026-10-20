@@ -1,22 +1,20 @@
-use fast_image_resize::images::{Image, ImageRef};
-use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer};
-use winpilot_core::{Context, Error, Result};
+use fast_image_resize::{FilterType, Resizer};
+use winpilot_core::{Error, Result};
 
-use super::layout::{Placement, Size, letterbox};
-use crate::pixels::BYTES_PER_PIXEL;
+use super::layout::{Size, letterbox};
+use crate::pixels::{BYTES_PER_PIXEL, Block, Pixels, PixelsMut, copy_block};
+use crate::resize::resize_into;
 
 const OPAQUE_BLACK: [u8; 4] = [0, 0, 0, 255];
 
 pub(crate) struct Scaler {
     resizer: Resizer,
-    options: ResizeOptions,
     fitted: Vec<u8>,
 }
 
 impl Scaler {
     pub(crate) fn new() -> Self {
-        let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Bilinear)).use_alpha(false);
-        Self { resizer: Resizer::new(), options, fitted: Vec::new() }
+        Self { resizer: Resizer::new(), fitted: Vec::new() }
     }
 
     pub(crate) fn draw(
@@ -39,36 +37,27 @@ impl Scaler {
         }
         let mut fitted = std::mem::take(&mut self.fitted);
         fitted.resize(placement.size().bgra_len(), 0);
-        let drawn = self.resize(source, source_size, &mut fitted, placement.size());
-        if drawn.is_ok() {
-            paste_on_black(&fitted, placement, output, output_size);
-        }
+        let drawn = self
+            .resize(source, source_size, &mut fitted, placement.size())
+            .and_then(|()| paste_on_black(&fitted, placement, output, output_size));
         self.fitted = fitted;
         drawn
     }
 
     fn resize(&mut self, source: &[u8], source_size: Size, target: &mut [u8], target_size: Size) -> Result<()> {
-        let from = ImageRef::new(source_size.width, source_size.height, source, PixelType::U8x4)
-            .context("preparing the frame for scaling")?;
-        let mut to = Image::from_slice_u8(target_size.width, target_size.height, target, PixelType::U8x4)
-            .context("preparing the scaled frame")?;
-        self.resizer.resize(&from, &mut to, &self.options).context("scaling the frame")
+        let (from, to) = ((source_size.width, source_size.height), (target_size.width, target_size.height));
+        resize_into(&mut self.resizer, FilterType::Bilinear, source, from, target, to)
     }
 }
 
-fn paste_on_black(fitted: &[u8], placement: Placement, output: &mut [u8], output_size: Size) {
+fn paste_on_black(fitted: &[u8], placement: Block, output: &mut [u8], output_size: Size) -> Result<()> {
     for pixel in output.as_chunks_mut::<BYTES_PER_PIXEL>().0 {
         *pixel = OPAQUE_BLACK;
     }
-    let output_stride = output_size.width as usize * BYTES_PER_PIXEL;
-    let row_bytes = placement.width as usize * BYTES_PER_PIXEL;
-    let left = placement.x as usize * BYTES_PER_PIXEL;
-    for (row, line) in fitted.chunks_exact(row_bytes).enumerate() {
-        let start = (placement.y as usize + row) * output_stride + left;
-        if let Some(target) = output.get_mut(start..start + row_bytes) {
-            target.copy_from_slice(line);
-        }
-    }
+    let source = Pixels { bytes: fitted, stride: placement.width as usize * BYTES_PER_PIXEL };
+    let whole = Block { x: 0, y: 0, ..placement };
+    let mut target = PixelsMut { bytes: output, stride: output_size.width as usize * BYTES_PER_PIXEL };
+    copy_block(&source, whole, &mut target, (placement.x as usize, placement.y as usize))
 }
 
 #[cfg(test)]

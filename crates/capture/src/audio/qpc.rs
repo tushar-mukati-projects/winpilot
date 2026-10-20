@@ -1,7 +1,7 @@
 use windows::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 use winpilot_core::{Context, Result};
 
-const HNS_PER_SECOND: i128 = 10_000_000;
+use crate::time_units::HNS_PER_SECOND;
 
 pub(crate) fn qpc_now_hns() -> Result<i64> {
     let mut counter = 0i64;
@@ -12,7 +12,7 @@ pub(crate) fn qpc_now_hns() -> Result<i64> {
 }
 
 fn hns_of(counter: i64, frequency: i64) -> i64 {
-    let hns = i128::from(counter) * HNS_PER_SECOND / i128::from(frequency.max(1));
+    let hns = i128::from(counter) * i128::from(HNS_PER_SECOND) / i128::from(frequency.max(1));
     i64::try_from(hns).unwrap_or(i64::MAX)
 }
 

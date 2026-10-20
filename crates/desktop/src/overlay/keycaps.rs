@@ -15,6 +15,13 @@ const CAP_FILL: Rgb = Rgb::new(30, 30, 38);
 const BACKDROP: Rgb = Rgb::new(12, 12, 16);
 const BACKDROP_ALPHA: f32 = 0.62;
 const PLUS: Rgb = Rgb::new(225, 225, 235);
+const TINT_SPREAD: f32 = 0.4;
+const TRAY_ROUNDNESS: f32 = 0.32;
+const TRAY_SHADOW_DROP: f32 = 3.0;
+const CAP_ROUNDNESS: f32 = 0.28;
+const CAP_SHADOW_DROP: f32 = 2.5;
+const CAP_SPILL: i32 = 8;
+const CAP_SPILL_ABOVE: i32 = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Item {
@@ -121,7 +128,7 @@ pub(crate) fn paint_caps(
         .collect();
     paint_tray(canvas, layout.tray);
     for (index, cap) in caps.iter().enumerate() {
-        let tint = palette.at(index as f32 / caps.len().max(1) as f32 * 0.4);
+        let tint = palette.at(index as f32 / caps.len().max(1) as f32 * TINT_SPREAD);
         paint_cap(canvas, *cap, tint);
     }
     for placed in &layout.placed {
@@ -137,9 +144,9 @@ pub(crate) fn paint_caps(
 }
 
 fn paint_tray(canvas: &mut Canvas<'_>, tray: Rect) {
-    let radius = tray.height as f32 * 0.32;
+    let radius = tray.height as f32 * TRAY_ROUNDNESS;
     let body = RoundedBox::new(tray.x as f32, tray.y as f32, tray.width as f32, tray.height as f32, radius);
-    let shadow = body.shifted(0.0, 3.0);
+    let shadow = body.shifted(0.0, TRAY_SHADOW_DROP);
     let blur = (tray.x as f32).max(1.0);
     for y in 0..canvas.height() {
         for x in 0..canvas.width() {
@@ -157,11 +164,12 @@ fn paint_tray(canvas: &mut Canvas<'_>, tray: Rect) {
 }
 
 fn paint_cap(canvas: &mut Canvas<'_>, cap: Rect, tint: Rgb) {
-    let radius = cap.height as f32 * 0.28;
+    let radius = cap.height as f32 * CAP_ROUNDNESS;
     let body = RoundedBox::new(cap.x as f32, cap.y as f32, cap.width as f32, cap.height as f32, radius);
-    let shadow = body.shifted(0.0, 2.5);
+    let shadow = body.shifted(0.0, CAP_SHADOW_DROP);
     let height = cap.height as f32;
-    let area = Rect::new(cap.x - 8, cap.y - 6, cap.width + 16, cap.height + 16);
+    let spill = 2 * CAP_SPILL;
+    let area = Rect::new(cap.x - CAP_SPILL, cap.y - CAP_SPILL_ABOVE, cap.width + spill, cap.height + spill);
     for y in area.y.max(0)..area.bottom() {
         for x in area.x.max(0)..area.right() {
             let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);

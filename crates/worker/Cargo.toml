@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 winpilot-core.workspace = true
+winpilot-win32.workspace = true
 winpilot-uia.workspace = true
 winpilot-capture.workspace = true
 winpilot-input.workspace = true

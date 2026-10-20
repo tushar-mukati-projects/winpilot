@@ -3,8 +3,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::HWND;
-use windows::Win32::UI::WindowsAndMessaging::IsWindow;
-use winpilot_core::{Error, ErrorCode, Point, Rect, Result};
+use winpilot_core::{Error, Point, Rect, Result};
+use winpilot_win32::{hwnd_exists, live_hwnd};
 
 use super::gpu::Gpu;
 use super::layout::Size;
@@ -13,12 +13,12 @@ use super::outcome::EndReason;
 use super::spec::RecordingSource;
 use super::staging::{Staging, texture_size};
 use super::wgc::{CaptureSession, CapturedFrame, ensure_supported, monitor_item, window_item};
-use crate::convert::hwnd_from_ref;
 use crate::frame::{Frame, FrameSource};
 
 const FIRST_FRAME_PATIENCE: Duration = Duration::from_secs(3);
 const FIRST_FRAME_POLL: Duration = Duration::from_millis(10);
 const ALIVE_CHECK_EVERY: Duration = Duration::from_millis(500);
+pub(super) const STOPPED_WHILE_STARTING: &str = "the recording was stopped while starting";
 
 #[derive(Debug, Clone, Copy)]
 enum Geometry {
@@ -64,7 +64,7 @@ impl Source {
         let give_up = Instant::now().checked_add(FIRST_FRAME_PATIENCE).map_or(deadline, |limit| limit.min(deadline));
         while Instant::now() < give_up {
             if stop.load(Ordering::Acquire) {
-                return Err(Error::new(ErrorCode::Cancelled, "the recording was stopped while starting"));
+                return Err(Error::cancelled(STOPPED_WHILE_STARTING));
             }
             if self.grab()? {
                 return Ok(());
@@ -106,7 +106,7 @@ impl Source {
             return false;
         }
         self.alive_checked = Instant::now();
-        !unsafe { IsWindow(Some(hwnd)) }.as_bool()
+        !hwnd_exists(hwnd)
     }
 
     fn follow_monitor(&mut self) -> bool {
@@ -148,11 +148,12 @@ impl Source {
     }
 
     fn no_frames(&self) -> Error {
+        let seconds = FIRST_FRAME_PATIENCE.as_secs();
         match self.geometry {
-            Geometry::Window { .. } => {
-                Error::invalid("the window produced no frames within 3 s; it may be minimized or not drawing")
-            }
-            Geometry::Screen(_) => Error::internal("the monitor produced no frames within 3 s"),
+            Geometry::Window { .. } => Error::invalid(format!(
+                "the window produced no frames within {seconds} s; it may be minimized or not drawing"
+            )),
+            Geometry::Screen(_) => Error::internal(format!("the monitor produced no frames within {seconds} s")),
         }
     }
 }
@@ -160,10 +161,7 @@ impl Source {
 fn geometry_of(source: RecordingSource) -> Result<(Geometry, bool)> {
     match source {
         RecordingSource::Window { window, crop } => {
-            let hwnd = hwnd_from_ref(window);
-            if hwnd.is_invalid() || !unsafe { IsWindow(Some(hwnd)) }.as_bool() {
-                return Err(Error::not_found(format!("window {window} does not exist")));
-            }
+            let hwnd = live_hwnd(window)?;
             Ok((Geometry::Window { hwnd, crop }, false))
         }
         RecordingSource::Screen(wanted) => {

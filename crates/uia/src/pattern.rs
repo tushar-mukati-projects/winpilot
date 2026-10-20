@@ -1,5 +1,5 @@
 use windows::Win32::UI::Accessibility::{IUIAutomationElement, UIA_PATTERN_ID};
-use windows_core::Interface;
+use windows::core::Interface;
 use winpilot_core::Result;
 
 use crate::failure::{is_pattern_absent, uia_error};

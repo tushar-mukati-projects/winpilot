@@ -8,8 +8,7 @@ use windows::Win32::{
 };
 use windows::core::{HRESULT, PCWSTR, s, w};
 use winpilot_core::{Context, Result};
-
-use crate::module_instance::module_instance;
+use winpilot_win32::module_instance;
 
 const EXE_ICON_RESOURCE_ID: usize = 1;
 

@@ -3,14 +3,15 @@ use windows::Win32::{
     UI::{
         Accessibility::IUIAutomationElement,
         Controls::{COMBOBOXINFO, GetComboBoxInfo},
-        WindowsAndMessaging::{
-            CB_GETCURSEL, CB_SETCURSEL, GetDlgCtrlID, LBN_SELCHANGE, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_COMMAND,
-        },
+        WindowsAndMessaging::{CB_GETCURSEL, CB_SETCURSEL, GetDlgCtrlID, LBN_SELCHANGE, SMTO_ABORTIFHUNG, WM_COMMAND},
     },
 };
 use winpilot_core::{Error, Result};
+use winpilot_win32::send_message_timeout;
 
 const ANSWER_WAIT_MS: u32 = 2000;
+const HIGH_WORD_SHIFT: u32 = 16;
+const LOW_WORD: usize = 0xFFFF;
 
 pub(crate) struct Win32Combo {
     combo: HWND,
@@ -59,15 +60,12 @@ fn combo_box_info(window: HWND) -> Option<COMBOBOXINFO> {
 }
 
 fn selection_change(list_id: i32) -> usize {
-    ((LBN_SELCHANGE as usize) << 16) | (list_id as usize & 0xFFFF)
+    ((LBN_SELCHANGE as usize) << HIGH_WORD_SHIFT) | (list_id as usize & LOW_WORD)
 }
 
 fn send(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> Option<isize> {
-    let mut result = 0usize;
-    let answered = unsafe {
-        SendMessageTimeoutW(window, message, wparam, lparam, SMTO_ABORTIFHUNG, ANSWER_WAIT_MS, Some(&raw mut result))
-    };
-    (answered.0 != 0).then_some(result as isize)
+    send_message_timeout(window, message, wparam, lparam, SMTO_ABORTIFHUNG, ANSWER_WAIT_MS)
+        .map(|answer| answer as isize)
 }
 
 #[cfg(test)]

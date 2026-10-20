@@ -3,7 +3,13 @@ use winpilot_core::{Context, Error, ImageMapping, Result, protocol::ImageFormat}
 use crate::canvas::Canvas;
 use crate::frame::Frame;
 use crate::marks::{Mark, draw_marks};
+use crate::pixels::{BYTES_PER_PIXEL, COLOUR_BYTES, rgb_of, u16_sides};
 use crate::resize::{fit, fitted_pixels};
+
+const JPEG_START_CAPACITY: usize = 256 * 1024;
+const PNG_START_CAPACITY: usize = 512 * 1024;
+const LOWEST_JPEG_QUALITY: u8 = 1;
+const HIGHEST_JPEG_QUALITY: u8 = 100;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EncodeOptions {
@@ -48,11 +54,9 @@ fn validate(frame: &Frame, options: &EncodeOptions) -> Result<()> {
 }
 
 fn encode_jpeg(bgra: &[u8], width: u32, height: u32, quality: u8) -> Result<Vec<u8>> {
-    let too_large = || Error::invalid("JPEG images are limited to 65535 px per side");
-    let width = u16::try_from(width).map_err(|_| too_large())?;
-    let height = u16::try_from(height).map_err(|_| too_large())?;
-    let mut bytes = Vec::with_capacity(256 * 1024);
-    jpeg_encoder::Encoder::new(&mut bytes, quality.clamp(1, 100))
+    let (width, height) = u16_sides(width, height, "JPEG images")?;
+    let mut bytes = Vec::with_capacity(JPEG_START_CAPACITY);
+    jpeg_encoder::Encoder::new(&mut bytes, quality.clamp(LOWEST_JPEG_QUALITY, HIGHEST_JPEG_QUALITY))
         .encode(bgra, width, height, jpeg_encoder::ColorType::Bgra)
         .context("encoding JPEG")?;
     Ok(bytes)
@@ -60,7 +64,7 @@ fn encode_jpeg(bgra: &[u8], width: u32, height: u32, quality: u8) -> Result<Vec<
 
 fn encode_png(bgra: &[u8], width: u32, height: u32) -> Result<Vec<u8>> {
     let rgb = bgra_to_rgb(bgra);
-    let mut bytes = Vec::with_capacity(512 * 1024);
+    let mut bytes = Vec::with_capacity(PNG_START_CAPACITY);
     let mut encoder = png::Encoder::new(&mut bytes, width, height);
     encoder.set_color(png::ColorType::Rgb);
     encoder.set_depth(png::BitDepth::Eight);
@@ -72,9 +76,9 @@ fn encode_png(bgra: &[u8], width: u32, height: u32) -> Result<Vec<u8>> {
 }
 
 fn bgra_to_rgb(bgra: &[u8]) -> Vec<u8> {
-    let mut rgb = Vec::with_capacity(bgra.len() / 4 * 3);
-    for pixel in bgra.as_chunks::<4>().0 {
-        rgb.extend_from_slice(&[pixel[2], pixel[1], pixel[0]]);
+    let mut rgb = Vec::with_capacity(bgra.len() / BYTES_PER_PIXEL * COLOUR_BYTES);
+    for pixel in bgra.as_chunks::<BYTES_PER_PIXEL>().0 {
+        rgb.extend_from_slice(&rgb_of(*pixel));
     }
     rgb
 }

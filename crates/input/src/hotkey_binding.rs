@@ -13,8 +13,8 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct HotkeyBinding {
-    pub modifiers: HOT_KEY_MODIFIERS,
-    pub vk: VIRTUAL_KEY,
+    pub(crate) modifiers: HOT_KEY_MODIFIERS,
+    pub(crate) vk: VIRTUAL_KEY,
 }
 
 pub(crate) fn hotkey_binding(chord: &Chord, layout: &impl KeyboardLayout) -> Result<HotkeyBinding> {

@@ -28,6 +28,9 @@ const ACCELERATOR: u16 = 1;
 const CTRL_K_COMMAND: u16 = 3002;
 const CLIENT_WIDTH_AT_96_DPI: i64 = 624;
 const CLIENT_HEIGHT_AT_96_DPI: i64 = 644;
+const ITEM_COUNT: usize = 30;
+const COLOUR_COUNT: usize = 3;
+const EARLIEST_APPEARANCE: Duration = Duration::from_millis(700);
 
 const CONTRACT: [(i32, &str); 18] = [
     (2001, "Edit"),
@@ -165,8 +168,8 @@ fn assert_contract(fixture: &Fixture) {
     }
     assert!(unsafe { IsWindowVisible(fixture.window) }.as_bool());
     assert!(!unsafe { IsWindowVisible(fixture.control(2016)) }.as_bool(), "Appeared must start hidden");
-    assert_eq!(send(fixture.control(2009), LB_GETCOUNT, 0, 0), 30);
-    assert_eq!(send(fixture.control(2007), CB_GETCOUNT, 0, 0), 3);
+    assert_eq!(send(fixture.control(2009), LB_GETCOUNT, 0, 0), ITEM_COUNT);
+    assert_eq!(send(fixture.control(2007), CB_GETCOUNT, 0, 0), COLOUR_COUNT);
 }
 
 struct PhysicalCoordinates {
@@ -216,7 +219,7 @@ fn exercise_behaviour(fixture: &Fixture) {
     send(fixture.control(2007), CB_SETCURSEL, 1, 0);
     fixture.command(2007, SELECTION_CHANGED);
     fixture.wait_for_text(2008, "Colour: Green");
-    send(fixture.control(2009), LB_SETCURSEL, 29, 0);
+    send(fixture.control(2009), LB_SETCURSEL, ITEM_COUNT - 1, 0);
     fixture.command(2009, SELECTION_CHANGED);
     fixture.wait_for_text(2010, "Selected: Item 30");
 }
@@ -236,7 +239,7 @@ fn exercise_delayed_button(fixture: &Fixture) {
     fixture.command(2015, BUTTON_CLICKED);
     let appeared = wait_for(|| unsafe { IsWindowVisible(fixture.control(2016)) }.as_bool().then_some(()));
     assert!(appeared.is_some(), "Appeared never showed");
-    assert!(started.elapsed() >= Duration::from_millis(700), "Appeared showed too early");
+    assert!(started.elapsed() >= EARLIEST_APPEARANCE, "Appeared showed too early");
     fixture.command(2016, BUTTON_CLICKED);
     fixture.wait_for_text(2017, "Appeared clicked");
 }

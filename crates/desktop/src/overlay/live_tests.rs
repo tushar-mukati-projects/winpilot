@@ -20,6 +20,7 @@ use windows::{
     core::w,
 };
 use winpilot_core::{Point, Rect};
+use winpilot_win32::{ComApartment, class_name};
 
 use super::{
     activity::{Activity, Cue, OutOfSight},
@@ -27,7 +28,7 @@ use super::{
     monitor_at::{foreground_work_area, primary_work_area, scale_at},
     options::OverlayOptions,
 };
-use crate::{com::ComApartment, dpi::enable_dpi_awareness, window_identity::class_name};
+use crate::dpi::enable_dpi_awareness;
 
 const SETTLE: Duration = Duration::from_millis(350);
 

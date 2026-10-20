@@ -60,10 +60,7 @@ pub(crate) fn append_note(outcome: &mut StepOutcome, note: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn step(json: &str) -> Step {
-        serde_json::from_str(json).unwrap()
-    }
+    use crate::test_fixture::step;
 
     #[test]
     fn successes_carry_method_and_note() {
@@ -86,7 +83,7 @@ mod tests {
     #[test]
     fn stops_and_cancels_halt_every_batch() {
         assert!(halts(&Error::new(ErrorCode::StoppedByUser, "stopped")));
-        assert!(halts(&Error::new(ErrorCode::Cancelled, "cancelled")));
+        assert!(halts(&Error::cancelled("cancelled")));
         assert!(!halts(&Error::not_found("gone")));
     }
 

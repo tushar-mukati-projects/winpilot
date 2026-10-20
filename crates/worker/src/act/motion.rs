@@ -62,8 +62,10 @@ fn glide_duration(default_ms: u64, glide_ms: Option<u64>) -> Duration {
 
 #[cfg(test)]
 mod tests {
+    use winpilot_win32::Cancel;
+
     use super::*;
-    use crate::{cancel::Cancel, test_fixture::engine};
+    use crate::test_fixture::engine;
 
     #[test]
     fn steps_override_the_configured_glide_and_it_is_capped() {

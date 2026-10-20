@@ -9,11 +9,14 @@ use winpilot_core::{Context, Error, Result, protocol::Quality};
 use super::bitrate::gif_speed;
 use super::changed_area::changed_area;
 use super::clock::gif_delay;
-use super::layout::{Placement, Size};
-use crate::pixels::BYTES_PER_PIXEL;
+use super::layout::Size;
+use crate::pixels::{BYTES_PER_PIXEL, Block, Pixels, PixelsMut, copy_block, rgb_of, u16_sides};
 
 const MAX_FRAME_DELAY: u64 = u16::MAX as u64;
 const MAX_TOTAL_DELAY: u64 = 100 * 60 * 60 * 24;
+const SLOWEST_QUANTIZER: i32 = 1;
+const FASTEST_QUANTIZER: i32 = 30;
+const OPAQUE: u8 = 255;
 
 struct Pending {
     frame: Frame<'static>,
@@ -32,9 +35,7 @@ pub(crate) struct GifWriter {
 
 impl GifWriter {
     pub(crate) fn create(path: &Path, size: Size, fps: u32, quality: Quality) -> Result<Self> {
-        let too_large = || Error::invalid("GIF frames are limited to 65535 px per side");
-        let width = u16::try_from(size.width).map_err(|_| too_large())?;
-        let height = u16::try_from(size.height).map_err(|_| too_large())?;
+        let (width, height) = u16_sides(size.width, size.height, "GIF frames")?;
         let file = OpenOptions::new().write(true).truncate(true).open(path).context("opening the reserved GIF file")?;
         let mut encoder = Encoder::new(BufWriter::new(file), width, height, &[]).context("writing the GIF header")?;
         encoder.set_repeat(Repeat::Infinite).context("making the GIF loop")?;
@@ -61,8 +62,8 @@ impl GifWriter {
         file.flush().context("writing the GIF file")
     }
 
-    const fn full(&self) -> Placement {
-        Placement { x: 0, y: 0, width: self.size.width, height: self.size.height }
+    const fn full(&self) -> Block {
+        Block { x: 0, y: 0, width: self.size.width, height: self.size.height }
     }
 
     fn flush_pending(&mut self, until_tick: u64) -> Result<()> {
@@ -76,15 +77,17 @@ impl GifWriter {
         Ok(())
     }
 
-    fn quantize(&mut self, bgra: &[u8], area: Placement) -> Result<Frame<'static>> {
+    fn quantize(&mut self, bgra: &[u8], area: Block) -> Result<Frame<'static>> {
         let too_large = || Error::internal("the GIF frame area is too large");
         let width = u16::try_from(area.width).map_err(|_| too_large())?;
         let height = u16::try_from(area.height).map_err(|_| too_large())?;
-        copy_as_rgba(bgra, self.size, area, &mut self.rgba);
-        if self.rgba.len() != usize::from(width) * usize::from(height) * BYTES_PER_PIXEL {
-            return Err(Error::internal("the GIF frame area lies outside the video"));
-        }
-        let mut frame = Frame::from_rgba_speed(width, height, &mut self.rgba, self.speed.clamp(1, 30));
+        copy_as_rgba(bgra, self.size, area, &mut self.rgba)?;
+        let mut frame = Frame::from_rgba_speed(
+            width,
+            height,
+            &mut self.rgba,
+            self.speed.clamp(SLOWEST_QUANTIZER, FASTEST_QUANTIZER),
+        );
         frame.left = u16::try_from(area.x).map_err(|_| too_large())?;
         frame.top = u16::try_from(area.y).map_err(|_| too_large())?;
         frame.dispose = DisposalMethod::Keep;
@@ -114,18 +117,16 @@ fn idle_frame(delay: u16) -> Frame<'static> {
     }
 }
 
-fn copy_as_rgba(bgra: &[u8], size: Size, area: Placement, rgba: &mut Vec<u8>) {
-    let stride = size.width as usize * BYTES_PER_PIXEL;
-    let (left, width) = (area.x as usize * BYTES_PER_PIXEL, area.width as usize * BYTES_PER_PIXEL);
-    rgba.clear();
-    rgba.reserve(area.width as usize * area.height as usize * BYTES_PER_PIXEL);
-    for row in area.y as usize..area.y as usize + area.height as usize {
-        let start = row * stride + left;
-        let Some(line) = bgra.get(start..start + width) else { return };
-        for pixel in line.as_chunks::<BYTES_PER_PIXEL>().0 {
-            rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], 255]);
-        }
+fn copy_as_rgba(bgra: &[u8], size: Size, area: Block, rgba: &mut Vec<u8>) -> Result<()> {
+    let row_bytes = area.width as usize * BYTES_PER_PIXEL;
+    rgba.resize(row_bytes * area.height as usize, 0);
+    let source = Pixels { bytes: bgra, stride: size.width as usize * BYTES_PER_PIXEL };
+    copy_block(&source, area, &mut PixelsMut { bytes: rgba, stride: row_bytes }, (0, 0))?;
+    for pixel in rgba.as_chunks_mut::<BYTES_PER_PIXEL>().0 {
+        let [red, green, blue] = rgb_of(*pixel);
+        *pixel = [red, green, blue, OPAQUE];
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -176,7 +177,7 @@ mod tests {
         let size = Size::new(3, 2);
         let bgra: Vec<u8> = (0..24).collect();
         let mut rgba = Vec::new();
-        copy_as_rgba(&bgra, size, Placement { x: 1, y: 1, width: 2, height: 1 }, &mut rgba);
+        copy_as_rgba(&bgra, size, Block { x: 1, y: 1, width: 2, height: 1 }, &mut rgba).unwrap();
         assert_eq!(rgba, [18, 17, 16, 255, 22, 21, 20, 255]);
     }
 }

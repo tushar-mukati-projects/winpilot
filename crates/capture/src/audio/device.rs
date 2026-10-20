@@ -5,7 +5,7 @@ use windows::Win32::Media::Audio::{
     eConsole, eRender,
 };
 use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
-use windows_core::HRESULT;
+use windows::core::HRESULT;
 use winpilot_core::{Error, ErrorCode, Result};
 
 const E_NOTFOUND: HRESULT = HRESULT(0x8007_0490_u32 as i32);
@@ -51,7 +51,7 @@ fn default_device(endpoint: Endpoint) -> Result<IMMDevice> {
         .map_err(|error| audio_error(endpoint, &error, "finding"))
 }
 
-pub(crate) fn audio_error(endpoint: Endpoint, error: &windows_core::Error, doing: &str) -> Error {
+pub(crate) fn audio_error(endpoint: Endpoint, error: &windows::core::Error, doing: &str) -> Error {
     classify(endpoint, error.code())
         .unwrap_or_else(|| Error::internal(format!("{doing} the {}: {error}", endpoint.device_name())))
 }
@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn other_failures_name_the_device_and_the_step() {
-        let error = audio_error(Endpoint::Loopback, &windows_core::Error::from(E_FAIL), "starting");
+        let error = audio_error(Endpoint::Loopback, &windows::core::Error::from(E_FAIL), "starting");
         assert_eq!(error.code, ErrorCode::Internal);
         assert!(error.message.starts_with("starting the playback device: "), "{}", error.message);
     }

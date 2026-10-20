@@ -2,8 +2,9 @@ use windows::Data::Xml::Dom::XmlDocument;
 use windows::UI::Notifications::{NotificationSetting, ToastNotification, ToastNotificationManager};
 use windows::core::HSTRING;
 use winpilot_core::{Context, Result};
+use winpilot_win32::ComApartment;
 
-use crate::{app_identity::APP_USER_MODEL_ID, com::ComApartment, toast_xml::toast_xml};
+use crate::{app_identity::APP_USER_MODEL_ID, toast_xml::toast_xml};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastBlock {

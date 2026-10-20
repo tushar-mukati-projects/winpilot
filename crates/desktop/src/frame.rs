@@ -1,9 +1,4 @@
-use windows::Win32::Foundation::RECT;
 use winpilot_core::Rect;
-
-pub(crate) fn rect_from_win32(rect: RECT) -> Rect {
-    Rect::new(rect.left, rect.top, rect.right.saturating_sub(rect.left), rect.bottom.saturating_sub(rect.top))
-}
 
 pub(crate) fn inflate(rect: Rect, by: i32) -> Rect {
     Rect::new(
@@ -75,11 +70,5 @@ mod tests {
         let insets = FrameInsets { left: 7, top: 7, right: 7, bottom: 7 };
         assert_eq!(insets.outer_for(huge).width, i32::MAX);
         assert_eq!(inflate(huge, 3).y, i32::MIN);
-    }
-
-    #[test]
-    fn win32_rect_converts_to_edges() {
-        let rect = RECT { left: -10, top: 5, right: 30, bottom: 25 };
-        assert_eq!(rect_from_win32(rect), Rect::new(-10, 5, 40, 20));
     }
 }

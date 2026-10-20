@@ -1,23 +1,24 @@
 use std::collections::HashSet;
 
 use windows::Win32::{
-    Foundation::{E_FAIL, HWND},
+    Foundation::HWND,
     UI::{
-        Accessibility::{IUIAutomationCacheRequest, IUIAutomationElement},
+        Accessibility::{IUIAutomationCacheRequest, IUIAutomationElement, IUIAutomationElementArray},
         WindowsAndMessaging::{GA_PARENT, GetAncestor, GetDesktopWindow},
     },
 };
 use winpilot_core::WindowRef;
+use winpilot_win32::{class_name, hwnd_of, ref_of};
 
-use crate::{automation::Uia, properties::cached_runtime_id, tree::cached_children, win, win32_combo::dropdown_list};
+use crate::{
+    automation::Uia,
+    failure::{is_gone, is_not_responding},
+    properties::cached_runtime_id,
+    requests::TreeRequests,
+    win32_combo::dropdown_list,
+};
 
 const DROPDOWN_LIST_CLASS: &str = "ComboLBox";
-
-#[derive(Clone, Copy)]
-pub(crate) struct TreeRequests<'a> {
-    pub(crate) whole: &'a IUIAutomationCacheRequest,
-    pub(crate) level: &'a IUIAutomationCacheRequest,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Reach {
@@ -27,13 +28,13 @@ enum Reach {
     Leaf,
 }
 
-pub(crate) struct CachedNode {
-    pub(crate) element: IUIAutomationElement,
+pub(crate) struct CachedNode<E = IUIAutomationElement> {
+    pub(crate) element: E,
     reach: Reach,
 }
 
-impl CachedNode {
-    fn new(element: IUIAutomationElement, reach: Reach) -> Self {
+impl<E> CachedNode<E> {
+    fn new(element: E, reach: Reach) -> Self {
         Self { element, reach }
     }
 }
@@ -49,11 +50,12 @@ enum NativeWindow {
 pub(crate) struct TreeRead {
     windows: Vec<WindowRef>,
     listed: HashSet<Vec<i32>>,
+    pub(crate) incomplete: bool,
 }
 
 impl TreeRead {
     fn starting_at(home: Option<WindowRef>, root_runtime_id: Vec<i32>) -> Self {
-        let mut read = Self { windows: home.into_iter().collect(), listed: HashSet::new() };
+        let mut read = Self { windows: home.into_iter().collect(), listed: HashSet::new(), incomplete: false };
         read.first_sighting(root_runtime_id);
         read
     }
@@ -67,15 +69,22 @@ impl TreeRead {
             self.windows.push(window);
         }
     }
+
+    fn or_leaf<E: Clone>(&mut self, node: windows::core::Result<CachedNode<E>>, element: &E) -> CachedNode<E> {
+        node.unwrap_or_else(|_| {
+            self.incomplete = true;
+            CachedNode::new(element.clone(), Reach::Leaf)
+        })
+    }
 }
 
 impl Uia {
     pub(crate) fn read_tree(
         &self,
         root: &IUIAutomationElement,
-        requests: TreeRequests<'_>,
-    ) -> windows_core::Result<(CachedNode, TreeRead)> {
-        let node = first_read(root, requests)?;
+        requests: &TreeRequests,
+    ) -> windows::core::Result<(CachedNode, TreeRead)> {
+        let node = read_node(root, requests)?;
         let home = self.owning_window(&node.element, own_window(&node.element));
         let read = TreeRead::starting_at(home, cached_runtime_id(&node.element));
         Ok((node, read))
@@ -84,13 +93,16 @@ impl Uia {
     pub(crate) fn tree_children(
         &self,
         node: &CachedNode,
-        requests: TreeRequests<'_>,
+        requests: &TreeRequests,
         read: &mut TreeRead,
     ) -> Vec<CachedNode> {
         let reach = match node.reach {
             Reach::Whole => Reach::Whole,
             Reach::Level => Reach::Unread,
-            Reach::Unread => return self.tree_children(&read_further(&node.element, requests), requests, read),
+            Reach::Unread => {
+                let further = read.or_leaf(read_node(&node.element, requests), &node.element);
+                return self.tree_children(&further, requests, read);
+            }
             Reach::Leaf => return Vec::new(),
         };
         let children = new_children(cached_children(&node.element), read, cached_runtime_id, |child, read| {
@@ -143,40 +155,39 @@ fn new_children<E>(
         .collect()
 }
 
-fn first_read(root: &IUIAutomationElement, requests: TreeRequests<'_>) -> windows_core::Result<CachedNode> {
-    match build(root, requests.whole) {
-        Ok(whole) => Ok(CachedNode::new(whole, Reach::Whole)),
-        Err(error) if is_broken_tree(&error) => {
-            build(root, requests.level).map(|level| CachedNode::new(level, Reach::Level)).map_err(|_| error)
-        }
-        Err(error) => Err(error),
-    }
+pub(crate) fn cached_children(element: &IUIAutomationElement) -> Vec<IUIAutomationElement> {
+    unsafe { element.GetCachedChildren() }.map(|children| array_elements(&children)).unwrap_or_default()
 }
 
-fn read_further(element: &IUIAutomationElement, requests: TreeRequests<'_>) -> CachedNode {
-    match build(element, requests.whole) {
-        Ok(whole) => CachedNode::new(whole, Reach::Whole),
-        Err(error) if is_broken_tree(&error) => match build(element, requests.level) {
-            Ok(level) => CachedNode::new(level, Reach::Level),
-            Err(_) => CachedNode::new(element.clone(), Reach::Leaf),
-        },
-        Err(_) => CachedNode::new(element.clone(), Reach::Leaf),
+pub(crate) fn array_elements(array: &IUIAutomationElementArray) -> Vec<IUIAutomationElement> {
+    let count = unsafe { array.Length() }.unwrap_or(0);
+    (0..count).filter_map(|index| unsafe { array.GetElement(index) }.ok()).collect()
+}
+
+fn read_node(element: &IUIAutomationElement, requests: &TreeRequests) -> windows::core::Result<CachedNode> {
+    whole_or_level(|| build(element, &requests.whole), || build(element, &requests.level))
+}
+
+fn whole_or_level<E>(
+    whole: impl FnOnce() -> windows::core::Result<E>,
+    level: impl FnOnce() -> windows::core::Result<E>,
+) -> windows::core::Result<CachedNode<E>> {
+    match whole() {
+        Ok(read) => Ok(CachedNode::new(read, Reach::Whole)),
+        Err(error) if is_gone(&error) || is_not_responding(&error) => Err(error),
+        Err(error) => level().map(|read| CachedNode::new(read, Reach::Level)).map_err(|_| error),
     }
 }
 
 fn build(
     element: &IUIAutomationElement,
     request: &IUIAutomationCacheRequest,
-) -> windows_core::Result<IUIAutomationElement> {
+) -> windows::core::Result<IUIAutomationElement> {
     unsafe { element.BuildUpdatedCache(request) }
 }
 
-fn is_broken_tree(error: &windows_core::Error) -> bool {
-    error.code() == E_FAIL
-}
-
 fn own_window(element: &IUIAutomationElement) -> WindowRef {
-    cached_window_handle(element).map_or(WindowRef(0), win::window_ref)
+    cached_window_handle(element).map_or(WindowRef(0), ref_of)
 }
 
 fn cached_window_handle(element: &IUIAutomationElement) -> Option<HWND> {
@@ -186,23 +197,28 @@ fn cached_window_handle(element: &IUIAutomationElement) -> Option<HWND> {
 fn native_window_of(element: &IUIAutomationElement) -> NativeWindow {
     let Some(window) = cached_window_handle(element) else { return NativeWindow::Missing };
     if unsafe { GetAncestor(window, GA_PARENT) } == unsafe { GetDesktopWindow() } {
-        NativeWindow::TopLevel(win::window_ref(window))
+        NativeWindow::TopLevel(ref_of(window))
     } else {
         NativeWindow::Child
     }
 }
 
 fn is_dropdown_of(parent: &IUIAutomationElement, window: WindowRef) -> bool {
-    if win::class_name(window).as_deref() != Some(DROPDOWN_LIST_CLASS) {
+    if class_name(hwnd_of(window)) != DROPDOWN_LIST_CLASS {
         return false;
     }
     let Some(combo) = cached_window_handle(parent) else { return false };
-    dropdown_list(combo).map(win::window_ref) == Some(window)
+    dropdown_list(combo).map(ref_of) == Some(window)
 }
 
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
+
+    use windows::Win32::{
+        Foundation::{E_FAIL, E_INVALIDARG, RPC_E_DISCONNECTED},
+        UI::Accessibility::{UIA_E_ELEMENTNOTAVAILABLE, UIA_E_TIMEOUT},
+    };
 
     use super::*;
     use crate::{
@@ -232,15 +248,44 @@ mod tests {
             .collect()
     }
 
+    fn failure(code: u32) -> windows::core::Error {
+        windows::core::Error::from_hresult(windows::core::HRESULT(code as i32))
+    }
+
+    fn failed_with(node: &windows::core::Result<CachedNode<&str>>) -> Option<windows::core::HRESULT> {
+        node.as_ref().map_err(windows::core::Error::code).err()
+    }
+
     #[test]
-    fn only_unexpected_failures_count_as_a_broken_tree() {
-        let failure = |code: u32| windows_core::Error::from_hresult(windows_core::HRESULT(code as i32));
-        assert!(is_broken_tree(&failure(0x8000_4005)));
-        assert!(!is_broken_tree(&failure(0x8004_0201)));
-        assert!(!is_broken_tree(&failure(0x8013_1505)));
-        assert!(!is_broken_tree(&failure(0x8007_0005)));
-        assert!(!is_broken_tree(&failure(0x8007_000E)));
-        assert!(!is_broken_tree(&failure(0x8007_0057)));
+    fn a_whole_read_that_fails_otherwise_keeps_the_children_through_a_level_read() {
+        for code in [E_FAIL.0 as u32, E_INVALIDARG.0 as u32] {
+            let node = whole_or_level(|| Err(failure(code)), || Ok("level")).unwrap();
+            assert_eq!((node.element, node.reach), ("level", Reach::Level), "{code:#x}");
+        }
+        let node = whole_or_level(|| Ok("whole"), || panic!("read the level after a whole read")).unwrap();
+        assert_eq!((node.element, node.reach), ("whole", Reach::Whole));
+    }
+
+    #[test]
+    fn a_timed_out_or_gone_node_skips_the_level_read_and_marks_the_read_incomplete() {
+        for code in [UIA_E_TIMEOUT, UIA_E_ELEMENTNOTAVAILABLE, RPC_E_DISCONNECTED.0 as u32] {
+            let mut read = TreeRead::starting_at(Some(HOME), Vec::new());
+            let unanswered = whole_or_level(|| Err(failure(code)), || panic!("read the level after {code:#x}"));
+            assert_eq!(failed_with(&unanswered), Some(failure(code).code()));
+            let leaf = read.or_leaf(unanswered, &"node");
+            assert_eq!((leaf.element, leaf.reach, read.incomplete), ("node", Reach::Leaf, true), "{code:#x}");
+        }
+    }
+
+    #[test]
+    fn a_node_neither_read_can_reach_stays_a_leaf_and_keeps_the_first_error() {
+        let mut read = TreeRead::starting_at(Some(HOME), Vec::new());
+        let level = read.or_leaf(whole_or_level(|| Err(failure(E_FAIL.0 as u32)), || Ok("level")), &"node");
+        assert_eq!((level.element, level.reach, read.incomplete), ("level", Reach::Level, false));
+        let lost = whole_or_level(|| Err(failure(E_FAIL.0 as u32)), || Err(failure(E_INVALIDARG.0 as u32)));
+        assert_eq!(failed_with(&lost), Some(E_FAIL));
+        let leaf = read.or_leaf(lost, &"node");
+        assert_eq!((leaf.element, leaf.reach, read.incomplete), ("node", Reach::Leaf, true));
     }
 
     #[test]
@@ -336,12 +381,14 @@ mod tests {
         let window = taskbar().hwnd;
         let (whole, level) = handle()
             .run(move |uia| {
-                let root = unsafe { uia.automation.ElementFromHandle(win::hwnd(window)) }.uia("opening the taskbar")?;
+                let root = unsafe { uia.automation.ElementFromHandle(hwnd_of(window)) }.uia("opening the taskbar")?;
                 let requests = uia.requests.props_in(View::Full);
                 let whole =
-                    CachedNode::new(build(&root, requests.whole).uia("reading the whole taskbar")?, Reach::Whole);
-                let level =
-                    CachedNode::new(build(&root, requests.level).uia("reading the taskbar's top level")?, Reach::Level);
+                    CachedNode::new(build(&root, &requests.whole).uia("reading the whole taskbar")?, Reach::Whole);
+                let level = CachedNode::new(
+                    build(&root, &requests.level).uia("reading the taskbar's top level")?,
+                    Reach::Level,
+                );
                 let count = |node: &CachedNode| {
                     let mut read = TreeRead::starting_at(Some(window), cached_runtime_id(&node.element));
                     count_nodes(uia, node, requests, &mut read)
@@ -352,7 +399,7 @@ mod tests {
         assert_eq!(whole, level);
     }
 
-    fn count_nodes(uia: &Uia, node: &CachedNode, requests: TreeRequests<'_>, read: &mut TreeRead) -> usize {
+    fn count_nodes(uia: &Uia, node: &CachedNode, requests: &TreeRequests, read: &mut TreeRead) -> usize {
         let children = uia.tree_children(node, requests, read);
         1 + children.iter().map(|child| count_nodes(uia, child, requests, read)).sum::<usize>()
     }

@@ -1,6 +1,8 @@
 mod behind;
+mod confirm;
 mod dialog;
 mod dialog_kind;
+mod fill;
 mod folder;
 mod message_box;
 mod selection;
@@ -8,24 +10,26 @@ mod selection;
 use std::{collections::HashSet, path::Path, time::Duration};
 
 use winpilot_core::{
-    ElementRef, Error, ErrorCode, Result, TargetSpec, WindowInfo, WindowRef,
+    Error, ErrorCode, Result, TargetSpec, WindowInfo, WindowRef,
     protocol::{Step, pick_wait},
 };
+use winpilot_win32::owner_chain;
 
 use self::{
     behind::{DialogBehind, dialog_family},
+    confirm::confirm,
     dialog::FileDialog,
     dialog_kind::DialogKind,
-    folder::{Destination, folder_ready, listed_files},
-    message_box::Prompt,
+    fill::{fill, press},
     selection::{Requested, Selection},
 };
 use super::{
-    click_target,
+    click,
+    click_choice::ClickOptions,
     done::Done,
-    foreground::owner_chain,
-    mode::{Mode, check_before},
+    mode::{self, Mode, check_before},
     summary::file_count,
+    target,
 };
 use crate::{
     app_windows::app_windows, call_scope::CallScope, default_window::default_window, engine::Engine, guard::Guard,
@@ -33,8 +37,6 @@ use crate::{
 };
 
 const ALREADY_OPEN_WAIT: Duration = Duration::from_secs(1);
-const CLOSE_WAIT: Duration = Duration::from_secs(5);
-const FOLDER_WAIT: Duration = Duration::from_secs(5);
 
 pub(crate) struct PickRequest<'a> {
     pub(crate) paths: &'a [String],
@@ -57,11 +59,6 @@ impl<'a> TryFrom<&'a Step> for PickRequest<'a> {
 struct Opened {
     dialog: FileDialog,
     ours: bool,
-}
-
-enum Outcome {
-    Closed,
-    Prompt(WindowInfo),
 }
 
 pub(crate) fn check_paths(paths: &[String], guard: &Guard) -> Result<()> {
@@ -137,6 +134,15 @@ fn open_dialog(
     Ok(Opened { dialog, ours: true })
 }
 
+fn click_target(engine: &Engine, target: &TargetSpec, step: &Step, mode: Mode, call: &CallScope) -> Result<WindowInfo> {
+    let prepared = target::prepare(engine, target, mode, call)?;
+    let mode = mode::for_window(mode, &prepared.window, step)?;
+    match click::step(engine, &prepared, ClickOptions::default(), mode, call) {
+        Err(error) if error.code != ErrorCode::TargetNotResponding => Err(error),
+        Ok(_) | Err(_) => Ok(prepared.window),
+    }
+}
+
 fn existing_dialog(engine: &Engine, call: &CallScope) -> Result<FileDialog> {
     let app = default_window(engine)?;
     let owned = |window: &WindowInfo| belongs_to(window, app.hwnd);
@@ -150,7 +156,7 @@ fn existing_dialog(engine: &Engine, call: &CallScope) -> Result<FileDialog> {
 }
 
 fn belongs_to(dialog: &WindowInfo, window: WindowRef) -> bool {
-    dialog.hwnd == window || owner_chain(Some(dialog.hwnd)).contains(&window)
+    dialog.hwnd == window || owner_chain(dialog.hwnd).contains(&window)
 }
 
 fn not_opened(opener: &TargetSpec, timeout: Duration) -> Error {
@@ -172,142 +178,11 @@ fn dialog_windows(engine: &Engine) -> Result<Vec<WindowInfo>> {
     Ok(app_windows(engine)?.into_iter().filter(is_dialog).collect())
 }
 
-fn fill(engine: &Engine, dialog: &FileDialog, selection: &Selection, call: &CallScope) -> Result<()> {
-    if let [file] = selection.files.as_slice() {
-        return enter(engine, dialog, file);
-    }
-    let destination = Destination {
-        folder: selection.folder_text(),
-        names: selection.file_names(),
-        listed_before: listed_files(&engine.snapshot(&dialog.window)?.elements),
-    };
-    enter(engine, dialog, &destination.folder)?;
-    let in_folder = await_folder(engine, dialog, &destination, call)?;
-    enter(engine, &in_folder, &selection.quoted_names())
-}
-
-fn await_folder(
-    engine: &Engine,
-    dialog: &FileDialog,
-    destination: &Destination,
-    call: &CallScope,
-) -> Result<FileDialog> {
-    let found = until(engine, call, FOLDER_WAIT, &Watch::window(&dialog.window), || {
-        let snapshot = engine.snapshot(&dialog.window)?;
-        if !folder_ready(&snapshot, dialog.name_box, destination) {
-            return Ok(None);
-        }
-        Ok(dialog::recognise(&snapshot))
-    })?;
-    found.ok_or_else(|| {
-        Error::timeout(format!(
-            "the file dialog did not show {} after it was asked to; nothing was picked",
-            destination.folder
-        ))
-    })
-}
-
-fn enter(engine: &Engine, dialog: &FileDialog, text: &str) -> Result<()> {
-    set_verified(engine, dialog.name_box, text)?;
-    press(engine, dialog.confirm)
-}
-
-fn set_verified(engine: &Engine, name_box: ElementRef, text: &str) -> Result<()> {
-    let wanted = text.to_string();
-    let value = engine.uia.run(move |uia| {
-        uia.set_value(name_box, &wanted)?;
-        uia.value(name_box)
-    })?;
-    if value.as_deref().map(str::trim) != Some(text.trim()) {
-        return Err(Error::unsupported("the file name box did not accept the path"));
-    }
-    Ok(())
-}
-
-fn press(engine: &Engine, button: ElementRef) -> Result<()> {
-    let pressed = engine.uia.run(move |uia| match uia.invoke(button) {
-        Err(error) if error.code == ErrorCode::Unsupported => uia.default_action(button),
-        result => result,
-    });
-    match pressed {
-        Err(error) if error.code == ErrorCode::TargetNotResponding => Ok(()),
-        result => result,
-    }
-}
-
-fn confirm(
-    engine: &Engine,
-    dialog: &FileDialog,
-    requested: &Requested,
-    overwrite: bool,
-    call: &CallScope,
-) -> Result<()> {
-    let prompt = match await_outcome(engine, dialog, None, call)? {
-        Some(Outcome::Closed) => return Ok(()),
-        Some(Outcome::Prompt(prompt)) => prompt,
-        None => return Err(still_open(dialog)),
-    };
-    match message_box::classify(&engine.snapshot(&prompt)?, dialog.kind, requested) {
-        Prompt::Replace { yes, .. } if overwrite => replace(engine, dialog, &prompt, yes, call),
-        Prompt::Replace { no, .. } => {
-            press(engine, no)?;
-            Err(Error::new(ErrorCode::NeedsUser, "the file exists; pass overwrite:true to replace it"))
-        }
-        Prompt::Question { text, decline } => {
-            answer(engine, decline)?;
-            Err(Error::new(
-                ErrorCode::NeedsUser,
-                format!("the file dialog asked: {text}; WinPilot declined, so nothing was picked"),
-            ))
-        }
-        Prompt::Message { text, dismiss } => {
-            answer(engine, dismiss)?;
-            Err(Error::invalid(format!("the file dialog said: {text}")))
-        }
-    }
-}
-
-fn answer(engine: &Engine, button: Option<ElementRef>) -> Result<()> {
-    button.map_or(Ok(()), |button| press(engine, button))
-}
-
-fn replace(engine: &Engine, dialog: &FileDialog, prompt: &WindowInfo, yes: ElementRef, call: &CallScope) -> Result<()> {
-    press(engine, yes)?;
-    match await_outcome(engine, dialog, Some(prompt.hwnd), call)? {
-        Some(Outcome::Closed) => Ok(()),
-        _ => Err(still_open(dialog)),
-    }
-}
-
-fn await_outcome(
-    engine: &Engine,
-    dialog: &FileDialog,
-    answered: Option<WindowRef>,
-    call: &CallScope,
-) -> Result<Option<Outcome>> {
-    let hwnd = dialog.window.hwnd;
-    until(engine, call, CLOSE_WAIT, &Watch::window(&dialog.window), || {
-        if !winpilot_desktop::is_window(hwnd) {
-            return Ok(Some(Outcome::Closed));
-        }
-        Ok(new_prompt(engine, hwnd, answered)?.map(Outcome::Prompt))
-    })
-}
-
-fn new_prompt(engine: &Engine, owner: WindowRef, answered: Option<WindowRef>) -> Result<Option<WindowInfo>> {
-    let mut prompts = dialog_windows(engine)?.into_iter().filter(|window| Some(window.hwnd) != answered);
-    Ok(prompts.find(|window| winpilot_desktop::owner_of(window.hwnd) == Some(owner)))
-}
-
 fn abandon(engine: &Engine, dialog: &FileDialog) {
-    let Some(cancel) = dialog.cancel.filter(|_| winpilot_desktop::is_window(dialog.window.hwnd)) else { return };
+    let Some(cancel) = dialog.cancel.filter(|_| winpilot_win32::window_exists(dialog.window.hwnd)) else { return };
     if let Err(error) = press(engine, cancel) {
         eprintln!("winpilot worker: could not cancel the file dialog WinPilot opened: {error}");
     }
-}
-
-fn still_open(dialog: &FileDialog) -> Error {
-    Error::timeout(format!("the {} dialog is still open after confirming", dialog.kind.name()))
 }
 
 #[cfg(test)]
@@ -386,7 +261,7 @@ mod tests {
     fn opens_one_file() {
         let file = temp_file("one.txt");
         let _cleanup = TempFiles(vec![file.clone()]);
-        let Some(app) = FixtureApp::launch() else { return };
+        let app = FixtureApp::launch();
         let done = pick(&app, 2011, vec![text(&file)], false).unwrap();
         assert!(done.note.unwrap().starts_with("picked 1 file in the Open dialog"));
         let opened = app.settled_text(2012, |shown| shown.contains(&text(&file)));
@@ -399,7 +274,7 @@ mod tests {
         let first = temp_file("first.txt");
         let second = temp_file("second.txt");
         let _cleanup = TempFiles(vec![first.clone(), second.clone()]);
-        let Some(app) = FixtureApp::launch() else { return };
+        let app = FixtureApp::launch();
         let done = pick(&app, 2011, vec![text(&first), text(&second)], false).unwrap();
         assert!(done.note.unwrap().starts_with("picked 2 files"));
         let both = |shown: &str| shown.contains("first.txt") && shown.contains("second.txt");
@@ -412,7 +287,7 @@ mod tests {
     fn saves_to_a_new_path() {
         let target = temp_path("saved.txt");
         let _cleanup = TempFiles(vec![target.clone()]);
-        let Some(app) = FixtureApp::launch() else { return };
+        let app = FixtureApp::launch();
         let done = pick(&app, 2013, vec![text(&target)], false).unwrap();
         assert!(done.note.unwrap().contains("in the Save dialog"));
         let saved = app.settled_text(2014, |shown| shown.contains(&text(&target)));
@@ -425,7 +300,7 @@ mod tests {
     fn refuses_to_replace_without_overwrite() {
         let existing = temp_file("existing.txt");
         let _cleanup = TempFiles(vec![existing.clone()]);
-        let Some(app) = FixtureApp::launch() else { return };
+        let app = FixtureApp::launch();
         let error = pick(&app, 2013, vec![text(&existing)], false).unwrap_err();
         assert_eq!(error.code, ErrorCode::NeedsUser);
     }
@@ -435,7 +310,7 @@ mod tests {
     fn replaces_with_overwrite() {
         let existing = temp_file("replace.txt");
         let _cleanup = TempFiles(vec![existing.clone()]);
-        let Some(app) = FixtureApp::launch() else { return };
+        let app = FixtureApp::launch();
         pick(&app, 2013, vec![text(&existing)], true).unwrap();
         let saved = app.settled_text(2014, |shown| shown.contains(&text(&existing)));
         assert!(saved.contains(&text(&existing)), "{saved}");
@@ -446,7 +321,7 @@ mod tests {
     fn opens_one_file_in_the_background() {
         let file = temp_file("behind.txt");
         let _cleanup = TempFiles(vec![file.clone()]);
-        let Some(app) = FixtureApp::launch_on_screen() else { return };
+        let app = FixtureApp::launch_on_screen();
         let front = winpilot_desktop::foreground_window();
         let cursor = winpilot_input::cursor_position().unwrap();
         let done = pick_behind(&app, 2011, vec![text(&file)], false).unwrap();
@@ -462,7 +337,7 @@ mod tests {
     fn replaces_a_file_in_the_background_with_overwrite() {
         let existing = temp_file("behind-replace.txt");
         let _cleanup = TempFiles(vec![existing.clone()]);
-        let Some(app) = FixtureApp::launch_on_screen() else { return };
+        let app = FixtureApp::launch_on_screen();
         let front = winpilot_desktop::foreground_window();
         pick_behind(&app, 2013, vec![text(&existing)], true).unwrap();
         let saved = app.settled_text(2014, |shown| shown.contains(&text(&existing)));
@@ -475,7 +350,7 @@ mod tests {
     fn refuses_to_replace_in_the_background_without_overwrite() {
         let existing = temp_file("behind-existing.txt");
         let _cleanup = TempFiles(vec![existing.clone()]);
-        let Some(app) = FixtureApp::launch_on_screen() else { return };
+        let app = FixtureApp::launch_on_screen();
         let front = winpilot_desktop::foreground_window();
         let error = pick_behind(&app, 2013, vec![text(&existing)], false).unwrap_err();
         assert_eq!(error.code, ErrorCode::NeedsUser);

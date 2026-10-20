@@ -1,4 +1,4 @@
-use windows_core::GUID;
+use windows::core::GUID;
 
 const WAVE_FORMAT_PCM: u32 = 1;
 const WAVE_FORMAT_IEEE_FLOAT: u32 = 3;

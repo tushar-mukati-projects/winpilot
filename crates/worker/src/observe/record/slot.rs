@@ -45,7 +45,7 @@ enum State {
 impl RecordingSlot {
     pub(crate) fn claim(&mut self) -> Result<Claim> {
         if self.closed {
-            return Err(Error::new(ErrorCode::Cancelled, "WinPilot is shutting down, so no new recording can start"));
+            return Err(Error::cancelled("WinPilot is shutting down, so no new recording can start"));
         }
         self.settle();
         match &self.state {

@@ -17,6 +17,12 @@ const BUTTON_HEIGHT: i32 = 28;
 const STATUS_X: i32 = 252;
 const TEXT_HEIGHT: i32 = 20;
 const TEXT_OFFSET: i32 = 4;
+const NAME_HEIGHT: i32 = 24;
+const NOTES_HEIGHT: i32 = 100;
+const CHECKBOX_WIDTH: i32 = 150;
+const COLOUR_DROP_HEIGHT: i32 = 200;
+const ITEM_LIST_HEIGHT: i32 = 140;
+const STATUS_GAP: i32 = 16;
 
 const NAME_ROW: i32 = 20;
 const NOTES_ROW: i32 = 60;
@@ -95,18 +101,23 @@ const fn hidden(control: ControlSpec) -> ControlSpec {
 
 pub const CONTROLS: [ControlSpec; 22] = [
     label(NAME_LABEL, "Name", NAME_ROW),
-    field(NAME_EDIT, ControlKind::SingleLineEdit, NAME_ROW, FIELD_WIDTH, 24),
+    field(NAME_EDIT, ControlKind::SingleLineEdit, NAME_ROW, FIELD_WIDTH, NAME_HEIGHT),
     label(NOTES_LABEL, "Notes", NOTES_ROW),
-    field(NOTES_EDIT, ControlKind::MultiLineEdit, NOTES_ROW, FIELD_WIDTH, 100),
+    field(NOTES_EDIT, ControlKind::MultiLineEdit, NOTES_ROW, FIELD_WIDTH, NOTES_HEIGHT),
     button(CLICK_BUTTON, "Click me", FIELD_X, CLICK_ROW),
     status(CLICK_STATUS, "Clicks: 0", STATUS_X, CLICK_ROW),
-    spec(FEATURE_CHECKBOX, ControlKind::CheckBox, "Enable feature", Bounds::new(FIELD_X, FEATURE_ROW, 150, 28)),
+    spec(
+        FEATURE_CHECKBOX,
+        ControlKind::CheckBox,
+        "Enable feature",
+        Bounds::new(FIELD_X, FEATURE_ROW, CHECKBOX_WIDTH, BUTTON_HEIGHT),
+    ),
     status(FEATURE_STATUS, "Feature: off", STATUS_X, FEATURE_ROW),
     label(COLOUR_LABEL, "Colour", COLOUR_ROW),
-    field(COLOUR_COMBO, ControlKind::DropDownList, COLOUR_ROW, BUTTON_WIDTH, 200),
+    field(COLOUR_COMBO, ControlKind::DropDownList, COLOUR_ROW, BUTTON_WIDTH, COLOUR_DROP_HEIGHT),
     status(COLOUR_STATUS, "Colour: none", STATUS_X, COLOUR_ROW),
     label(ITEM_LABEL, "Items", ITEM_ROW),
-    field(ITEM_LIST, ControlKind::ListBox, ITEM_ROW, BUTTON_WIDTH, 140),
+    field(ITEM_LIST, ControlKind::ListBox, ITEM_ROW, BUTTON_WIDTH, ITEM_LIST_HEIGHT),
     status(ITEM_STATUS, "Selected: none", STATUS_X, ITEM_ROW),
     button(OPEN_BUTTON, "Open file\u{2026}", FIELD_X, OPEN_ROW),
     status(OPEN_STATUS, "Opened: none", STATUS_X, OPEN_ROW),
@@ -114,7 +125,7 @@ pub const CONTROLS: [ControlSpec; 22] = [
     status(SAVE_STATUS, "Saved: none", STATUS_X, SAVE_ROW),
     button(SHOW_LATER_BUTTON, "Show later", FIELD_X, LATER_ROW),
     hidden(button(APPEARED_BUTTON, "Appeared", STATUS_X, LATER_ROW)),
-    status(APPEARED_STATUS, "", STATUS_X + BUTTON_WIDTH + 16, LATER_ROW),
+    status(APPEARED_STATUS, "", STATUS_X + BUTTON_WIDTH + STATUS_GAP, LATER_ROW),
     status(KEY_STATUS, "Last key: none", FIELD_X, KEY_ROW),
 ];
 

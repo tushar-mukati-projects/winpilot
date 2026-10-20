@@ -5,8 +5,9 @@ use windows::{
     },
     core::PWSTR,
 };
+use winpilot_win32::raw;
 
-use crate::{handle::raw, process::open_for_query};
+use crate::process::open_for_query;
 
 pub fn package_family(pid: u32) -> Option<String> {
     let process = open_for_query(pid)?;

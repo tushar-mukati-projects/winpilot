@@ -1,4 +1,6 @@
-const TRACK_CHANNELS: usize = 2;
+use super::audio_feed::TRACK_FORMAT;
+
+const TRACK_CHANNELS: usize = TRACK_FORMAT.channels as usize;
 const PCM16_SCALE: f32 = 32_767.0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

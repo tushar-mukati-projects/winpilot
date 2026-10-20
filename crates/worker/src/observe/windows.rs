@@ -14,6 +14,7 @@ mod tests {
     use crate::test_fixture::engine;
 
     #[test]
+    #[ignore = "lists the user's windows"]
     fn the_list_shows_allowed_app_windows_one_per_line() {
         let report = list(engine()).unwrap();
         assert!(!report.windows.is_empty());

@@ -7,27 +7,27 @@ use windows::Win32::{
         WindowsAndMessaging::{MSG, WM_APP},
     },
 };
-use winpilot_core::{Point, Rect, Result};
+use winpilot_core::{Error, Point, Rect, Result};
+use winpilot_win32::{ThreadMessages, module_instance, virtual_screen};
 
 use super::{
     activity::Activity,
     activity_words::activity_hint,
     border_geometry::{BorderMetrics, fit_on_screen, is_framable, sides_open_within},
     command::OverlayCommand,
-    driving::Driving,
     frame_clock::FrameClock,
     monitor_at::{foreground_work_area, monitor_around, primary_work_area, scale_at},
     motion::system_animations_enabled,
     options::OverlayOptions,
     palette::Palette,
     pill_words::hotkey_label,
+    presence::Driving,
     scene::Scene,
     scene_items::Look,
     stage::{Cast, Stage},
     wake_flag::WakeFlag,
     window::{Capture, ensure_classes_registered},
 };
-use crate::{message_thread::ThreadMessages, module_instance::module_instance, monitors::virtual_screen};
 
 pub(crate) const WAKE_OVERLAY: u32 = WM_APP + 0x0D;
 const COMPOSITIONS_TO_WAIT: usize = 2;
@@ -49,7 +49,7 @@ impl OverlayThread {
         wake: WakeFlag,
         settings: OverlayOptions,
     ) -> Result<(Self, bool)> {
-        let _previous_awareness = unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+        enter_per_monitor_v2()?;
         let instance = module_instance()?;
         ensure_classes_registered(instance)?;
         let presence = if settings.capturable { Capture::Allowed } else { Capture::Excluded };
@@ -181,6 +181,14 @@ impl ThreadMessages for OverlayThread {
         }
         false
     }
+}
+
+fn enter_per_monitor_v2() -> Result<()> {
+    let previous = unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+    if previous.0.is_null() {
+        return Err(Error::internal("could not make the overlay thread Per-Monitor-V2 DPI aware"));
+    }
+    Ok(())
 }
 
 fn wait_for_compositions() {

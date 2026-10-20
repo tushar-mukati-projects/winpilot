@@ -1,8 +1,8 @@
-use winpilot_core::{Error, Point, Rect, Result};
+use winpilot_core::{Point, Rect, Result};
 
-use crate::pixels::{BYTES_PER_PIXEL, Block, Pixels, PixelsMut, copy_block};
+use crate::pixels::{BYTES_PER_PIXEL, Block, COLOUR_BYTES, Pixels, PixelsMut, copy_block};
 
-const COLOUR_BYTES: usize = 3;
+const BLACK: [u8; BYTES_PER_PIXEL] = [0, 0, 0, u8::MAX];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameSource {
@@ -29,7 +29,7 @@ impl Frame {
         if !self.is_well_formed() {
             return None;
         }
-        let overlap = overlap(self.rect(), rect)?;
+        let overlap = self.rect().intersection(rect)?;
         let mut cropped = Self::black(Point::new(overlap.x, overlap.y), overlap.width as u32, overlap.height as u32);
         cropped.source = self.source;
         cropped.paste(self).ok()?;
@@ -46,7 +46,7 @@ impl Frame {
         self.is_uniform() && self.bgra.get(..COLOUR_BYTES).is_none_or(|first| first == [0, 0, 0])
     }
 
-    pub(crate) fn black(origin: Point, width: u32, height: u32) -> Self {
+    pub fn black(origin: Point, width: u32, height: u32) -> Self {
         let length = width as usize * height as usize * BYTES_PER_PIXEL;
         Self { origin, width, height, bgra: vec![0; length], source: FrameSource::Screen }
     }
@@ -75,24 +75,25 @@ impl Frame {
         (x.max(0) as usize, y.max(0) as usize)
     }
 
-    fn paste(&mut self, piece: &Self) -> Result<()> {
-        let overlap =
-            overlap(self.rect(), piece.rect()).ok_or_else(|| Error::internal("piece is outside the frame"))?;
+    pub fn paste(&mut self, piece: &Self) -> Result<()> {
+        let Some(overlap) = self.rect().intersection(piece.rect()) else { return Ok(()) };
         let (x, y) = piece.offset_of(Point::new(overlap.x, overlap.y));
-        let block = Block { x, y, width: overlap.width as usize, height: overlap.height as usize };
+        let block = Block { x: x as u32, y: y as u32, width: overlap.width as u32, height: overlap.height as u32 };
         let to = self.offset_of(Point::new(overlap.x, overlap.y));
         copy_block(&piece.pixels(), block, &mut self.pixels_mut(), to)
     }
-}
 
-pub(crate) fn overlap(a: Rect, b: Rect) -> Option<Rect> {
-    let left = a.x.max(b.x);
-    let top = a.y.max(b.y);
-    let right = (i64::from(a.x) + i64::from(a.width)).min(i64::from(b.x) + i64::from(b.width));
-    let bottom = (i64::from(a.y) + i64::from(a.height)).min(i64::from(b.y) + i64::from(b.height));
-    let width = right - i64::from(left);
-    let height = bottom - i64::from(top);
-    (width > 0 && height > 0).then(|| Rect::new(left, top, width as i32, height as i32))
+    pub fn fill_black(&mut self, rect: Rect) {
+        let Some(area) = self.rect().intersection(rect) else { return };
+        let (left, top) = self.offset_of(Point::new(area.x, area.y));
+        let stride = self.stride();
+        let span = area.width as usize * BYTES_PER_PIXEL;
+        for row in top..top + area.height as usize {
+            let start = row * stride + left * BYTES_PER_PIXEL;
+            let Some(pixels) = self.bgra.get_mut(start..start + span) else { return };
+            pixels.as_chunks_mut::<BYTES_PER_PIXEL>().0.fill(BLACK);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -174,9 +175,25 @@ mod tests {
     fn crop_survives_extreme_coordinates() {
         let frame = gradient(Point::new(i32::MAX - 5, i32::MIN), 10, 10);
         let cropped = frame.crop(Rect::new(i32::MAX - 2, i32::MIN, i32::MAX, i32::MAX)).unwrap();
-        assert_eq!(cropped.width, 7);
+        assert_eq!(cropped.width, 2);
         assert_eq!(cropped.height, 10);
         assert_eq!(frame.crop(Rect::new(i32::MIN, i32::MIN, i32::MAX, 1)), None);
+    }
+
+    #[test]
+    fn a_pasted_frame_lands_at_its_screen_position_and_is_clipped() {
+        let mut canvas = Frame::black(Point::new(-10, 20), 4, 3);
+        let white = Frame { bgra: vec![u8::MAX; 5 * 5 * 4], ..Frame::black(Point::new(-8, 21), 5, 5) };
+        canvas.paste(&white).unwrap();
+        canvas.paste(&Frame { bgra: vec![u8::MAX; 4], ..Frame::black(Point::new(90, 90), 1, 1) }).unwrap();
+        let rows: Vec<Vec<bool>> = canvas
+            .bgra
+            .as_chunks::<4>()
+            .0
+            .chunks(canvas.width as usize)
+            .map(|row| row.iter().map(|pixel| *pixel == [u8::MAX; 4]).collect())
+            .collect();
+        assert_eq!(rows, [[false, false, false, false], [false, false, true, true], [false, false, true, true]]);
     }
 
     #[test]

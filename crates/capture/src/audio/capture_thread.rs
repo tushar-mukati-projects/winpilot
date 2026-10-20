@@ -3,13 +3,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 
 use winpilot_core::Result;
+use winpilot_win32::ComApartment;
 
 use super::capture::AudioChunk;
 use super::event::wait_for_any;
 use super::feed::Catch;
 use super::session::{Opened, Session};
 use super::source::AudioSource;
-use crate::com::ComApartment;
 
 const WAKE_MS: u32 = 10;
 

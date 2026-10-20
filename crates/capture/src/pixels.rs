@@ -1,6 +1,7 @@
 use winpilot_core::{Error, Result};
 
 pub(crate) const BYTES_PER_PIXEL: usize = 4;
+pub(crate) const COLOUR_BYTES: usize = 3;
 
 pub(crate) struct Pixels<'a> {
     pub bytes: &'a [u8],
@@ -14,16 +15,16 @@ pub(crate) struct PixelsMut<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Block {
-    pub x: usize,
-    pub y: usize,
-    pub width: usize,
-    pub height: usize,
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
 }
 
 pub(crate) fn copy_block(source: &Pixels, from: Block, target: &mut PixelsMut, to: (usize, usize)) -> Result<()> {
-    let row_bytes = from.width * BYTES_PER_PIXEL;
-    for row in 0..from.height {
-        let source_start = (from.y + row) * source.stride + from.x * BYTES_PER_PIXEL;
+    let row_bytes = from.width as usize * BYTES_PER_PIXEL;
+    for row in 0..from.height as usize {
+        let source_start = (from.y as usize + row) * source.stride + from.x as usize * BYTES_PER_PIXEL;
         let target_start = (to.1 + row) * target.stride + to.0 * BYTES_PER_PIXEL;
         let source_row = source.bytes.get(source_start..source_start + row_bytes);
         let target_row = target.bytes.get_mut(target_start..target_start + row_bytes);
@@ -33,6 +34,15 @@ pub(crate) fn copy_block(source: &Pixels, from: Block, target: &mut PixelsMut, t
         target_row.copy_from_slice(source_row);
     }
     Ok(())
+}
+
+pub(crate) const fn rgb_of(bgra: [u8; BYTES_PER_PIXEL]) -> [u8; COLOUR_BYTES] {
+    [bgra[2], bgra[1], bgra[0]]
+}
+
+pub(crate) fn u16_sides(width: u32, height: u32, images: &str) -> Result<(u16, u16)> {
+    let too_large = || Error::invalid(format!("{images} are limited to {} px per side", u16::MAX));
+    Ok((u16::try_from(width).map_err(|_| too_large())?, u16::try_from(height).map_err(|_| too_large())?))
 }
 
 #[cfg(test)]

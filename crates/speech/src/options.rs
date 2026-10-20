@@ -26,7 +26,7 @@ impl TranscribeOptions {
     }
 }
 
-pub fn default_threads(logical_cores: usize) -> usize {
+fn default_threads(logical_cores: usize) -> usize {
     (logical_cores / 2).max(1)
 }
 

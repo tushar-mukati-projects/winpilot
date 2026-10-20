@@ -160,10 +160,10 @@ impl Output {
             return Err(DxgiFailure::AccessLost);
         }
         let from = Block {
-            x: (part.x - self.rect.x) as usize,
-            y: (part.y - self.rect.y) as usize,
-            width: part.width as usize,
-            height: part.height as usize,
+            x: (part.x - self.rect.x) as u32,
+            y: (part.y - self.rect.y) as u32,
+            width: part.width as u32,
+            height: part.height as u32,
         };
         let to = frame.offset_of(Point::new(part.x, part.y));
         duplication.read(from, &mut frame.pixels_mut(), to)

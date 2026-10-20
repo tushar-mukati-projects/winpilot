@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use winpilot_core::{Error, ErrorCode};
+use winpilot_core::Error;
 
 const SHUTTING_DOWN: &str = "the winpilot server is shutting down";
 
@@ -16,8 +16,8 @@ pub enum Death {
 impl Death {
     pub fn error(&self) -> Error {
         match self.cause() {
-            Some(cause) => Error::new(ErrorCode::TargetNotResponding, format!("{cause}; it was restarted")),
-            None => Error::new(ErrorCode::Cancelled, SHUTTING_DOWN),
+            Some(cause) => Error::target_not_responding(format!("{cause}; it was restarted")),
+            None => Error::cancelled(SHUTTING_DOWN),
         }
     }
 
@@ -52,11 +52,13 @@ pub fn seconds(duration: Duration) -> String {
 }
 
 pub fn stopped_error() -> Error {
-    Error::new(ErrorCode::TargetNotResponding, "the desktop worker stopped before answering; try again")
+    Error::target_not_responding("the desktop worker stopped before answering; try again")
 }
 
 #[cfg(test)]
 mod tests {
+    use winpilot_core::ErrorCode;
+
     use super::*;
 
     #[test]

@@ -4,15 +4,16 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use winpilot_core::{Context, Error, ErrorCode, Result};
+use winpilot_core::{Context, Error, Result};
+use winpilot_win32::ComApartment;
 
 use super::audio_feed::{AudioFeed, TRACK_FORMAT};
 use super::clock::audio_frames_at;
 use super::output_file::OutputFile;
+use super::source::STOPPED_WHILE_STARTING;
 use super::thread_join::join_within;
 use super::video_writer::{VideoWriter, WriterSettings};
 use crate::audio::AudioCapture;
-use crate::com::ComApartment;
 
 const QUEUE_DEPTH: usize = 3;
 const START_POLL: Duration = Duration::from_millis(20);
@@ -96,7 +97,7 @@ fn wait_for_start(
 ) -> Result<Option<String>> {
     loop {
         if stop.load(Ordering::Acquire) {
-            return Err(Error::new(ErrorCode::Cancelled, "the recording was stopped while starting"));
+            return Err(Error::cancelled(STOPPED_WHILE_STARTING));
         }
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {

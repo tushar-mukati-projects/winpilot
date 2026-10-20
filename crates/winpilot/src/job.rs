@@ -1,20 +1,17 @@
-use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+use std::os::windows::io::{AsRawHandle, OwnedHandle, RawHandle};
 
 use windows::{
-    Win32::{
-        Foundation::HANDLE,
-        System::JobObjects::{
-            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
-            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
-            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation, SetInformationJobObject,
-            TerminateJobObject,
-        },
+    Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JobObjectExtendedLimitInformation, SetInformationJobObject, TerminateJobObject,
     },
     core::PCWSTR,
 };
 use winpilot_core::{Context, Result};
+use winpilot_win32::{adopt, raw};
 
-const TERMINATED_EXIT_CODE: u32 = 1;
+pub const KILLED_EXIT_CODE: u32 = 1;
 const WORKER_LIMITS: JOB_OBJECT_LIMIT = JOB_OBJECT_LIMIT(
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE.0
         | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK.0
@@ -34,17 +31,16 @@ impl Job {
     }
 
     pub fn assign(&self, process: &impl AsRawHandle) -> Result<()> {
-        let process = HANDLE(process.as_raw_handle());
-        unsafe { AssignProcessToJobObject(self.raw(), process) }.context("adding the worker to its job object")
+        unsafe { AssignProcessToJobObject(raw(self), raw(process)) }.context("adding the worker to its job object")
     }
 
     pub fn terminate(&self) -> Result<()> {
-        unsafe { TerminateJobObject(self.raw(), TERMINATED_EXIT_CODE) }.context("terminating the worker job")
+        unsafe { TerminateJobObject(raw(self), KILLED_EXIT_CODE) }.context("terminating the worker job")
     }
 
     fn create() -> Result<Self> {
-        let raw = unsafe { CreateJobObjectW(None, PCWSTR::null()) }.context("creating the worker job object")?;
-        let handle = unsafe { OwnedHandle::from_raw_handle(raw.0) };
+        let created = unsafe { CreateJobObjectW(None, PCWSTR::null()) }.context("creating the worker job object")?;
+        let handle = unsafe { adopt(created) }.context("the worker job object handle")?;
         Ok(Self { handle })
     }
 
@@ -53,12 +49,14 @@ impl Job {
         limits.BasicLimitInformation.LimitFlags = WORKER_LIMITS;
         let size = size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
         let limits_ptr = (&raw const limits).cast();
-        unsafe { SetInformationJobObject(self.raw(), JobObjectExtendedLimitInformation, limits_ptr, size) }
+        unsafe { SetInformationJobObject(raw(self), JobObjectExtendedLimitInformation, limits_ptr, size) }
             .context("setting the worker job limits")
     }
+}
 
-    fn raw(&self) -> HANDLE {
-        HANDLE(self.handle.as_raw_handle())
+impl AsRawHandle for Job {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.handle.as_raw_handle()
     }
 }
 
@@ -70,7 +68,7 @@ impl Job {
         let size = size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
         let limits_ptr = (&raw mut limits).cast();
         unsafe {
-            QueryInformationJobObject(Some(self.raw()), JobObjectExtendedLimitInformation, limits_ptr, size, None)
+            QueryInformationJobObject(Some(raw(self)), JobObjectExtendedLimitInformation, limits_ptr, size, None)
         }
         .unwrap();
         limits.BasicLimitInformation.LimitFlags
@@ -79,7 +77,7 @@ impl Job {
     pub fn contains(&self, process: &impl AsRawHandle) -> bool {
         use windows::{Win32::System::JobObjects::IsProcessInJob, core::BOOL};
         let mut inside = BOOL::default();
-        unsafe { IsProcessInJob(HANDLE(process.as_raw_handle()), Some(self.raw()), &raw mut inside) }.unwrap();
+        unsafe { IsProcessInJob(raw(process), Some(raw(self)), &raw mut inside) }.unwrap();
         inside.as_bool()
     }
 }

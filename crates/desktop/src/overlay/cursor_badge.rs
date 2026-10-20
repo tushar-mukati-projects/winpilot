@@ -13,6 +13,9 @@ use super::{
     text_mask::TextMask,
 };
 
+const HALO_BLOOM_ALPHA: f32 = 0.4;
+const HALO_BLOOM_SPREAD: f32 = 2.5;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct BadgeMetrics {
     pub(crate) font_px: i32,
@@ -104,7 +107,8 @@ fn halo_color(dx: f32, dy: f32, metrics: &BadgeMetrics, palette: &Palette) -> Pr
     let off_ring = (distance - metrics.halo).abs() - metrics.ring / 2.0;
     let tone = palette.at(dy.atan2(dx) / TAU);
     let ring = Premul::of(tone.mix(WHITE, 0.3), 0.9 * coverage(off_ring));
-    let bloom = Premul::of(tone, 0.4 * (-(off_ring.max(0.0) / (metrics.ring + 2.5)).powi(2)).exp());
+    let spread = metrics.ring + HALO_BLOOM_SPREAD;
+    let bloom = Premul::of(tone, HALO_BLOOM_ALPHA * (-(off_ring.max(0.0) / spread).powi(2)).exp());
     let core = Premul::of(tone, 0.18 * (1.0 - smoothstep(0.0, metrics.halo, distance)));
     ring.over(bloom).over(core)
 }

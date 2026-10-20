@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 use winpilot_core::Rect;
 
 use super::{
-    driving::Driving,
     easing::{breath, lap_fraction, progress},
     fade::Fade,
     glow_tints::GlowLook,
@@ -29,6 +28,12 @@ const STILL_ALPHA: f32 = 0.92;
 pub(crate) enum Tone {
     Working,
     Stopped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Driving {
+    Foreground,
+    Background,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

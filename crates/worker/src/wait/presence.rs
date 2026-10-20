@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use winpilot_core::{
     Element, ElementRef, Error, Result, Target, WindowInfo, WindowRef, WindowState, ocr::exposes_no_uia,
     selector::Selector,
@@ -9,11 +11,17 @@ use super::{
 };
 use crate::{app_windows::app_windows_matching, engine::Engine, resolve, watch::Watch};
 
-pub(crate) fn locate(engine: &Engine, target: &Target, scope: Option<&str>, ocr: &mut OcrLook<'_>) -> Result<Presence> {
+pub(crate) fn locate(
+    engine: &Engine,
+    target: &Target,
+    scope: Option<&str>,
+    ocr: &mut OcrLook<'_>,
+    ends: Instant,
+) -> Result<Presence> {
     match target {
         Target::Element(id) => element(engine, *id),
         Target::Window(hwnd) => window(*hwnd),
-        Target::Selector(selector) => selector_match(engine, selector, scope, ocr),
+        Target::Selector(selector) => selector_match(engine, selector, scope, ocr, ends),
         Target::Point { .. } => Err(Error::invalid("wait needs an element, a window or a selector, not a point")),
     }
 }
@@ -51,6 +59,7 @@ fn selector_match(
     selector: &Selector,
     scope: Option<&str>,
     ocr: &mut OcrLook<'_>,
+    ends: Instant,
 ) -> Result<Presence> {
     let windows = scope_windows(engine, selector, scope)?;
     if let Some(text) = selector.ocr_text() {
@@ -59,18 +68,13 @@ fn selector_match(
     if !selector.has_element_terms() {
         return Ok(Presence::certain(windows.into_iter().find(is_open).map(Shown::Window)));
     }
-    let mut complete = true;
-    let mut blind = Vec::new();
-    for window in windows {
-        let Some(snapshot) = unless_gone(engine.snapshot(&window))? else { continue };
-        if any_visible(&selector.find(&snapshot)) {
-            return Ok(Presence::certain(Some(Shown::Element)));
-        }
-        complete &= !snapshot.truncated;
-        if exposes_no_uia(&snapshot) {
-            blind.push(window);
-        }
+    let here = windows.iter().filter_map(|window| unless_gone(engine.snapshot(window)).transpose());
+    let snapshots = resolve::selector_snapshots(engine, selector, here.collect::<Result<_>>()?, ends)?;
+    if snapshots.iter().any(|snapshot| any_visible(&selector.find(snapshot))) {
+        return Ok(Presence::certain(Some(Shown::Element)));
     }
+    let complete = snapshots.iter().all(|snapshot| !snapshot.truncated);
+    let blind: Vec<WindowInfo> = snapshots.into_iter().filter(exposes_no_uia).map(|snapshot| snapshot.window).collect();
     match selector.plain_text().filter(|_| !blind.is_empty()) {
         Some(text) => ocr.presence(engine, &blind, text, selector.nth()),
         None => Ok(Presence { shown: None, complete }),

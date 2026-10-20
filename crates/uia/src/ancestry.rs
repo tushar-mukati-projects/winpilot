@@ -1,13 +1,13 @@
 use windows::Win32::UI::Accessibility::IUIAutomationElement;
-use windows_core::BOOL;
+use windows::core::BOOL;
 use winpilot_core::{ElementRef, Result, WindowRef};
+use winpilot_win32::{ref_of, root_of};
 
 use crate::{
     automation::Uia,
+    cached_tree::cached_children,
     failure::{UiaResult, optional},
     properties::{cached_runtime_id, cached_text, current_runtime_id},
-    tree::cached_children,
-    win,
 };
 
 pub(crate) const MAX_ANCESTRY: usize = 64;
@@ -47,14 +47,14 @@ impl Uia {
     }
 
     pub(crate) fn owning_window(&self, element: &IUIAutomationElement, own_handle: WindowRef) -> Option<WindowRef> {
-        if let Some(root) = win::root_of(own_handle) {
+        if let Some(root) = root_of(own_handle) {
             return Some(root);
         }
         let mut current = element.clone();
         for _ in 0..MAX_ANCESTRY {
             let parent = self.parent_with_handle(&current)?;
-            let handle = unsafe { parent.CachedNativeWindowHandle() }.map_or(WindowRef(0), win::window_ref);
-            if let Some(root) = win::root_of(handle) {
+            let handle = unsafe { parent.CachedNativeWindowHandle() }.map_or(WindowRef(0), ref_of);
+            if let Some(root) = root_of(handle) {
                 return Some(root);
             }
             current = parent;

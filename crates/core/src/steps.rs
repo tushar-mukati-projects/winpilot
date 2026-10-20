@@ -1,12 +1,19 @@
+mod choices;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::{
     geometry::Rect,
+    glide_timing::MAX_GLIDE_MS,
     null_default::{or_default, or_one_u8, or_one_u32, or_true},
+    protocol::{NOTIFY_MESSAGE_MAX, NOTIFY_TITLE_MAX},
     target::TargetSpec,
-    wait::WaitArgs,
+    validation::{CLICK_COUNTS, KEY_REPEATS, SCROLL_AMOUNTS},
+    wait::{MAX_WAIT_MS, WaitArgs},
 };
+
+pub use choices::{ClickHow, Direction, KeyAction, MouseAction, MouseButton, TypeHow, WindowAction};
 
 const fn default_true() -> bool {
     true
@@ -49,72 +56,6 @@ pub struct ActArgs {
     pub background: Option<bool>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum MouseButton {
-    #[default]
-    Left,
-    Right,
-    Middle,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ClickHow {
-    #[default]
-    Auto,
-    Invoke,
-    Mouse,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum TypeHow {
-    #[default]
-    Auto,
-    Keys,
-    Paste,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum KeyAction {
-    #[default]
-    Press,
-    Down,
-    Up,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum MouseAction {
-    Move,
-    Down,
-    Up,
-    Scroll,
-    Drag,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WindowAction {
-    Launch,
-    Close,
-    Minimize,
-    Maximize,
-    Restore,
-    Move,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "do", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Step {
@@ -123,7 +64,7 @@ pub enum Step {
         #[serde(default, deserialize_with = "or_default")]
         button: MouseButton,
         #[serde(default = "default_click_count", deserialize_with = "or_one_u8")]
-        #[schemars(description = "Clicks: 1-3.", range(min = 1, max = 3))]
+        #[schemars(description = "Clicks: 1-3.", range(min = *CLICK_COUNTS.start(), max = *CLICK_COUNTS.end()))]
         count: u8,
         #[serde(default)]
         #[schemars(description = "Modifier keys to hold, e.g. ctrl or ctrl+shift.")]
@@ -134,7 +75,7 @@ pub enum Step {
         #[serde(default)]
         #[schemars(
             description = "Milliseconds the cursor glides first (default [cursor] glide_ms; 0 jumps; max 3000).",
-            range(max = 3000)
+            range(max = MAX_GLIDE_MS)
         )]
         glide_ms: Option<u64>,
     },
@@ -162,7 +103,7 @@ pub enum Step {
         )]
         target: Option<TargetSpec>,
         #[serde(default = "default_one", deserialize_with = "or_one_u32")]
-        #[schemars(description = "Times to press the keys: 1-100.", range(min = 1, max = 100))]
+        #[schemars(description = "Times to press the keys: 1-100.", range(min = *KEY_REPEATS.start(), max = *KEY_REPEATS.end()))]
         repeat: u32,
         #[serde(default, deserialize_with = "or_default")]
         #[schemars(
@@ -188,12 +129,12 @@ pub enum Step {
         #[schemars(description = "scroll: up, down, left or right.")]
         direction: Option<Direction>,
         #[serde(default)]
-        #[schemars(description = "scroll: wheel notches, 1-50 (default 3).", range(min = 1, max = 50))]
+        #[schemars(description = "scroll: wheel notches, 1-50 (default 3).", range(min = *SCROLL_AMOUNTS.start(), max = *SCROLL_AMOUNTS.end()))]
         amount: Option<u32>,
         #[serde(default)]
         #[schemars(
             description = "Milliseconds the cursor glides first (default [cursor] glide_ms; 0 jumps; max 3000).",
-            range(max = 3000)
+            range(max = MAX_GLIDE_MS)
         )]
         glide_ms: Option<u64>,
     },
@@ -248,7 +189,7 @@ pub enum Step {
         #[serde(default)]
         #[schemars(
             description = "How long open_with may take to open the dialog (default 15000, max 60000).",
-            range(max = 60_000)
+            range(max = MAX_WAIT_MS)
         )]
         timeout_ms: Option<u64>,
     },
@@ -258,9 +199,9 @@ pub enum Step {
         text: String,
     },
     Notify {
-        #[schemars(description = "Bold first line, 1-63 characters.", length(min = 1, max = 63))]
+        #[schemars(description = "Bold first line, 1-63 characters.", length(min = 1, max = NOTIFY_TITLE_MAX))]
         title: String,
-        #[schemars(description = "Body text, 1-255 characters.", length(min = 1, max = 255))]
+        #[schemars(description = "Body text, 1-255 characters.", length(min = 1, max = NOTIFY_MESSAGE_MAX))]
         message: String,
     },
 }
@@ -303,62 +244,6 @@ impl Step {
 
     pub const fn uses_input(&self) -> bool {
         !matches!(self, Self::Wait(_) | Self::Notify { .. })
-    }
-}
-
-impl MouseAction {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Move => "move",
-            Self::Down => "down",
-            Self::Up => "up",
-            Self::Scroll => "scroll",
-            Self::Drag => "drag",
-        }
-    }
-}
-
-impl KeyAction {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Press => "press",
-            Self::Down => "down",
-            Self::Up => "up",
-        }
-    }
-}
-
-impl WindowAction {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Launch => "launch",
-            Self::Close => "close",
-            Self::Minimize => "minimize",
-            Self::Maximize => "maximize",
-            Self::Restore => "restore",
-            Self::Move => "move",
-        }
-    }
-}
-
-impl MouseButton {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Left => "left",
-            Self::Right => "right",
-            Self::Middle => "middle",
-        }
-    }
-}
-
-impl Direction {
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Up => "up",
-            Self::Down => "down",
-            Self::Left => "left",
-            Self::Right => "right",
-        }
     }
 }
 
@@ -495,6 +380,22 @@ mod tests {
             [r#""maximum":3"#, r#""maximum":100"#, r#""maximum":3000"#, r#""maxLength":63"#, r#""maxLength":255"#]
         {
             assert!(text.contains(limit), "missing {limit}");
+        }
+    }
+
+    #[test]
+    fn descriptions_state_the_limits_of_the_constants() {
+        let text = serde_json::to_value(schemars::schema_for!(ActArgs)).unwrap().to_string();
+        for stated in [
+            format!("Clicks: {}-{}.", CLICK_COUNTS.start(), CLICK_COUNTS.end()),
+            format!("Times to press the keys: {}-{}.", KEY_REPEATS.start(), KEY_REPEATS.end()),
+            format!("wheel notches, {}-{} ", SCROLL_AMOUNTS.start(), SCROLL_AMOUNTS.end()),
+            format!("0 jumps; max {MAX_GLIDE_MS})"),
+            format!(", max {MAX_WAIT_MS})."),
+            format!("Bold first line, 1-{NOTIFY_TITLE_MAX} characters."),
+            format!("Body text, 1-{NOTIFY_MESSAGE_MAX} characters."),
+        ] {
+            assert!(text.contains(&stated), "no description states {stated:?}");
         }
     }
 

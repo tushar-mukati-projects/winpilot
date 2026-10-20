@@ -12,7 +12,7 @@ use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 use windows::Win32::Graphics::Gdi::HMONITOR;
 use windows::Win32::System::WinRT::Direct3D11::IDirect3DDxgiInterfaceAccess;
 use windows::Win32::System::WinRT::Graphics::Capture::IGraphicsCaptureItemInterop;
-use windows_core::Interface;
+use windows::core::Interface;
 use winpilot_core::{Context, Error, Result};
 
 use super::gpu::Gpu;
@@ -53,7 +53,7 @@ pub(crate) fn monitor_item(monitor: HMONITOR) -> Result<GraphicsCaptureItem> {
 }
 
 fn capture_interop() -> Result<IGraphicsCaptureItemInterop> {
-    windows_core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()
+    windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()
         .map_err(|error| Error::unsupported(format!("Windows.Graphics.Capture is not available: {error}")))
 }
 

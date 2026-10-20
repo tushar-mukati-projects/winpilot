@@ -1,14 +1,14 @@
-use std::{ffi::c_void, mem::size_of, ptr};
+use std::mem::size_of;
 
 use windows::Win32::{
     Foundation::{HWND, POINT},
     Graphics::Gdi::ScreenToClient,
     UI::WindowsAndMessaging::{
-        CWP_SKIPINVISIBLE, CWP_SKIPTRANSPARENT, ChildWindowFromPointEx, GUITHREADINFO, GetGUIThreadInfo,
-        GetWindowThreadProcessId, IsChild, IsWindow,
+        CWP_SKIPINVISIBLE, CWP_SKIPTRANSPARENT, ChildWindowFromPointEx, GUITHREADINFO, GetGUIThreadInfo, IsChild,
     },
 };
 use winpilot_core::{Error, Point, Result, WindowRef};
+use winpilot_win32::{live_hwnd, owning_pid, owning_thread, ref_of};
 
 const MAX_DEPTH: usize = 32;
 
@@ -36,14 +36,6 @@ pub fn keyboard_window(top: WindowRef) -> Result<WindowRef> {
     Ok(ref_of(focus.unwrap_or(top)))
 }
 
-pub(crate) fn live_hwnd(window: WindowRef) -> Result<HWND> {
-    let hwnd = HWND(window.0 as isize as *mut c_void);
-    if !hwnd.is_invalid() && unsafe { IsWindow(Some(hwnd)) }.as_bool() {
-        return Ok(hwnd);
-    }
-    Err(Error::not_found(format!("window {window} no longer exists")))
-}
-
 pub(crate) fn client_point(hwnd: HWND, screen: Point) -> Result<Point> {
     let mut point = POINT { x: screen.x, y: screen.y };
     if unsafe { ScreenToClient(hwnd, &raw mut point) }.as_bool() {
@@ -68,7 +60,7 @@ fn child_at(parent: HWND, client: Point) -> Option<HWND> {
 }
 
 fn thread_focus(window: HWND) -> Option<HWND> {
-    let thread = unsafe { GetWindowThreadProcessId(window, None) };
+    let thread = owning_thread(window);
     if thread == 0 {
         return None;
     }
@@ -81,16 +73,6 @@ fn is_inside(parent: HWND, window: HWND) -> bool {
     unsafe { IsChild(parent, window) }.as_bool()
 }
 
-fn owning_pid(hwnd: HWND) -> u32 {
-    let mut pid = 0u32;
-    let thread = unsafe { GetWindowThreadProcessId(hwnd, Some(ptr::from_mut(&mut pid))) };
-    if thread == 0 { 0 } else { pid }
-}
-
-fn ref_of(hwnd: HWND) -> WindowRef {
-    WindowRef(hwnd.0 as isize as i64)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,11 +82,5 @@ mod tests {
         let error = message_spot(WindowRef(0), Point::new(1, 1)).unwrap_err();
         assert_eq!(error.message, "window w0 no longer exists");
         assert!(keyboard_window(WindowRef(0)).is_err());
-    }
-
-    #[test]
-    fn window_refs_round_trip_through_handles() {
-        let hwnd = HWND(0x1234 as *mut c_void);
-        assert_eq!(ref_of(hwnd), WindowRef(0x1234));
     }
 }

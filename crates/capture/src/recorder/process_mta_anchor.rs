@@ -1,4 +1,5 @@
-use parking_lot::Mutex;
+use std::sync::{Mutex, PoisonError};
+
 use windows::Win32::System::Com::CoIncrementMTAUsage;
 use winpilot_core::{Error, Result};
 
@@ -9,7 +10,7 @@ struct ProcessMtaAnchor {
 }
 
 pub(crate) fn anchor_mta_for_process_lifetime() -> Result<()> {
-    let mut anchor = PROCESS_MTA_ANCHOR.lock();
+    let mut anchor = PROCESS_MTA_ANCHOR.lock().unwrap_or_else(PoisonError::into_inner);
     if anchor.is_none() {
         *anchor = Some(ProcessMtaAnchor::acquire()?);
     }
@@ -33,6 +34,6 @@ mod tests {
     fn the_process_mta_is_anchored_once_and_reused() {
         anchor_mta_for_process_lifetime().unwrap();
         anchor_mta_for_process_lifetime().unwrap();
-        assert!(PROCESS_MTA_ANCHOR.lock().is_some());
+        assert!(PROCESS_MTA_ANCHOR.lock().unwrap().is_some());
     }
 }

@@ -1,11 +1,9 @@
 use std::collections::HashSet;
 
 use winpilot_core::{Error, ErrorCode, Result, WindowInfo};
+use winpilot_desktop::{Ancestor, ProcessTable};
 
-use crate::{
-    process_tree::{Ancestor, ProcessTable},
-    window_classes::FRAME_HOST_PROCESS,
-};
+use crate::window_classes::FRAME_HOST_PROCESS;
 
 const SHELL_AND_SYSTEM: [&str; 12] = [
     "explorer.exe",

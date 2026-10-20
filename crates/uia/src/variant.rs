@@ -1,4 +1,4 @@
-use std::{ffi::c_void, ptr};
+use std::{ffi::c_void, mem::ManuallyDrop, ptr};
 
 use windows::Win32::{
     Foundation::{VARIANT_FALSE, VARIANT_TRUE},
@@ -8,6 +8,7 @@ use windows::Win32::{
         Variant::{VARENUM, VARIANT, VARIANT_0_0, VT_ARRAY, VT_BOOL, VT_BSTR, VT_I4, VariantClear},
     },
 };
+use windows::core::BSTR;
 
 pub(crate) struct OwnedVariant(VARIANT);
 
@@ -21,6 +22,22 @@ impl OwnedVariant {
         let inner = variant.inner_mut();
         inner.vt = VT_BOOL;
         inner.Anonymous.boolVal = if value { VARIANT_TRUE } else { VARIANT_FALSE };
+        variant
+    }
+
+    pub(crate) fn text(value: &str) -> Self {
+        let mut variant = Self(VARIANT::default());
+        let inner = variant.inner_mut();
+        inner.vt = VT_BSTR;
+        inner.Anonymous.bstrVal = ManuallyDrop::new(BSTR::from(value));
+        variant
+    }
+
+    pub(crate) fn int(value: i32) -> Self {
+        let mut variant = Self(VARIANT::default());
+        let inner = variant.inner_mut();
+        inner.vt = VT_I4;
+        inner.Anonymous.lVal = value;
         variant
     }
 
@@ -89,31 +106,11 @@ fn copy_i32s(data: *const c_void, count: usize) -> Vec<i32> {
 
 #[cfg(test)]
 mod tests {
-    use std::mem::ManuallyDrop;
-
-    use windows_core::BSTR;
-
     use super::*;
-
-    fn text(value: &str) -> OwnedVariant {
-        let mut variant = OwnedVariant(VARIANT::default());
-        let inner = variant.inner_mut();
-        inner.vt = VT_BSTR;
-        inner.Anonymous.bstrVal = ManuallyDrop::new(BSTR::from(value));
-        variant
-    }
-
-    fn int(value: i32) -> OwnedVariant {
-        let mut variant = OwnedVariant(VARIANT::default());
-        let inner = variant.inner_mut();
-        inner.vt = VT_I4;
-        inner.Anonymous.lVal = value;
-        variant
-    }
 
     #[test]
     fn text_round_trips() {
-        let variant = text("Grüße");
+        let variant = OwnedVariant::text("Grüße");
         assert_eq!(variant.as_string().as_deref(), Some("Grüße"));
         assert_eq!(variant.as_i32(), None);
         assert_eq!(variant.as_bool(), None);
@@ -121,7 +118,7 @@ mod tests {
 
     #[test]
     fn int_round_trips() {
-        let variant = int(50004);
+        let variant = OwnedVariant::int(50004);
         assert_eq!(variant.as_i32(), Some(50004));
         assert_eq!(variant.as_string(), None);
         assert_eq!(variant.as_i32_array(), None);

@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 winpilot-core.workspace = true
 winpilot-worker.workspace = true
+winpilot-win32.workspace = true
 rmcp.workspace = true
 tokio.workspace = true
 serde.workspace = true

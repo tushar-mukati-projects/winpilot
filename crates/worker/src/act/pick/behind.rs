@@ -1,8 +1,7 @@
 use winpilot_core::{WindowInfo, WindowRef};
+use winpilot_win32::owner_chain;
 
-use super::super::{
-    by_pattern::KeptForeground, done::both_notes, foreground::owner_chain, stacking::keep_behind_front,
-};
+use super::super::{by_pattern::KeptForeground, done::both_notes, stacking::keep_behind_front};
 use crate::guard::Guard;
 
 const DIALOG_STAYS: &str = "the file dialog stays";
@@ -13,7 +12,7 @@ pub(super) struct DialogBehind<'a> {
 
 pub(super) fn dialog_family(dialog: &WindowInfo) -> Vec<WindowRef> {
     let mut family = vec![dialog.hwnd];
-    family.extend(owner_chain(Some(dialog.hwnd)));
+    family.extend(owner_chain(dialog.hwnd));
     family
 }
 

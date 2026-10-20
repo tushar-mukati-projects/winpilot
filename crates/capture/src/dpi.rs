@@ -10,14 +10,20 @@ pub(crate) fn make_thread_per_monitor_aware() -> Result<()> {
 }
 
 pub(crate) fn with_window_dpi<T>(hwnd: HWND, work: impl FnOnce() -> Result<T>) -> Result<T> {
-    let context = unsafe { GetWindowDpiAwarenessContext(hwnd) };
+    let context = window_context(hwnd);
     if context.0.is_null() {
         return work();
     }
     let previous = set_thread_context(context)?;
     let outcome = work();
-    set_thread_context(previous)?;
-    outcome
+    let restored = set_thread_context(previous);
+    let value = outcome?;
+    restored?;
+    Ok(value)
+}
+
+fn window_context(hwnd: HWND) -> DPI_AWARENESS_CONTEXT {
+    unsafe { GetWindowDpiAwarenessContext(hwnd) }
 }
 
 fn set_thread_context(context: DPI_AWARENESS_CONTEXT) -> Result<DPI_AWARENESS_CONTEXT> {

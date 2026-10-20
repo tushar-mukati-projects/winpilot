@@ -1,6 +1,6 @@
 use std::{thread, time::Duration};
 
-use winpilot_core::{Point, Result, protocol::MouseButton};
+use winpilot_core::{Point, Rect, Result, protocol::MouseButton};
 
 use crate::{
     event::InputEvent,
@@ -8,14 +8,14 @@ use crate::{
     physical_button::PhysicalButton,
     send::send,
     timed_moves::{move_plan, play},
-    virtual_desktop::VirtualDesktop,
+    virtual_screen::current_screen,
 };
 
 const SHORTEST_DRAG: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone, Copy)]
 struct DragPlan {
-    desktop: VirtualDesktop,
+    screen: Rect,
     from: Point,
     to: Point,
     button: PhysicalButton,
@@ -35,8 +35,8 @@ pub fn drag_guarded(
     duration: Duration,
     guard: impl FnMut() -> Result<()>,
 ) -> Result<()> {
-    let desktop = VirtualDesktop::current()?;
-    let plan = DragPlan { desktop, from, to, button: PhysicalButton::current(button), duration };
+    let screen = current_screen()?;
+    let plan = DragPlan { screen, from, to, button: PhysicalButton::current(button), duration };
     drag_with(plan, DragIo { sleep: thread::sleep, send, guard })
 }
 
@@ -53,15 +53,15 @@ fn drag_with(
 }
 
 fn drop_back_at_start(plan: DragPlan) -> Vec<InputEvent> {
-    button_events(plan.desktop, plan.from, plan.button, ButtonTransition::Release)
+    button_events(plan.screen, plan.from, plan.button, ButtonTransition::Release)
 }
 
 fn perform_drag(
     plan: DragPlan,
     io: &mut DragIo<impl FnMut(Duration), impl FnMut(&[InputEvent]) -> Result<()>, impl FnMut() -> Result<()>>,
 ) -> Result<()> {
-    (io.send)(&[move_event(plan.desktop, plan.from), button_event(plan.button, ButtonTransition::Press)])?;
-    let moves = move_plan(plan.desktop, plan.from, plan.to, plan.duration.max(SHORTEST_DRAG));
+    (io.send)(&[move_event(plan.screen, plan.from), button_event(plan.button, ButtonTransition::Press)])?;
+    let moves = move_plan(plan.screen, plan.from, plan.to, plan.duration.max(SHORTEST_DRAG));
     play(&moves, &mut io.sleep, &mut io.send, &mut io.guard)?;
     (io.send)(&[button_event(plan.button, ButtonTransition::Release)])
 }
@@ -72,12 +72,12 @@ mod tests {
 
     use super::*;
 
-    const DESKTOP: VirtualDesktop = VirtualDesktop { x: 0, y: 0, width: 2560, height: 1600 };
+    const SCREEN: Rect = Rect::new(0, 0, 2560, 1600);
     const FROM: Point = Point::new(10, 10);
     const TO: Point = Point::new(200, 300);
 
     fn plan(button: PhysicalButton) -> DragPlan {
-        DragPlan { desktop: DESKTOP, from: FROM, to: TO, button, duration: Duration::ZERO }
+        DragPlan { screen: SCREEN, from: FROM, to: TO, button, duration: Duration::ZERO }
     }
 
     fn recorded_drag(
@@ -104,11 +104,11 @@ mod tests {
     }
 
     fn dropped_back(button: PhysicalButton) -> Vec<InputEvent> {
-        vec![move_event(DESKTOP, FROM), button_event(button, ButtonTransition::Release)]
+        vec![move_event(SCREEN, FROM), button_event(button, ButtonTransition::Release)]
     }
 
     fn path_moves() -> usize {
-        move_plan(DESKTOP, FROM, TO, SHORTEST_DRAG).len()
+        move_plan(SCREEN, FROM, TO, SHORTEST_DRAG).len()
     }
 
     #[test]
@@ -118,9 +118,9 @@ mod tests {
         assert_eq!(calls.len(), path_moves() + 2);
         assert_eq!(
             calls[0],
-            vec![move_event(DESKTOP, FROM), button_event(PhysicalButton::Left, ButtonTransition::Press)]
+            vec![move_event(SCREEN, FROM), button_event(PhysicalButton::Left, ButtonTransition::Press)]
         );
-        assert_eq!(calls[calls.len() - 2], vec![move_event(DESKTOP, TO)]);
+        assert_eq!(calls[calls.len() - 2], vec![move_event(SCREEN, TO)]);
         assert_eq!(calls.last(), Some(&release(PhysicalButton::Left)));
     }
 
@@ -157,17 +157,17 @@ mod tests {
 
     #[test]
     fn a_drag_takes_at_least_a_tenth_of_a_second_and_eases() {
-        let quick = move_plan(DESKTOP, Point::new(0, 0), Point::new(100, 0), SHORTEST_DRAG);
+        let quick = move_plan(SCREEN, Point::new(0, 0), Point::new(100, 0), SHORTEST_DRAG);
         assert_eq!(quick.len(), 12);
         assert_eq!(quick.last().map(|step| step.after), Some(SHORTEST_DRAG));
-        let slow = move_plan(DESKTOP, Point::new(0, 0), Point::new(100, 0), Duration::from_millis(500));
+        let slow = move_plan(SCREEN, Point::new(0, 0), Point::new(100, 0), Duration::from_millis(500));
         assert_eq!(slow.len(), 60);
     }
 
     #[test]
     fn extreme_coordinates_do_not_overflow() {
         let plan = DragPlan {
-            desktop: DESKTOP,
+            screen: SCREEN,
             from: Point::new(i32::MIN, i32::MAX),
             to: Point::new(i32::MAX, i32::MIN),
             button: PhysicalButton::Left,

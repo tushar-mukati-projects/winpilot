@@ -1,9 +1,10 @@
 use winpilot_core::{
     TargetSpec,
     protocol::{KeyAction, MouseAction, MouseButton, SetChange, Step, Until, WaitArgs, WindowAction},
+    text_limit::ellipsized,
 };
 
-use super::clip::{clipped, quoted};
+use super::clip::quoted;
 
 const TEXT_LIMIT: usize = 24;
 const TARGET_LIMIT: usize = 60;
@@ -38,7 +39,7 @@ pub(crate) fn summarize(step: &Step) -> String {
 }
 
 fn label(target: &TargetSpec) -> String {
-    clipped(&target.to_string(), TARGET_LIMIT)
+    ellipsized(&target.to_string(), TARGET_LIMIT)
 }
 
 fn mouse_verb(action: MouseAction, button: MouseButton) -> String {
@@ -82,7 +83,7 @@ fn key_summary(keys: &str, target: Option<&TargetSpec>, repeat: u32, action: Key
     };
     let inside = target.map(|target| format!(" in {}", label(target))).unwrap_or_default();
     let times = if repeat > 1 { format!(" ×{repeat}") } else { String::new() };
-    format!("{verb} {}{inside}{times}", clipped(keys.trim(), TARGET_LIMIT))
+    format!("{verb} {}{inside}{times}", ellipsized(keys.trim(), TARGET_LIMIT))
 }
 
 fn scroll_summary(direction: Option<winpilot_core::protocol::Direction>, amount: u32, place: &str) -> String {
@@ -108,7 +109,7 @@ fn set_summary(target: &TargetSpec, change: &SetChange) -> String {
 
 fn window_summary(action: WindowAction, target: Option<&TargetSpec>, app: Option<&str>) -> String {
     match (action, target) {
-        (WindowAction::Launch, _) => format!("launch {}", clipped(app.unwrap_or_default().trim(), TARGET_LIMIT)),
+        (WindowAction::Launch, _) => format!("launch {}", ellipsized(app.unwrap_or_default().trim(), TARGET_LIMIT)),
         (_, Some(target)) => format!("{} {}", action.name(), label(target)),
         (_, None) => action.name().to_string(),
     }
@@ -119,7 +120,7 @@ pub(crate) fn file_count(count: usize) -> String {
 }
 
 fn wait_summary(args: &WaitArgs) -> String {
-    let field = |value: &Option<String>| clipped(value.as_deref().unwrap_or_default().trim(), TARGET_LIMIT);
+    let field = |value: &Option<String>| ellipsized(value.as_deref().unwrap_or_default().trim(), TARGET_LIMIT);
     match args.until() {
         Until::Time => format!("wait {} ms", args.ms.unwrap_or(0)),
         Until::Appears => format!("wait until {} appears", field(&args.target)),

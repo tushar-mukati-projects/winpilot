@@ -44,10 +44,6 @@ impl Transcriber {
         Ok(Self { model: Mutex::new(model), filters: ggml.filters, tokens: ggml.tokens, special })
     }
 
-    pub fn is_multilingual(&self) -> bool {
-        self.special.multilingual
-    }
-
     pub fn transcribe(
         &self,
         samples: &[f32],
@@ -189,7 +185,7 @@ mod tests {
         let elapsed = started.elapsed().as_secs_f64();
         let audio = samples.len() as f64 / f64::from(rate) / f64::from(channels);
         eprintln!("{audio:.1} s of audio in {elapsed:.1} s ({:.1}x real time)", audio / elapsed);
-        eprintln!("language {}\n{}", transcript.language, transcript.to_text());
+        eprintln!("language {}\n{:#?}", transcript.language, transcript.segments);
         assert!(!transcript.segments.is_empty());
     }
 }

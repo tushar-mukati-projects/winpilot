@@ -10,12 +10,12 @@ use super::{
     capture_hide::CaptureHideGuard,
     chip_text::ChipText,
     command::OverlayCommand,
-    driving::Driving,
     options::OverlayOptions,
+    presence::Driving,
     render_thread::{OverlayThread, WAKE_OVERLAY},
     wake_flag::WakeFlag,
 };
-use crate::message_thread::MessageThread;
+use winpilot_win32::MessageThread;
 
 const CONCEAL_TIMEOUT: Duration = Duration::from_millis(250);
 

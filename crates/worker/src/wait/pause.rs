@@ -3,13 +3,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use winpilot_core::Result;
+use winpilot_core::{Result, millis};
 
 use super::WaitReport;
-use crate::{
-    call_scope::CallScope,
-    engine::{Engine, duration_ms},
-};
+use crate::{call_scope::CallScope, engine::Engine};
 
 const SLICE: Duration = Duration::from_millis(50);
 
@@ -23,7 +20,7 @@ pub(crate) fn pause(engine: &Engine, wanted: Duration, call: &CallScope) -> Resu
         }
         thread::sleep(call.bounded(left.min(SLICE)));
     }
-    Ok(WaitReport { satisfied: true, elapsed_ms: duration_ms(started.elapsed()), detail: String::new() })
+    Ok(WaitReport { satisfied: true, elapsed_ms: millis(started.elapsed()), detail: String::new() })
 }
 
 #[cfg(test)]

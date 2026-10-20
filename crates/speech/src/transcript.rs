@@ -1,5 +1,3 @@
-use std::fmt::Write as _;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Segment {
     pub start_ms: u64,
@@ -11,21 +9,6 @@ pub struct Segment {
 pub struct Transcript {
     pub language: String,
     pub segments: Vec<Segment>,
-}
-
-impl Transcript {
-    pub fn is_empty(&self) -> bool {
-        self.segments.is_empty()
-    }
-
-    pub fn to_text(&self) -> String {
-        let mut text = String::new();
-        for segment in &self.segments {
-            let _ = writeln!(text, "[{}] {}", clock(segment.start_ms), segment.text);
-        }
-        text.truncate(text.trim_end().len());
-        text
-    }
 }
 
 pub fn clock(milliseconds: u64) -> String {
@@ -54,32 +37,12 @@ fn is_blank_marker(text: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn segment(start_ms: u64, text: &str) -> Segment {
-        Segment { start_ms, end_ms: start_ms + 1_000, text: text.to_string() }
-    }
-
     #[test]
     fn clock_uses_minutes_and_seconds() {
         assert_eq!(clock(0), "00:00");
         assert_eq!(clock(9_999), "00:09");
         assert_eq!(clock(61_000), "01:01");
         assert_eq!(clock(3_725_000), "62:05");
-    }
-
-    #[test]
-    fn text_has_one_timestamped_line_per_segment() {
-        let transcript = Transcript {
-            language: "en".to_string(),
-            segments: vec![segment(0, "Hello there."), segment(65_400, "Second line.")],
-        };
-        assert_eq!(transcript.to_text(), "[00:00] Hello there.\n[01:05] Second line.");
-    }
-
-    #[test]
-    fn empty_transcript_formats_as_empty_text() {
-        let transcript = Transcript { language: "hi".to_string(), segments: Vec::new() };
-        assert!(transcript.is_empty());
-        assert_eq!(transcript.to_text(), "");
     }
 
     #[test]

@@ -4,7 +4,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_ExpandCollapsePatternId, UIA_InvokePatternId, UIA_LegacyIAccessiblePatternId, UIA_ScrollItemPatternId,
     UIA_SelectionItemPatternId, UIA_ValuePatternId,
 };
-use windows_core::BSTR;
+use windows::core::BSTR;
 use winpilot_core::{ElementRef, Error, Result};
 
 use crate::{automation::Uia, failure::UiaResult, pattern::current_pattern};

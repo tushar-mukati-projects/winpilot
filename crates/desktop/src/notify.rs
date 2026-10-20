@@ -2,12 +2,12 @@ use std::time::Duration;
 
 use parking_lot::Mutex;
 use winpilot_core::Result;
+use winpilot_win32::MessageThread;
 
 use crate::{
     app_identity,
     balloon::Balloon,
     balloon_text::BalloonText,
-    message_thread::MessageThread,
     quiet_state::{QuietReason, current_quiet_reason},
     toast::{ToastBlock, ToastResult, show_toast},
 };

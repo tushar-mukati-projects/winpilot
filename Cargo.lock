@@ -2199,6 +2199,7 @@ dependencies = [
  "windows",
  "winpilot-core",
  "winpilot-fixture",
+ "winpilot-win32",
  "winpilot-worker",
 ]
 
@@ -2209,12 +2210,11 @@ dependencies = [
  "fast_image_resize",
  "gif",
  "jpeg-encoder",
- "parking_lot",
  "png",
  "windows",
- "windows-core",
  "windows-future",
  "winpilot-core",
+ "winpilot-win32",
 ]
 
 [[package]]
@@ -2234,6 +2234,7 @@ dependencies = [
  "windows",
  "winpilot-core",
  "winpilot-fixture",
+ "winpilot-win32",
 ]
 
 [[package]]
@@ -2250,6 +2251,7 @@ dependencies = [
  "parking_lot",
  "windows",
  "winpilot-core",
+ "winpilot-win32",
 ]
 
 [[package]]
@@ -2262,6 +2264,7 @@ dependencies = [
  "rayon",
  "windows",
  "winpilot-core",
+ "winpilot-win32",
 ]
 
 [[package]]
@@ -2269,9 +2272,17 @@ name = "winpilot-uia"
 version = "0.1.0"
 dependencies = [
  "windows",
- "windows-core",
  "winpilot-core",
  "winpilot-fixture",
+ "winpilot-win32",
+]
+
+[[package]]
+name = "winpilot-win32"
+version = "0.1.0"
+dependencies = [
+ "windows",
+ "winpilot-core",
 ]
 
 [[package]]
@@ -2290,6 +2301,7 @@ dependencies = [
  "winpilot-input",
  "winpilot-speech",
  "winpilot-uia",
+ "winpilot-win32",
 ]
 
 [[package]]

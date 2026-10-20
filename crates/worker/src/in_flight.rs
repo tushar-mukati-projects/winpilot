@@ -5,8 +5,7 @@ use std::{
 };
 
 use parking_lot::Mutex;
-
-use crate::cancel::Cancel;
+use winpilot_win32::Cancel;
 
 const FINISH_POLL: Duration = Duration::from_millis(10);
 
@@ -64,7 +63,7 @@ mod tests {
         let cancel = in_flight.register(id);
         let thread = thread::spawn(move || {
             let started = Instant::now();
-            while (ignores_cancel || !cancel.is_cancelled()) && started.elapsed() < Duration::from_secs(2) {
+            while (ignores_cancel || cancel.check("stopped").is_ok()) && started.elapsed() < Duration::from_secs(2) {
                 thread::sleep(Duration::from_millis(5));
             }
         });
@@ -95,7 +94,7 @@ mod tests {
         let in_flight = InFlight::default();
         let cancel = in_flight.register(9);
         in_flight.cancel(9);
-        assert!(cancel.is_cancelled());
+        assert!(cancel.check("stopped").is_err());
         in_flight.finished(9);
         in_flight.cancel(9);
         assert_eq!(in_flight.cancel_all_and_wait(Duration::ZERO), 0);

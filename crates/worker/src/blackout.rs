@@ -2,9 +2,6 @@ use winpilot_capture::Frame;
 use winpilot_core::{Rect, WindowRef};
 use winpilot_desktop::VisibleWindow;
 
-const BLACK: [u8; 4] = [0, 0, 0, 255];
-const BYTES_PER_PIXEL: usize = 4;
-
 pub(crate) fn covering_rects(
     windows: &[VisibleWindow],
     denies: impl Fn(&VisibleWindow) -> bool,
@@ -19,24 +16,8 @@ pub(crate) fn covering_rects(
 }
 
 pub(crate) fn fill_black(frame: &mut Frame, rects: &[Rect]) {
-    let bounds = frame.rect();
     for rect in rects {
-        if let Some(area) = bounds.intersection(*rect) {
-            fill_area(frame, area);
-        }
-    }
-}
-
-fn fill_area(frame: &mut Frame, area: Rect) {
-    let stride = frame.width as usize * BYTES_PER_PIXEL;
-    let left = (area.x - frame.origin.x) as usize * BYTES_PER_PIXEL;
-    let span = area.width as usize * BYTES_PER_PIXEL;
-    for row in (area.y - frame.origin.y)..(area.bottom() - frame.origin.y) {
-        let start = row as usize * stride + left;
-        let Some(pixels) = frame.bgra.get_mut(start..start + span) else { return };
-        for pixel in pixels.as_chunks_mut::<BYTES_PER_PIXEL>().0 {
-            *pixel = BLACK;
-        }
+        frame.fill_black(*rect);
     }
 }
 
@@ -48,6 +29,7 @@ mod tests {
     use super::*;
 
     const WHITE: [u8; 4] = [255, 255, 255, 255];
+    const BLACK: [u8; 4] = [0, 0, 0, 255];
 
     fn white(origin: Point, width: u32, height: u32) -> Frame {
         Frame {

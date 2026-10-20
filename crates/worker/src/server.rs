@@ -11,8 +11,9 @@ use winpilot_core::{
     ipc::{FromWorker, ToWorker, read_frame, write_frame},
     protocol::{Call, Reply},
 };
+use winpilot_win32::ComApartment;
 
-use crate::{com::ComApartment, engine::Engine, in_flight::InFlight};
+use crate::{engine::Engine, in_flight::InFlight};
 
 const SHUTDOWN_PATIENCE: Duration = Duration::from_secs(1);
 

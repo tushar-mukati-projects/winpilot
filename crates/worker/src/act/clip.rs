@@ -1,4 +1,5 @@
-const ELLIPSIS: char = '…';
+use winpilot_core::text_limit::ELLIPSIS;
+
 pub(crate) const NOTE_LIMIT: usize = 40;
 
 pub(crate) fn quoted(text: &str, limit: usize) -> String {
@@ -11,14 +12,6 @@ pub(crate) fn quoted(text: &str, limit: usize) -> String {
         out.push(ELLIPSIS);
     }
     out.push('"');
-    out
-}
-
-pub(crate) fn clipped(text: &str, limit: usize) -> String {
-    let mut out: String = text.chars().take(limit).collect();
-    if text.chars().nth(limit).is_some() {
-        out.push(ELLIPSIS);
-    }
     out
 }
 
@@ -48,8 +41,6 @@ mod tests {
     fn long_text_is_clipped_with_an_ellipsis() {
         assert_eq!(quoted("abcdef", 3), "\"abc…\"");
         assert_eq!(quoted("abc", 3), "\"abc\"");
-        assert_eq!(clipped("abcdef", 4), "abcd…");
-        assert_eq!(clipped("abcd", 4), "abcd");
     }
 
     #[test]

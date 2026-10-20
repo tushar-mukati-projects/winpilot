@@ -34,6 +34,8 @@ const USAGE: &str = "usage: winpilot [mcp | worker | --version]
   worker     run the desktop worker (the server starts it)
   --version  print the version";
 const RUNTIME_SHUTDOWN: Duration = Duration::from_secs(2);
+const RUNTIME_THREADS: usize = 2;
+const USAGE_EXIT_CODE: u8 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Mode {
@@ -54,7 +56,7 @@ fn main() -> ExitCode {
         }
         Mode::Usage => {
             eprintln!("{USAGE}");
-            ExitCode::from(2)
+            ExitCode::from(USAGE_EXIT_CODE)
         }
     }
 }
@@ -84,7 +86,7 @@ fn exit_with(outcome: Result<()>) -> ExitCode {
 
 fn serve() -> Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
+        .worker_threads(RUNTIME_THREADS)
         .thread_name("winpilot-mcp")
         .enable_all()
         .build()

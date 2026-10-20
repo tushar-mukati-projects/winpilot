@@ -20,9 +20,10 @@ mod timeline;
 #[cfg(test)]
 mod live_tests;
 
-pub use capture::{AudioCapture, AudioChunk, AudioEnd};
 pub use collect::capture_audio;
 pub use pcm::{AudioFormat, Pcm};
 pub use source::AudioSource;
 
+pub(crate) use capture::{AudioCapture, AudioChunk};
 pub(crate) use converter::Converter;
+pub(crate) use pcm::STEREO_48_KHZ;

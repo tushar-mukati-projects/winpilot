@@ -1,14 +1,12 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use windows::Win32::{
-    Foundation::HWND,
-    UI::WindowsAndMessaging::{FindWindowW, GetForegroundWindow},
-};
-use windows_core::{PCWSTR, w};
+use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
+use windows::core::{PCWSTR, w};
 use winpilot_core::{Element, Error, Rect, Result, Snapshot, WindowInfo, WindowRef, WindowState};
 use winpilot_fixture::{FixtureProcess, Placement};
+use winpilot_win32::{class_name, foreground_hwnd, ref_of};
 
-use crate::{UiaHandle, UiaOptions, win};
+use crate::{UiaHandle, UiaOptions};
 
 pub(crate) fn handle() -> UiaHandle {
     UiaHandle::spawn(UiaOptions::default()).unwrap()
@@ -36,19 +34,12 @@ pub(crate) fn window_info(window: WindowRef, class_name: &str) -> WindowInfo {
 
 pub(crate) fn taskbar() -> WindowInfo {
     let hwnd = unsafe { FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null()) }.unwrap();
-    window_info(win::window_ref(hwnd), "Shell_TrayWnd")
+    window_info(ref_of(hwnd), "Shell_TrayWnd")
 }
 
 pub(crate) fn foreground() -> Option<WindowInfo> {
-    let hwnd = unsafe { GetForegroundWindow() };
-    if hwnd.is_invalid() {
-        return None;
-    }
-    Some(window_info(win::window_ref(hwnd), &class_of(hwnd)))
-}
-
-fn class_of(hwnd: HWND) -> String {
-    win::class_name(win::window_ref(hwnd)).unwrap_or_default()
+    let hwnd = foreground_hwnd()?;
+    Some(window_info(ref_of(hwnd), &class_name(hwnd)))
 }
 
 pub(crate) struct Fixture {
@@ -65,5 +56,5 @@ pub(crate) fn launch_fixture() -> Option<Fixture> {
     let title = format!("WinPilot Fixture Uia {}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed));
     let process = FixtureProcess::launch(&exe, &title, Placement::OnScreen)?;
     let hwnd = process.hwnd();
-    Some(Fixture { window: window_info(win::window_ref(hwnd), &class_of(hwnd)), _process: process })
+    Some(Fixture { window: window_info(ref_of(hwnd), &class_name(hwnd)), _process: process })
 }

@@ -11,14 +11,9 @@ use windows::Win32::{
     },
 };
 use winpilot_core::{Error, Result};
+use winpilot_win32::{ThreadMessages, is_top_level, owning_pid, ref_of};
 
-use crate::{
-    activity::ChangeEvent,
-    changes::board,
-    event_time::win_event_instant,
-    message_thread::ThreadMessages,
-    window_identity::{is_top_level, owning_pid, ref_of},
-};
+use crate::{activity::ChangeEvent, changes::board, event_time::win_event_instant};
 
 const WATCHED_EVENT_RANGES: [(u32, u32); 5] = [
     (EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND),

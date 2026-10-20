@@ -1,44 +1,34 @@
-use std::mem::size_of;
-
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY, VK_MENU,
-};
-use winpilot_core::INJECTION_MARK;
+use windows::Win32::UI::Input::KeyboardAndMouse::{INPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_MENU};
+use winpilot_win32::{marked_key, send_input};
 
 const UNASSIGNED_KEY: VIRTUAL_KEY = VIRTUAL_KEY(0xE8);
 const KEY_DOWN: KEYBD_EVENT_FLAGS = KEYBD_EVENT_FLAGS(0);
+const NO_SCAN_CODE: u16 = 0;
 
 pub(crate) fn send_foreground_unlock() {
-    let unlock = unlock_inputs();
-    if send_marked(&unlock) != unlock.len() {
-        let _ = send_marked(&release_inputs());
+    if send_input(&unlock_inputs()).is_err() {
+        let _ = send_input(&release_inputs());
     }
 }
 
 fn unlock_inputs() -> [INPUT; 4] {
     [
-        marked_key(VK_MENU, KEY_DOWN),
-        marked_key(UNASSIGNED_KEY, KEY_DOWN),
-        marked_key(UNASSIGNED_KEY, KEYEVENTF_KEYUP),
-        marked_key(VK_MENU, KEYEVENTF_KEYUP),
+        marked_key(VK_MENU, NO_SCAN_CODE, KEY_DOWN),
+        marked_key(UNASSIGNED_KEY, NO_SCAN_CODE, KEY_DOWN),
+        marked_key(UNASSIGNED_KEY, NO_SCAN_CODE, KEYEVENTF_KEYUP),
+        marked_key(VK_MENU, NO_SCAN_CODE, KEYEVENTF_KEYUP),
     ]
 }
 
 fn release_inputs() -> [INPUT; 2] {
-    [marked_key(UNASSIGNED_KEY, KEYEVENTF_KEYUP), marked_key(VK_MENU, KEYEVENTF_KEYUP)]
-}
-
-fn marked_key(key: VIRTUAL_KEY, flags: KEYBD_EVENT_FLAGS) -> INPUT {
-    let ki = KEYBDINPUT { wVk: key, wScan: 0, dwFlags: flags, time: 0, dwExtraInfo: INJECTION_MARK };
-    INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki } }
-}
-
-fn send_marked(inputs: &[INPUT]) -> usize {
-    unsafe { SendInput(inputs, size_of::<INPUT>() as i32) as usize }
+    [marked_key(UNASSIGNED_KEY, NO_SCAN_CODE, KEYEVENTF_KEYUP), marked_key(VK_MENU, NO_SCAN_CODE, KEYEVENTF_KEYUP)]
 }
 
 #[cfg(test)]
 mod tests {
+    use windows::Win32::UI::Input::KeyboardAndMouse::INPUT_KEYBOARD;
+    use winpilot_core::INJECTION_MARK;
+
     use super::*;
 
     fn keys(inputs: &[INPUT]) -> Vec<(VIRTUAL_KEY, KEYBD_EVENT_FLAGS, usize)> {

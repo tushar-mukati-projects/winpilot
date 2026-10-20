@@ -12,6 +12,7 @@ use crate::vocab::{SpecialTokens, decode_text};
 const NO_SPEECH_THRESHOLD: f64 = 0.6;
 const LOGPROB_THRESHOLD: f64 = -1.0;
 const FRAME_MS: u64 = 10;
+const CONTEXT_PER_DECODED_TOKEN: usize = 2;
 
 pub(crate) struct TranscribeJob<'a> {
     pub filters: &'a [f32],
@@ -23,7 +24,7 @@ pub(crate) struct TranscribeJob<'a> {
 pub(crate) fn transcribe_windows(model: &mut SpeechModel, mono: &[f32], job: &TranscribeJob) -> Result<Transcript> {
     let content_frames = mono.len().div_ceil(HOP_LENGTH);
     let mel = mel_spectrogram(&model.whisper.config, mono, job.filters)?;
-    let max_tokens = model.whisper.config.max_target_positions / 2;
+    let max_tokens = model.whisper.config.max_target_positions / CONTEXT_PER_DECODED_TOKEN;
     let mut language = job.options.language;
     let mut segments = Vec::new();
     let mut seek = 0;

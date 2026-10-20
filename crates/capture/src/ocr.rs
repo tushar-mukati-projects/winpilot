@@ -1,77 +1,59 @@
+mod contrast;
+mod lines;
+mod tiles;
+
 use std::sync::mpsc;
 use std::time::Duration;
 
-use windows::Foundation::Rect as WinRect;
 use windows::Globalization::Language;
 use windows::Graphics::Imaging::{BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap};
-use windows::Media::Ocr::{OcrEngine, OcrLine as WinOcrLine, OcrResult};
+use windows::Media::Ocr::{OcrEngine, OcrResult};
 use windows::Security::Cryptography::CryptographicBuffer;
 use windows_future::{AsyncOperationCompletedHandler, IAsyncOperation};
-use winpilot_core::{
-    Context, Error, Point, Rect, Result,
-    ocr::{OcrLine, OcrWord},
-};
+use winpilot_core::{Context, Error, Rect, Result, ocr::OcrLine};
+use winpilot_win32::ComApartment;
 
-use crate::com::ComApartment;
+use self::contrast::ink_contrast;
+use self::lines::{Scaling, collect_lines};
+use self::tiles::tiles;
 use crate::frame::Frame;
-use crate::pixels::BYTES_PER_PIXEL;
-use crate::resize::{Fit, fit, fitted_pixels, resize_bgra};
+use crate::pixels::Block;
+use crate::resize::{fit, fitted_pixels, resize_bgra};
 
 const RECOGNITION_TIMEOUT: Duration = Duration::from_secs(10);
 const MAGNIFICATION: u32 = 2;
 const TILE_OVERLAP: u32 = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Tile {
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
+pub enum OcrPass {
+    Plain,
+    Magnified,
+    Contrasted,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Scaling {
-    origin: Point,
-    x: f64,
-    y: f64,
-}
-
-impl Scaling {
-    fn between(frame: &Frame, fitted: Fit) -> Self {
-        Self {
-            origin: frame.origin,
-            x: f64::from(frame.width) / f64::from(fitted.width),
-            y: f64::from(frame.height) / f64::from(fitted.height),
+pub fn ocr(frame: &Frame, pass: OcrPass) -> Result<Vec<OcrLine>> {
+    if !frame.is_well_formed() {
+        return Err(Error::invalid("frame size does not match its pixel buffer"));
+    }
+    let _apartment = ComApartment::enter_any()?;
+    let engine = create_engine()?;
+    let limit = OcrEngine::MaxImageDimension().context("reading the OCR size limit")?;
+    match pass {
+        OcrPass::Plain => {
+            let fitted = fit(frame.width, frame.height, limit, limit);
+            let pixels = fitted_pixels(frame, fitted)?;
+            recognized(&engine, &pixels, fitted.width, fitted.height, Scaling::between(frame, fitted))
         }
+        OcrPass::Magnified => magnified_lines(&engine, frame, limit, |_| {}),
+        OcrPass::Contrasted => magnified_lines(&engine, frame, limit, ink_contrast),
     }
 }
 
-pub fn ocr(frame: &Frame) -> Result<Vec<OcrLine>> {
-    if !frame.is_well_formed() {
-        return Err(Error::invalid("frame size does not match its pixel buffer"));
-    }
-    let _apartment = ComApartment::enter_any()?;
-    let engine = create_engine()?;
-    let limit = OcrEngine::MaxImageDimension().context("reading the OCR size limit")?;
-    let fitted = fit(frame.width, frame.height, limit, limit);
-    let pixels = fitted_pixels(frame, fitted)?;
-    let bitmap = software_bitmap(&pixels, fitted.width, fitted.height)?;
-    let operation = engine.RecognizeAsync(&bitmap).context("starting OCR")?;
-    let result = finish_within(&operation, RECOGNITION_TIMEOUT)?;
-    collect_lines(&result, Scaling::between(frame, fitted))
-}
-
-pub fn ocr_magnified(frame: &Frame) -> Result<Vec<OcrLine>> {
-    if !frame.is_well_formed() {
-        return Err(Error::invalid("frame size does not match its pixel buffer"));
-    }
-    let _apartment = ComApartment::enter_any()?;
-    let engine = create_engine()?;
-    let limit = OcrEngine::MaxImageDimension().context("reading the OCR size limit")?;
+fn magnified_lines(engine: &OcrEngine, frame: &Frame, limit: u32, prepare: fn(&mut [u8])) -> Result<Vec<OcrLine>> {
     let side = (limit / MAGNIFICATION).max(TILE_OVERLAP * 2);
     let mut lines: Vec<OcrLine> = Vec::new();
     for tile in tiles(frame.width, frame.height, side, TILE_OVERLAP) {
-        for line in magnified_tile_lines(&engine, frame, tile)? {
+        for line in magnified_tile_lines(engine, frame, tile, prepare)? {
             if !lines.iter().any(|seen| same_line(seen, &line)) {
                 lines.push(line);
             }
@@ -80,50 +62,30 @@ pub fn ocr_magnified(frame: &Frame) -> Result<Vec<OcrLine>> {
     Ok(lines)
 }
 
-fn magnified_tile_lines(engine: &OcrEngine, frame: &Frame, tile: Tile) -> Result<Vec<OcrLine>> {
+fn magnified_tile_lines(
+    engine: &OcrEngine,
+    frame: &Frame,
+    tile: Block,
+    prepare: fn(&mut [u8]),
+) -> Result<Vec<OcrLine>> {
+    let area = Rect::new(
+        frame.origin.x + tile.x as i32,
+        frame.origin.y + tile.y as i32,
+        tile.width as i32,
+        tile.height as i32,
+    );
+    let cropped = frame.crop(area).ok_or_else(|| Error::internal("the OCR tile lies outside the frame"))?;
     let (width, height) = (tile.width * MAGNIFICATION, tile.height * MAGNIFICATION);
-    let pixels = resize_bgra(&cropped(frame, tile), (tile.width, tile.height), (width, height))?;
-    let bitmap = software_bitmap(&pixels, width, height)?;
-    let operation = engine.RecognizeAsync(&bitmap).context("starting OCR")?;
-    let result = finish_within(&operation, RECOGNITION_TIMEOUT)?;
-    let origin = Point::new(frame.origin.x + tile.x as i32, frame.origin.y + tile.y as i32);
+    let mut pixels = resize_bgra(&cropped.bgra, (tile.width, tile.height), (width, height))?;
+    prepare(&mut pixels);
     let shrink = 1.0 / f64::from(MAGNIFICATION);
-    collect_lines(&result, Scaling { origin, x: shrink, y: shrink })
+    recognized(engine, &pixels, width, height, Scaling { origin: cropped.origin, x: shrink, y: shrink })
 }
 
-fn tiles(width: u32, height: u32, side: u32, overlap: u32) -> Vec<Tile> {
-    let columns = tile_starts(width, side, overlap);
-    tile_starts(height, side, overlap)
-        .into_iter()
-        .flat_map(|y| {
-            columns.iter().map(move |&x| Tile { x, y, width: side.min(width - x), height: side.min(height - y) })
-        })
-        .collect()
-}
-
-fn tile_starts(length: u32, side: u32, overlap: u32) -> Vec<u32> {
-    let step = side.saturating_sub(overlap).max(1);
-    let mut starts = vec![0];
-    let mut start = 0;
-    while start + side < length {
-        start += step;
-        starts.push(start);
-    }
-    starts
-}
-
-fn cropped(frame: &Frame, tile: Tile) -> Vec<u8> {
-    let stride = frame.width as usize * BYTES_PER_PIXEL;
-    let row_bytes = tile.width as usize * BYTES_PER_PIXEL;
-    let left = tile.x as usize * BYTES_PER_PIXEL;
-    let mut pixels = Vec::with_capacity(row_bytes * tile.height as usize);
-    for row in tile.y..tile.y + tile.height {
-        let start = row as usize * stride + left;
-        if let Some(bytes) = frame.bgra.get(start..start + row_bytes) {
-            pixels.extend_from_slice(bytes);
-        }
-    }
-    pixels
+fn recognized(engine: &OcrEngine, bgra: &[u8], width: u32, height: u32, scaling: Scaling) -> Result<Vec<OcrLine>> {
+    let bitmap = software_bitmap(bgra, width, height)?;
+    let operation = engine.RecognizeAsync(&bitmap).context("starting OCR")?;
+    collect_lines(&finish_within(&operation, RECOGNITION_TIMEOUT)?, scaling)
 }
 
 fn same_line(seen: &OcrLine, line: &OcrLine) -> bool {
@@ -181,61 +143,6 @@ fn software_bitmap(bgra: &[u8], width: u32, height: u32) -> Result<SoftwareBitma
     .context("creating the OCR bitmap")
 }
 
-fn collect_lines(result: &OcrResult, scaling: Scaling) -> Result<Vec<OcrLine>> {
-    let lines = result.Lines().context("reading OCR lines")?;
-    let count = lines.Size().context("counting OCR lines")?;
-    let mut collected = Vec::with_capacity(count as usize);
-    for index in 0..count {
-        let line = lines.GetAt(index).context("reading an OCR line")?;
-        collected.push(convert_line(&line, scaling)?);
-    }
-    Ok(collected)
-}
-
-fn convert_line(line: &WinOcrLine, scaling: Scaling) -> Result<OcrLine> {
-    let text = line.Text().context("reading OCR line text")?.to_string_lossy();
-    let found = line.Words().context("reading OCR words")?;
-    let mut boxes = Vec::new();
-    let mut words = Vec::new();
-    for index in 0..found.Size().context("counting OCR words")? {
-        let word = found.GetAt(index).context("reading an OCR word")?;
-        let rect = word.BoundingRect().context("reading a word box")?;
-        let text = word.Text().context("reading OCR word text")?.to_string_lossy();
-        words.push(OcrWord { text, rect: union_to_screen(&[rect], scaling) });
-        boxes.push(rect);
-    }
-    Ok(OcrLine { text, rect: union_to_screen(&boxes, scaling), words })
-}
-
-fn union_to_screen(boxes: &[WinRect], scaling: Scaling) -> Rect {
-    let Some(union) = union_of(boxes) else {
-        return Rect::new(scaling.origin.x, scaling.origin.y, 0, 0);
-    };
-    let left = floor_to_screen(union.X, scaling.x, scaling.origin.x);
-    let top = floor_to_screen(union.Y, scaling.y, scaling.origin.y);
-    let right = ceil_to_screen(union.X + union.Width, scaling.x, scaling.origin.x);
-    let bottom = ceil_to_screen(union.Y + union.Height, scaling.y, scaling.origin.y);
-    Rect::new(left as i32, top as i32, (right - left) as i32, (bottom - top) as i32)
-}
-
-fn union_of(boxes: &[WinRect]) -> Option<WinRect> {
-    boxes.iter().copied().reduce(|union, word| {
-        let left = union.X.min(word.X);
-        let top = union.Y.min(word.Y);
-        let right = (union.X + union.Width).max(word.X + word.Width);
-        let bottom = (union.Y + union.Height).max(word.Y + word.Height);
-        WinRect { X: left, Y: top, Width: right - left, Height: bottom - top }
-    })
-}
-
-fn floor_to_screen(image: f32, factor: f64, origin: i32) -> f64 {
-    f64::from(origin) + (f64::from(image) * factor).floor()
-}
-
-fn ceil_to_screen(image: f32, factor: f64, origin: i32) -> f64 {
-    f64::from(origin) + (f64::from(image) * factor).ceil()
-}
-
 #[cfg(test)]
 mod tests {
     use std::time::Instant;
@@ -247,7 +154,8 @@ mod tests {
         DrawTextW, FW_BOLD, FillRect, GetStockObject, HBRUSH, HFONT, HGDIOBJ, OUT_DEFAULT_PRECIS, SetBkMode,
         SetTextColor, TRANSPARENT, WHITE_BRUSH,
     };
-    use windows_core::{Owned, w};
+    use windows::core::{Owned, w};
+    use winpilot_core::Point;
 
     use super::*;
     use crate::frame::FrameSource;
@@ -295,7 +203,7 @@ mod tests {
     fn recognises_text_drawn_in_memory() {
         let frame = draw_text_frame(900, 160, 30, Point::new(100, 50));
         let started = Instant::now();
-        let lines = ocr(&frame).unwrap();
+        let lines = ocr(&frame, OcrPass::Plain).unwrap();
         eprintln!("timing: OCR of a 900x160 synthetic frame: {:.1} ms", started.elapsed().as_secs_f64() * 1000.0);
         let line = lines.iter().find(|line| line.text.contains("WinPilot")).unwrap();
         assert!(line.text.contains("2026"));
@@ -310,21 +218,11 @@ mod tests {
     #[test]
     fn magnified_reading_maps_text_back_to_the_frame() {
         let frame = draw_text_frame(900, 160, 30, Point::new(100, 50));
-        let lines = ocr_magnified(&frame).unwrap();
+        let lines = ocr(&frame, OcrPass::Magnified).unwrap();
         let line = lines.iter().find(|line| line.text.contains("WinPilot")).unwrap();
         assert!(line.rect.x >= 100 + 20 && line.rect.x <= 100 + 60, "{:?}", line.rect);
         assert!(line.rect.y >= 50 && line.rect.bottom() <= 50 + 160, "{:?}", line.rect);
         assert_eq!(lines.iter().filter(|line| line.text.contains("WinPilot")).count(), 1);
-    }
-
-    #[test]
-    fn tiles_cover_the_frame_with_overlap() {
-        let tiles = tiles(5000, 1600, 1300, 64);
-        assert_eq!(tiles.len(), 8);
-        assert_eq!(tiles.iter().map(|tile| tile.x + tile.width).max(), Some(5000));
-        assert_eq!(tiles.iter().map(|tile| tile.y + tile.height).max(), Some(1600));
-        assert_eq!(tiles[1], Tile { x: 1236, y: 0, width: 1300, height: 1300 });
-        assert_eq!(super::tiles(800, 600, 1300, 64), vec![Tile { x: 0, y: 0, width: 800, height: 600 }]);
     }
 
     #[test]
@@ -335,21 +233,10 @@ mod tests {
         }
         let width = limit * 2;
         let frame = draw_text_frame(width, 300, limit as i32, Point::new(-50, 0));
-        let lines = ocr(&frame).unwrap();
+        let lines = ocr(&frame, OcrPass::Plain).unwrap();
         let line = lines.iter().find(|line| line.text.contains("WinPilot")).unwrap();
         let expected_left = limit as i32 - 50;
         assert!((line.rect.x - expected_left).abs() < 60, "{:?} vs {expected_left}", line.rect);
-    }
-
-    #[test]
-    fn word_boxes_are_unioned_and_scaled() {
-        let boxes = [
-            WinRect { X: 10.0, Y: 5.0, Width: 20.0, Height: 10.0 },
-            WinRect { X: 40.5, Y: 4.0, Width: 10.0, Height: 12.0 },
-        ];
-        let scaling = Scaling { origin: Point::new(-100, 200), x: 2.0, y: 2.0 };
-        assert_eq!(union_to_screen(&boxes, scaling), Rect::new(-80, 208, 81, 24));
-        assert_eq!(union_to_screen(&[], scaling), Rect::new(-100, 200, 0, 0));
     }
 
     #[test]
@@ -376,17 +263,11 @@ mod tests {
     }
 
     #[test]
-    fn scaling_follows_each_axis_of_the_fit() {
-        let frame = Frame::black(Point::new(-5, 9), 300, 200);
-        let scaling = Scaling::between(&frame, Fit { width: 150, height: 99, scale: 2.0 });
-        assert_eq!(scaling.origin, Point::new(-5, 9));
-        assert!((scaling.x - 2.0).abs() < 1e-12 && (scaling.y - 200.0 / 99.0).abs() < 1e-12);
-    }
-
-    #[test]
     fn malformed_frames_are_rejected() {
         let mut frame = Frame::black(Point::new(0, 0), 5, 5);
         frame.bgra.clear();
-        assert!(ocr(&frame).is_err());
+        for pass in [OcrPass::Plain, OcrPass::Magnified, OcrPass::Contrasted] {
+            assert!(ocr(&frame, pass).is_err());
+        }
     }
 }

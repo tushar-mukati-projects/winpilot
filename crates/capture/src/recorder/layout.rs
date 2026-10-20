@@ -1,16 +1,10 @@
+use crate::pixels::{BYTES_PER_PIXEL, Block};
+
 const MAX_VIDEO_HEIGHT: u32 = 2160;
 const MIN_SIDE: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Size {
-    pub width: u32,
-    pub height: u32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Placement {
-    pub x: u32,
-    pub y: u32,
     pub width: u32,
     pub height: u32,
 }
@@ -25,7 +19,7 @@ impl Size {
     }
 
     pub(crate) const fn bgra_len(self) -> usize {
-        self.pixels() * 4
+        self.pixels() * BYTES_PER_PIXEL
     }
 }
 
@@ -40,12 +34,12 @@ fn even_side(length: f64) -> u32 {
     (whole & !1).max(MIN_SIDE)
 }
 
-pub(crate) fn letterbox(source: Size, output: Size) -> Placement {
+pub(crate) fn letterbox(source: Size, output: Size) -> Block {
     let (width, height) = (f64::from(source.width.max(1)), f64::from(source.height.max(1)));
     let scale = (f64::from(output.width) / width).min(f64::from(output.height) / height);
     let fitted_width = ((width * scale).round() as u32).clamp(1, output.width.max(1));
     let fitted_height = ((height * scale).round() as u32).clamp(1, output.height.max(1));
-    Placement {
+    Block {
         x: (output.width.saturating_sub(fitted_width)) / 2,
         y: (output.height.saturating_sub(fitted_height)) / 2,
         width: fitted_width,
@@ -53,7 +47,7 @@ pub(crate) fn letterbox(source: Size, output: Size) -> Placement {
     }
 }
 
-impl Placement {
+impl Block {
     pub(crate) const fn fills(self, output: Size) -> bool {
         self.x == 0 && self.y == 0 && self.width == output.width && self.height == output.height
     }
@@ -109,14 +103,14 @@ mod tests {
     #[test]
     fn letterbox_centres_a_narrower_source() {
         let placement = letterbox(Size::new(800, 800), Size::new(1920, 1200));
-        assert_eq!(placement, Placement { x: 360, y: 0, width: 1200, height: 1200 });
+        assert_eq!(placement, Block { x: 360, y: 0, width: 1200, height: 1200 });
         assert!(!placement.fills(Size::new(1920, 1200)));
     }
 
     #[test]
     fn letterbox_centres_a_wider_source() {
         let placement = letterbox(Size::new(3000, 1000), Size::new(1920, 1200));
-        assert_eq!(placement, Placement { x: 0, y: 280, width: 1920, height: 640 });
+        assert_eq!(placement, Block { x: 0, y: 280, width: 1920, height: 640 });
     }
 
     #[test]

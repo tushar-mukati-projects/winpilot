@@ -5,6 +5,7 @@ use winpilot_core::{
     Rect, TargetSpec,
     config::GuardConfig,
     protocol::{ActArgs, Call, Direction, KeyAction, MouseAction, MouseButton, ObserveArgs, SetChange, Step, WaitArgs},
+    text_limit::ellipsized,
 };
 
 const MAX_SUMMARY_CHARS: usize = 600;
@@ -31,7 +32,7 @@ pub fn describe(call: &Call, redaction: Redaction<'_>) -> String {
         Call::Observe(args) => observe(args, redaction),
         Call::Act(args) => act(args, redaction),
     };
-    clip(summary)
+    ellipsized(&summary, MAX_SUMMARY_CHARS)
 }
 
 fn observe(args: &ObserveArgs, redaction: Redaction<'_>) -> String {
@@ -223,15 +224,6 @@ fn joined(head: &str, tail: &str) -> String {
 
 fn wire_name<T: Serialize>(value: &T) -> String {
     serde_json::to_value(value).ok().and_then(|value| value.as_str().map(str::to_string)).unwrap_or_default()
-}
-
-fn clip(summary: String) -> String {
-    if summary.chars().count() <= MAX_SUMMARY_CHARS {
-        return summary;
-    }
-    let mut clipped: String = summary.chars().take(MAX_SUMMARY_CHARS).collect();
-    clipped.push('…');
-    clipped
 }
 
 #[cfg(test)]

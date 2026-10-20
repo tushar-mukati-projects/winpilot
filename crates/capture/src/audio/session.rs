@@ -6,7 +6,7 @@ use winpilot_core::Result;
 use super::device::Endpoint;
 use super::feed::{Catch, Feed};
 use super::mixer::Mixer;
-use super::pcm::AudioFormat;
+use super::pcm::{AudioFormat, STEREO_48_KHZ};
 use super::qpc::qpc_now_hns;
 use super::source::AudioSource;
 
@@ -29,7 +29,7 @@ impl Session {
         let mut mic = source.includes_mic().then(|| Feed::open(Endpoint::Microphone)).transpose()?;
         let format = match (&system, &mic) {
             (Some(feed), _) | (None, Some(feed)) => feed.format(),
-            (None, None) => AudioFormat { sample_rate: 48_000, channels: 2 },
+            (None, None) => STEREO_48_KHZ,
         };
         if let Some(feed) = mic.as_mut() {
             feed.convert_to(format);

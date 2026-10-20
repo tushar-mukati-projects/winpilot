@@ -1,24 +1,23 @@
-use std::{ffi::c_void, mem::size_of};
+use std::ffi::c_void;
 
 use windows::{
     Win32::{
-        Foundation::{ERROR_CLASS_ALREADY_EXISTS, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
-        System::LibraryLoader::GetModuleHandleW,
+        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+        Graphics::Gdi::HBRUSH,
         UI::{
             Input::HRAWINPUT,
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, DestroyWindow, HWND_MESSAGE, MSG, RegisterClassExW, WINDOW_EX_STYLE,
-                WINDOW_STYLE, WM_INPUT, WNDCLASSEXW,
+                CreateWindowExW, DefWindowProcW, DestroyWindow, HWND_MESSAGE, MSG, WINDOW_EX_STYLE, WINDOW_STYLE,
+                WM_INPUT,
             },
         },
     },
     core::{PCWSTR, w},
 };
 use winpilot_core::{Context, Result};
+use winpilot_win32::{ThreadMessages, module_instance, register_window_class};
 
-use crate::{
-    message_thread::ThreadMessages, raw_input::handle_raw_input, raw_input_registration::RawInputRegistration,
-};
+use crate::{raw_input::handle_raw_input, raw_input_registration::RawInputRegistration};
 
 const SINK_CLASS: PCWSTR = w!("WinPilotRawInputSink");
 
@@ -74,27 +73,9 @@ impl Drop for MessageWindow {
     }
 }
 
-fn module_instance() -> Result<HINSTANCE> {
-    let module = unsafe { GetModuleHandleW(PCWSTR::null()) }.context("finding this module")?;
-    Ok(module.into())
-}
-
 fn register_sink_class(instance: HINSTANCE) -> Result<()> {
-    let class = WNDCLASSEXW {
-        cbSize: size_of::<WNDCLASSEXW>() as u32,
-        lpfnWndProc: Some(sink_window_proc),
-        hInstance: instance,
-        lpszClassName: SINK_CLASS,
-        ..WNDCLASSEXW::default()
-    };
-    if unsafe { RegisterClassExW(&raw const class) } != 0 {
-        return Ok(());
-    }
-    let error = windows::core::Error::from_thread();
-    if error.code() == ERROR_CLASS_ALREADY_EXISTS.to_hresult() {
-        return Ok(());
-    }
-    Err(error).context("registering the raw input window class")
+    register_window_class(instance, SINK_CLASS, Some(sink_window_proc), HBRUSH::default())
+        .context("registering the raw input window class")
 }
 
 unsafe extern "system" fn sink_window_proc(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {

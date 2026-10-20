@@ -1,7 +1,8 @@
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
-use windows::Win32::UI::WindowsAndMessaging::{PW_RENDERFULLCONTENT, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_NULL};
+use windows::Win32::UI::WindowsAndMessaging::{PW_RENDERFULLCONTENT, SMTO_ABORTIFHUNG, WM_NULL};
 use winpilot_core::{Point, Rect, Result};
+use winpilot_win32::send_message_timeout;
 
 use crate::capture_area::CaptureArea;
 use crate::dpi::with_window_dpi;
@@ -21,19 +22,7 @@ pub(crate) fn printed_window(hwnd: HWND, outer: Rect) -> Option<Frame> {
 }
 
 fn responds_promptly(hwnd: HWND) -> bool {
-    let mut result = 0usize;
-    let sent = unsafe {
-        SendMessageTimeoutW(
-            hwnd,
-            WM_NULL,
-            WPARAM(0),
-            LPARAM(0),
-            SMTO_ABORTIFHUNG,
-            RESPONSE_TIMEOUT_MS,
-            Some(&raw mut result),
-        )
-    };
-    sent.0 != 0
+    send_message_timeout(hwnd, WM_NULL, WPARAM(0), LPARAM(0), SMTO_ABORTIFHUNG, RESPONSE_TIMEOUT_MS).is_some()
 }
 
 fn print_at_window_dpi(hwnd: HWND) -> Result<Option<Frame>> {
@@ -61,7 +50,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
-    use windows_core::w;
+    use windows::core::w;
 
     use super::*;
 
@@ -84,6 +73,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "captures the live screen"]
     fn the_taskbar_responds_and_prints_as_a_window() {
         let Ok(taskbar) = (unsafe { FindWindowW(w!("Shell_TrayWnd"), None) }) else {
             return;

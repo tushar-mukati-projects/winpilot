@@ -4,7 +4,7 @@ use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, GdiFlush,
     GetDC, HBITMAP, HDC, HGDIOBJ, ReleaseDC, SelectObject,
 };
-use windows_core::Owned;
+use windows::core::Owned;
 use winpilot_core::{Context, Error, Point, Result};
 
 use crate::frame::{Frame, FrameSource};
@@ -104,7 +104,7 @@ impl GdiSurface {
     }
 
     pub(crate) fn pixels(&self) -> Result<Pixels<'_>> {
-        unsafe { GdiFlush() }.ok().context("flushing GDI")?;
+        flush_gdi()?;
         let stride = self.width as usize * BYTES_PER_PIXEL;
         let bytes = unsafe { std::slice::from_raw_parts(self.bits, stride * self.height as usize) };
         Ok(Pixels { bytes, stride })
@@ -114,6 +114,10 @@ impl GdiSurface {
         let bgra = self.pixels()?.bytes.to_vec();
         Ok(Frame { origin, width: self.width, height: self.height, bgra, source })
     }
+}
+
+fn flush_gdi() -> Result<()> {
+    unsafe { GdiFlush() }.ok().context("flushing GDI")
 }
 
 fn create_top_down_dib(dc: &MemoryDc, width: u32, height: u32) -> Result<(Owned<HBITMAP>, *const u8)> {

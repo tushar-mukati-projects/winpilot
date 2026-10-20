@@ -8,11 +8,7 @@ use windows::{
     core::{HSTRING, PCWSTR},
 };
 use winpilot_core::{Context, Error, Result};
-
-use crate::{
-    handle::{adopt, raw},
-    timeouts::finite_millis,
-};
+use winpilot_win32::{adopt, finite_millis, raw};
 
 pub struct NamedMutex {
     handle: OwnedHandle,
@@ -29,7 +25,7 @@ impl NamedMutex {
         let name_text = object_name(name)?;
         let created = unsafe { CreateMutexW(None, false, PCWSTR(name_text.as_ptr())) }
             .context(&format!("creating mutex {name}"))?;
-        let handle = adopt(created).context("mutex handle")?;
+        let handle = unsafe { adopt(created) }.context("mutex handle")?;
         Ok(Self { handle })
     }
 
@@ -73,7 +69,7 @@ impl NamedEvent {
         let name_text = object_name(name)?;
         let created = unsafe { CreateEventW(None, true, false, PCWSTR(name_text.as_ptr())) }
             .context(&format!("creating event {name}"))?;
-        let handle = adopt(created).context("event handle")?;
+        let handle = unsafe { adopt(created) }.context("event handle")?;
         Ok(Self { handle })
     }
 

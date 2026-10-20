@@ -1,13 +1,8 @@
 use windows::Win32::Foundation::HWND;
 use winpilot_core::{Rect, Result, WindowRef};
+use winpilot_win32::{class_name, is_cloaked, is_minimized, is_visible, owning_pid, ref_of, title, top_level_windows};
 
-use crate::{
-    process::ProcessLookup,
-    window_geometry::visible_rect,
-    window_identity::{class_name, owning_pid, ref_of, title},
-    window_list::top_level_windows,
-    window_visibility::{is_cloaked, is_minimized, is_visible},
-};
+use crate::{process::ProcessLookup, window_geometry::visible_rect};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VisibleWindow {

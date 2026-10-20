@@ -1,9 +1,7 @@
 use winpilot_core::WindowRef;
+use winpilot_win32::{live_hwnd, owning_pid, title};
 
-use crate::{
-    process::ProcessLookup,
-    window_identity::{live_hwnd, owning_pid, title},
-};
+use crate::process::ProcessLookup;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowLabel {

@@ -5,8 +5,9 @@ use std::{
 
 use parking_lot::Mutex;
 use winpilot_core::{Result, WindowRef};
+use winpilot_win32::MessageThread;
 
-use crate::{activity::ActivityBoard, message_thread::MessageThread, win_event_hooks::install_change_hooks};
+use crate::{activity::ActivityBoard, win_event_hooks::install_change_hooks};
 
 static BOARD: OnceLock<ActivityBoard> = OnceLock::new();
 static RUNNING: Mutex<Weak<MessageThread>> = Mutex::new(Weak::new());

@@ -9,17 +9,19 @@ use winpilot_core::{
 
 use crate::{
     app_windows::app_windows,
+    call_scope::CallScope,
     engine::Engine,
     ocr_read::{Freshness, window_lines},
     overlay, resolve,
 };
 
-pub(crate) fn run(engine: &Engine, request: &ElementsRequest) -> Result<Observation> {
+pub(crate) fn run(engine: &Engine, request: &ElementsRequest, call: &CallScope) -> Result<Observation> {
     let window = resolve::window(engine, request.window.as_deref())?;
     let query = request.query.as_deref().map(str::parse::<Selector>).transpose()?;
     let mut observation = observe_window(engine, &window)?;
     if let Some(query) = query {
-        observation.snapshot = keep_matches_and_ancestors(&observation.snapshot, &query);
+        let snapshot = resolve::searched(engine, observation.snapshot, &query, call.deadline())?;
+        observation.snapshot = keep_matches_and_ancestors(&snapshot, &query);
     }
     overlay::scan(engine, &window);
     Ok(observation)

@@ -66,7 +66,7 @@ impl PillKind {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::overlay::driving::Driving;
+    use crate::overlay::presence::Driving;
 
     const WORKING: PresenceLook = PresenceLook { tone: Tone::Working, driving: Driving::Foreground, room: 800 };
 

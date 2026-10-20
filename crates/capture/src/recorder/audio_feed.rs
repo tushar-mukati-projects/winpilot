@@ -5,9 +5,9 @@ use winpilot_core::Error;
 
 use super::audio_backlog::{TrackBacklog, TrackSamples};
 use super::audio_lead::{Lead, lead_for};
-use crate::audio::{AudioCapture, AudioChunk, AudioFormat, Converter};
+use crate::audio::{AudioCapture, AudioChunk, AudioFormat, Converter, STEREO_48_KHZ};
 
-pub(crate) const TRACK_FORMAT: AudioFormat = AudioFormat { sample_rate: 48_000, channels: 2 };
+pub(crate) const TRACK_FORMAT: AudioFormat = STEREO_48_KHZ;
 
 pub(crate) struct AudioFeed {
     capture: Option<AudioCapture>,

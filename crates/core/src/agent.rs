@@ -1,3 +1,5 @@
+use crate::text_limit::capped;
+
 const KNOWN_AGENTS: [(&str, &str); 8] = [
     ("claude", "Claude"),
     ("codex", "Codex"),
@@ -10,7 +12,6 @@ const KNOWN_AGENTS: [(&str, &str); 8] = [
 ];
 const FALLBACK: &str = "AI agent";
 const MAX_LABEL_CHARS: usize = 24;
-const ELLIPSIS: char = '\u{2026}';
 const INVISIBLE_FORMATTING: [(char, char); 4] =
     [('\u{200B}', '\u{200F}'), ('\u{202A}', '\u{202E}'), ('\u{2066}', '\u{2069}'), ('\u{FEFF}', '\u{FEFF}')];
 
@@ -35,19 +36,11 @@ pub(crate) fn sanitized_label(text: &str) -> String {
         .map(|c| if c.is_whitespace() { ' ' } else { c })
         .filter(|c| !c.is_control() && !is_invisible_formatting(*c))
         .collect();
-    capped(&visible.split_whitespace().collect::<Vec<_>>().join(" "))
+    capped(&visible.split_whitespace().collect::<Vec<_>>().join(" "), MAX_LABEL_CHARS)
 }
 
 fn is_invisible_formatting(c: char) -> bool {
     INVISIBLE_FORMATTING.iter().any(|(first, last)| (*first..=*last).contains(&c))
-}
-
-fn capped(label: &str) -> String {
-    if label.chars().count() <= MAX_LABEL_CHARS {
-        return label.to_string();
-    }
-    let kept: String = label.chars().take(MAX_LABEL_CHARS - 1).collect();
-    format!("{}{ELLIPSIS}", kept.trim_end())
 }
 
 fn title_cased(word: &str) -> String {
@@ -58,6 +51,7 @@ fn title_cased(word: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text_limit::ELLIPSIS;
 
     #[test]
     fn known_clients_get_their_product_names() {

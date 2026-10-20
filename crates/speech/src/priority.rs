@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use windows::Win32::Foundation::HANDLE;
 use windows::Win32::System::Threading::{
     GetCurrentThread, GetThreadPriority, SetThreadPriority, THREAD_PRIORITY, THREAD_PRIORITY_BELOW_NORMAL,
 };
@@ -31,7 +32,7 @@ pub(crate) fn lower_current_thread() -> Result<()> {
 }
 
 fn current_thread_priority() -> Result<THREAD_PRIORITY> {
-    let priority = unsafe { GetThreadPriority(GetCurrentThread()) };
+    let priority = unsafe { GetThreadPriority(current_thread()) };
     if priority == PRIORITY_ERROR_RETURN {
         return Err(Error::internal(format!("reading the thread priority: {}", windows::core::Error::from_thread())));
     }
@@ -39,7 +40,11 @@ fn current_thread_priority() -> Result<THREAD_PRIORITY> {
 }
 
 fn set_current_thread_priority(priority: THREAD_PRIORITY) -> Result<()> {
-    unsafe { SetThreadPriority(GetCurrentThread(), priority) }.context("setting the thread priority")
+    unsafe { SetThreadPriority(current_thread(), priority) }.context("setting the thread priority")
+}
+
+fn current_thread() -> HANDLE {
+    unsafe { GetCurrentThread() }
 }
 
 pub(crate) fn run_below_normal<T: Send>(threads: usize, work: impl FnOnce() -> T + Send) -> Result<T> {

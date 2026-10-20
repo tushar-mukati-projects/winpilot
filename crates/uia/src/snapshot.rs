@@ -4,16 +4,17 @@ use std::{
 };
 
 use winpilot_core::{Element, ElementRef, Error, Result, Snapshot, WindowInfo, WindowRef};
+use winpilot_win32::{hwnd_of, is_foreground, is_minimized, window_exists};
 
 use crate::{
     automation::Uia,
-    cached_tree::{CachedNode, TreeRead, TreeRequests},
+    cached_tree::{CachedNode, TreeRead},
     failure::UiaResult,
     options::SnapshotOptions,
     properties::NodeProps,
     registry::Sighting,
+    requests::TreeRequests,
     tree_path::{TreePath, View},
-    win,
     window_identity::WindowIdentity,
 };
 
@@ -55,7 +56,7 @@ impl Uia {
         self.registry.begin_snapshot(window.hwnd);
         let walk = self.walk_with_chromium_retry(&identity, options)?;
         self.evict_stale_refs();
-        let focused = walk.focused.filter(|_| win::is_foreground(window.hwnd));
+        let focused = walk.focused.filter(|_| is_foreground(window.hwnd));
         Ok(Snapshot { window: window.clone(), elements: walk.elements, focused, truncated: walk.truncated })
     }
 
@@ -79,17 +80,17 @@ impl Uia {
     }
 
     fn needs_wake_up(&mut self, window: &WindowIdentity, count: usize) -> bool {
-        if win::is_minimized(window.hwnd) {
+        if is_minimized(hwnd_of(window.hwnd)) {
             return false;
         }
         self.warmed.first_visit(window.hwnd) && is_sparse_chromium(&window.class, count)
     }
 
     fn cached_tree(&self, window: WindowRef, view: View) -> Result<(CachedNode, TreeRead)> {
-        if !win::window_exists(window) {
+        if !window_exists(window) {
             return Err(window_gone(window));
         }
-        let root = unsafe { self.automation.ElementFromHandle(win::hwnd(window)) }
+        let root = unsafe { self.automation.ElementFromHandle(hwnd_of(window)) }
             .uia(&format!("opening window {window} in UI Automation"))?;
         self.read_tree(&root, self.requests.props_in(view)).uia(&format!("reading the elements of window {window}"))
     }
@@ -124,6 +125,7 @@ impl Uia {
             }
             walk.elements.push(props.into_element(id, depth));
         }
+        walk.truncated |= read.incomplete;
         walk
     }
 
@@ -131,7 +133,7 @@ impl Uia {
         &self,
         pending: &mut Vec<Pending>,
         parent: &Pending,
-        requests: TreeRequests<'_>,
+        requests: &TreeRequests,
         read: &mut TreeRead,
     ) {
         let children = self.tree_children(&parent.node, requests, read);
@@ -183,6 +185,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "reads the user's windows"]
     fn onscreen_snapshots_leave_offscreen_elements_out() {
         let Some(window) = foreground() else { return };
         let full = SnapshotOptions { include_offscreen: true, ..SnapshotOptions::default() };
@@ -200,7 +203,7 @@ mod tests {
         let window = taskbar();
         let hwnd = window.hwnd;
         let snapshot = handle().run(move |uia| uia.snapshot(&window, &SnapshotOptions::default())).unwrap();
-        if !win::is_foreground(hwnd) {
+        if !is_foreground(hwnd) {
             assert_eq!(snapshot.focused, None);
         }
     }
@@ -248,6 +251,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "reads the user's windows"]
     fn foreground_snapshot_reports_timings() {
         let Some(window) = foreground() else { return };
         let uia = handle();

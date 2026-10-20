@@ -1,6 +1,6 @@
 use winpilot_core::{WindowInfo, WindowRef};
+use winpilot_win32::owner_chain;
 
-use super::foreground::owner_chain;
 use crate::window_classes::is_shell;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +40,7 @@ impl Target {
             hwnd: window.hwnd,
             topmost: winpilot_desktop::is_topmost(window.hwnd),
             elsewhere: !window.on_current_desktop,
-            owners: owner_chain(Some(window.hwnd)),
+            owners: owner_chain(window.hwnd),
         }
     }
 }

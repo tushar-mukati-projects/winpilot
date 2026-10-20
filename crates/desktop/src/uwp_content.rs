@@ -8,8 +8,7 @@ use windows::{
     core::BOOL,
 };
 use winpilot_core::WindowRef;
-
-use crate::window_identity::{class_name, live_hwnd, owning_pid};
+use winpilot_win32::{class_name, live_hwnd, owning_pid};
 
 const CORE_WINDOW_CLASS: &str = "Windows.UI.Core.CoreWindow";
 

@@ -45,11 +45,7 @@ mod tests {
     use winpilot_core::{ErrorCode, Rect};
 
     use super::*;
-    use crate::test_fixture::window;
-
-    fn step(json: &str) -> Step {
-        serde_json::from_str(json).unwrap()
-    }
+    use crate::test_fixture::{step, window};
 
     fn here() -> WindowInfo {
         window(5, "app.exe", "Here", Rect::new(0, 0, 10, 10))

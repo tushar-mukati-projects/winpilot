@@ -6,6 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use winpilot_core::Result;
+use winpilot_win32::ComApartment;
 
 use super::clock::{TickClock, total_ticks};
 use super::encoder::{Encoded, EncoderInput, EncoderStart, EncoderThread};
@@ -17,7 +18,6 @@ use super::sound_start::{start_sound, without_sound};
 use super::source::Source;
 use super::spec::{RecordingSource, Redactor, StopCheck, VideoSettings};
 use super::video_writer::WriterSettings;
-use crate::com::ComApartment;
 use crate::dpi::make_thread_per_monitor_aware;
 
 const STOP_POLL: Duration = Duration::from_millis(50);

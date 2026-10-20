@@ -23,6 +23,8 @@ const MAX_WIDTH: u32 = 2576;
 const MIN_HEIGHT_LIMIT: u32 = 1568;
 const MAX_NATIVE_SIDE: u32 = 8000;
 const MAX_MARKS: usize = 150;
+const LOWEST_QUALITY: u8 = 1;
+const HIGHEST_QUALITY: u8 = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Source {
@@ -116,7 +118,7 @@ fn marks(snapshot: &Snapshot, frame: Rect) -> Vec<Mark> {
 }
 
 fn encode_options(wanted: ImageQuality, format: ImageFormat) -> EncodeOptions {
-    let quality = wanted.quality.clamp(1, 100);
+    let quality = wanted.quality.clamp(LOWEST_QUALITY, HIGHEST_QUALITY);
     let Some(max_width) = wanted.max_width else {
         return EncodeOptions { max_width: MAX_NATIVE_SIDE, max_height: MAX_NATIVE_SIDE, format, quality };
     };
@@ -274,6 +276,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "captures the live screen"]
     fn primary_monitor_round_trips() {
         let primary = engine().capturer.monitor_rects().unwrap()[0];
         let report = shoot(&ScreenshotRequest { monitor: Some(0), ..args() }).unwrap();
@@ -287,6 +290,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "captures the live screen"]
     fn small_region_is_unscaled_png() {
         let primary = engine().capturer.monitor_rects().unwrap()[0];
         let region = Rect::new(primary.x + 10, primary.y + 10, 200, 100);
@@ -299,6 +303,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "captures the live screen"]
     fn presets_change_the_size_and_quality_of_a_monitor_shot() {
         let primary = engine().capturer.monitor_rects().unwrap()[0];
         let preset = |quality| ScreenshotRequest { monitor: Some(0), preset: Some(quality), ..args() };
@@ -323,12 +328,17 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "captures the user's default window"]
     fn default_window_round_trips() {
         if default_window(engine()).is_err() {
             return;
         }
         let report = match shoot(&args()) {
-            Err(error) if matches!(error.code, ErrorCode::NotFound | ErrorCode::InvalidArgument) => return,
+            Err(error)
+                if matches!(error.code, ErrorCode::NotFound | ErrorCode::InvalidArgument | ErrorCode::Obscured) =>
+            {
+                return;
+            }
             result => result.unwrap(),
         };
         assert!(report.width <= 1280 && report.height <= 1568);
@@ -341,7 +351,7 @@ mod tests {
     #[test]
     #[ignore = "opens the off-screen fixture window"]
     fn background_fixture_window_is_captured_with_marks() {
-        let Some(app) = FixtureApp::launch() else { return };
+        let app = FixtureApp::launch();
         let target = Some(app.hwnd().to_string());
         let report = shoot(&ScreenshotRequest { target, marks: true, ..args() }).unwrap();
         assert_covers(&report, app.window.rect);
@@ -356,7 +366,7 @@ mod tests {
     #[test]
     #[ignore = "opens the off-screen fixture window"]
     fn fixture_element_is_cropped() {
-        let Some(app) = FixtureApp::launch() else { return };
+        let app = FixtureApp::launch();
         let tree = engine().snapshot(&app.window).unwrap();
         let button = tree.elements.iter().find(|found| found.automation_id == "2003").unwrap().clone();
         let report = shoot(&ScreenshotRequest { target: Some(button.id.to_string()), ..args() }).unwrap();

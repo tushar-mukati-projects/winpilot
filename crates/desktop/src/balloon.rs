@@ -2,30 +2,28 @@ use std::time::Duration;
 
 use windows::Win32::UI::WindowsAndMessaging::MSG;
 use winpilot_core::{Error, Result};
+use winpilot_win32::{Cancel, ThreadMessages, Timer, finite_millis};
 
 use crate::{
     balloon_text::BalloonText,
     balloon_window::{BALLOON_CALLBACK, BalloonWindow},
-    message_thread::ThreadMessages,
-    startup_cancel::StartupCancel,
-    timeouts::finite_millis,
     tray_icon::TrayIcon,
-    window_timer::WindowTimer,
 };
 
 const BALLOON_LIFETIME: Duration = Duration::from_secs(10);
 const LIFETIME_TIMER: usize = 1;
+const GAVE_UP: &str = "the caller stopped waiting for this thread to start";
 
 #[derive(Debug)]
 struct BalloonLifetime {
-    _timer: WindowTimer,
+    _timer: Timer,
     window: BalloonWindow,
 }
 
 impl BalloonLifetime {
     fn start(lifetime: Duration) -> Result<Self> {
         let window = BalloonWindow::create()?;
-        let timer = WindowTimer::start(window.hwnd(), LIFETIME_TIMER, finite_millis(lifetime))
+        let timer = Timer::on_window(window.hwnd(), LIFETIME_TIMER, finite_millis(lifetime))
             .ok_or_else(|| Error::internal("could not start the notification's lifetime timer"))?;
         Ok(Self { _timer: timer, window })
     }
@@ -38,11 +36,11 @@ pub(crate) struct Balloon {
 }
 
 impl Balloon {
-    pub(crate) fn show(text: &BalloonText, cancel: &StartupCancel) -> Result<Self> {
+    pub(crate) fn show(text: &BalloonText, cancel: &Cancel) -> Result<Self> {
         let lifetime = BalloonLifetime::start(BALLOON_LIFETIME)?;
-        cancel.check()?;
+        cancel.check(GAVE_UP)?;
         let icon = TrayIcon::add(lifetime.window.hwnd(), BALLOON_CALLBACK)?;
-        cancel.check()?;
+        cancel.check(GAVE_UP)?;
         icon.show_balloon(text)?;
         Ok(Self { _icon: icon, _lifetime: lifetime })
     }
@@ -61,8 +59,9 @@ mod tests {
         time::{Duration, Instant},
     };
 
+    use winpilot_win32::MessageThread;
+
     use super::*;
-    use crate::message_thread::MessageThread;
 
     struct Lifetime {
         _lifetime: BalloonLifetime,

@@ -17,7 +17,7 @@ impl ScreenGrabber {
         let screen = ScreenDc::acquire()?;
         unsafe { BitBlt(surface.dc(), 0, 0, part.width, part.height, Some(screen.dc()), part.x, part.y, SRCCOPY) }
             .context("BitBlt from the screen")?;
-        let from = Block { x: 0, y: 0, width: width as usize, height: height as usize };
+        let from = Block { x: 0, y: 0, width, height };
         let to = frame.offset_of(Point::new(part.x, part.y));
         copy_block(&surface.pixels()?, from, &mut frame.pixels_mut(), to)
     }

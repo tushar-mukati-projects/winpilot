@@ -1,9 +1,9 @@
 use std::sync::mpsc::{Receiver, Sender};
 
 use winpilot_core::{Error, Rect, Result, WindowRef};
+use winpilot_win32::ComApartment;
 
 use crate::capture_area::CaptureArea;
-use crate::com::ComApartment;
 use crate::compose::capture_area;
 use crate::displays::Displays;
 use crate::dpi::make_thread_per_monitor_aware;

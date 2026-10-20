@@ -3,6 +3,7 @@ use candle_nn::{Embedding, LayerNorm, Linear, Module, VarBuilder, embedding, lay
 use candle_transformers::models::whisper::Config;
 
 const LAYER_NORM_EPS: f64 = 1e-5;
+const MLP_EXPANSION: usize = 4;
 
 struct Attention {
     query: Linear,
@@ -82,8 +83,8 @@ impl Block {
             self_norm: layer_norm(width, LAYER_NORM_EPS, weights.pp("self_attn_layer_norm"))?,
             cross_attention: Attention::load(width, heads, &weights.pp("encoder_attn"))?,
             cross_norm: layer_norm(width, LAYER_NORM_EPS, weights.pp("encoder_attn_layer_norm"))?,
-            expand: linear(width, width * 4, weights.pp("fc1"))?,
-            contract: linear(width * 4, width, weights.pp("fc2"))?,
+            expand: linear(width, width * MLP_EXPANSION, weights.pp("fc1"))?,
+            contract: linear(width * MLP_EXPANSION, width, weights.pp("fc2"))?,
             mlp_norm: layer_norm(width, LAYER_NORM_EPS, weights.pp("final_layer_norm"))?,
         })
     }

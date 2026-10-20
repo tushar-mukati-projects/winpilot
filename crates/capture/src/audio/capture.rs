@@ -16,19 +16,18 @@ const START_PATIENCE: Duration = Duration::from_secs(5);
 const ABANDON_GRACE: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AudioChunk {
+pub(crate) struct AudioChunk {
     pub first_frame: u64,
     pub samples: Vec<f32>,
 }
 
 #[derive(Debug)]
-pub struct AudioEnd {
+pub(crate) struct AudioEnd {
     pub chunks: Vec<AudioChunk>,
     pub error: Option<Error>,
 }
 
-pub struct AudioCapture {
-    source: AudioSource,
+pub(crate) struct AudioCapture {
     opened: Opened,
     chunks: Receiver<AudioChunk>,
     stop: Arc<AtomicBool>,
@@ -36,7 +35,7 @@ pub struct AudioCapture {
 }
 
 impl AudioCapture {
-    pub fn start(source: AudioSource) -> Result<Self> {
+    pub(crate) fn start(source: AudioSource) -> Result<Self> {
         let (ready, opened) = mpsc::channel();
         let (sender, chunks) = mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));
@@ -46,10 +45,11 @@ impl AudioCapture {
             .spawn(move || run(input))
             .context("starting the audio capture thread")?;
         match opened.recv_timeout(START_PATIENCE) {
-            Ok(Ok(opened)) => Ok(Self { source, opened, chunks, stop, thread: Some(thread) }),
+            Ok(Ok(opened)) => Ok(Self { opened, chunks, stop, thread: Some(thread) }),
             Ok(Err(error)) => Err(abandon(thread, &stop, error)),
             Err(RecvTimeoutError::Timeout) => {
-                Err(abandon(thread, &stop, Error::timeout("the audio device did not start within 5 s")))
+                let message = format!("the audio device did not start within {} s", START_PATIENCE.as_secs());
+                Err(abandon(thread, &stop, Error::timeout(message)))
             }
             Err(RecvTimeoutError::Disconnected) => {
                 Err(abandon(thread, &stop, Error::internal("the audio capture thread stopped while starting")))
@@ -57,23 +57,19 @@ impl AudioCapture {
         }
     }
 
-    pub const fn source(&self) -> AudioSource {
-        self.source
-    }
-
-    pub const fn format(&self) -> AudioFormat {
+    pub(crate) const fn format(&self) -> AudioFormat {
         self.opened.format
     }
 
-    pub const fn origin(&self) -> Instant {
+    pub(crate) const fn origin(&self) -> Instant {
         self.opened.origin
     }
 
-    pub const fn chunks(&self) -> &Receiver<AudioChunk> {
+    pub(crate) const fn chunks(&self) -> &Receiver<AudioChunk> {
         &self.chunks
     }
 
-    pub fn stop(mut self) -> AudioEnd {
+    pub(crate) fn stop(mut self) -> AudioEnd {
         self.finish()
     }
 

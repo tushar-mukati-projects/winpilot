@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use tokio::time::{Instant, Sleep, sleep_until};
-use winpilot_core::{Error, ErrorCode};
+use winpilot_core::Error;
 
 use crate::death::{Death, seconds};
 
@@ -39,12 +39,14 @@ impl Deadline {
             self.tool,
             seconds(self.budget)
         );
-        Error::new(ErrorCode::TargetNotResponding, message)
+        Error::target_not_responding(message)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use winpilot_core::ErrorCode;
+
     use super::*;
 
     #[test]

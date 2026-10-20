@@ -1,8 +1,9 @@
 use windows::Win32::Foundation::RECT;
-use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, HMONITOR, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromRect};
+use windows::Win32::Graphics::Gdi::{HMONITOR, MONITOR_DEFAULTTONULL, MonitorFromRect};
 use winpilot_core::{Error, Rect, Result};
+use winpilot_win32::rect_from_win32;
 
-use crate::convert::rect_from_win32;
+use crate::monitor_list::monitor_info;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct MonitorArea {
@@ -60,11 +61,9 @@ impl MonitorArea {
 }
 
 fn monitor_rect(monitor: HMONITOR) -> Result<Rect> {
-    let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..MONITORINFO::default() };
-    if !unsafe { GetMonitorInfoW(monitor, &raw mut info) }.as_bool() {
-        return Err(Error::internal("GetMonitorInfoW failed for the recorded monitor"));
-    }
-    Ok(rect_from_win32(info.rcMonitor))
+    let info =
+        monitor_info(monitor).ok_or_else(|| Error::internal("GetMonitorInfoW failed for the recorded monitor"))?;
+    Ok(rect_from_win32(info.monitorInfo.rcMonitor))
 }
 
 #[cfg(test)]

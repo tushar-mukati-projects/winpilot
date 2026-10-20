@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
-const NANOS_PER_SECOND: u64 = 1_000_000_000;
-const HUNDRED_NANOS_PER_SECOND: u64 = 10_000_000;
+use crate::time_units::{HNS_PER_SECOND, NANOS_PER_SECOND, frames_in};
+
 const CENTISECONDS_PER_SECOND: u64 = 100;
 
 #[derive(Debug, Clone, Copy)]
@@ -30,27 +30,21 @@ fn tick_offset(tick: u64, fps: u32) -> Duration {
 }
 
 fn ticks_elapsed(elapsed: Duration, fps: u32) -> u64 {
-    let ticks = elapsed.as_nanos() * u128::from(fps.max(1)) / u128::from(NANOS_PER_SECOND);
-    u64::try_from(ticks).unwrap_or(u64::MAX)
+    u64::try_from(frames_in(elapsed, fps.max(1))).unwrap_or(u64::MAX)
 }
 
 pub(crate) fn total_ticks(fps: u32, seconds: u32) -> u64 {
     u64::from(fps.max(1)) * u64::from(seconds)
 }
 
-pub(crate) fn sample_time(tick: u64, fps: u32) -> i64 {
-    let units = u128::from(tick) * u128::from(HUNDRED_NANOS_PER_SECOND) / u128::from(fps.max(1));
+pub(crate) fn sample_time(index: u64, per_second: u32) -> i64 {
+    let units = u128::from(index) * u128::from(HNS_PER_SECOND) / u128::from(per_second.max(1));
     i64::try_from(units).unwrap_or(i64::MAX)
 }
 
 pub(crate) fn audio_frames_at(tick: u64, fps: u32, rate: u32) -> u64 {
     let frames = u128::from(tick) * u128::from(rate) / u128::from(fps.max(1));
     u64::try_from(frames).unwrap_or(u64::MAX)
-}
-
-pub(crate) fn audio_sample_time(frame: u64, rate: u32) -> i64 {
-    let units = u128::from(frame) * u128::from(HUNDRED_NANOS_PER_SECOND) / u128::from(rate.max(1));
-    i64::try_from(units).unwrap_or(i64::MAX)
 }
 
 pub(crate) fn gif_delay(first_tick: u64, end_tick: u64, fps: u32) -> u64 {
@@ -124,9 +118,9 @@ mod tests {
         assert_eq!(audio_frames_at(30, 30, 48_000), 48_000);
         assert_eq!(audio_frames_at(1, 30, 48_000), 1600);
         assert_eq!(audio_frames_at(7, 24, 48_000), 14_000);
-        assert_eq!(audio_sample_time(48_000, 48_000), sample_time(30, 30));
-        assert_eq!(audio_sample_time(1024, 48_000), 213_333);
-        assert_eq!(audio_sample_time(0, 0), 0);
+        assert_eq!(sample_time(48_000, 48_000), sample_time(30, 30));
+        assert_eq!(sample_time(1024, 48_000), 213_333);
+        assert_eq!(sample_time(0, 0), 0);
     }
 
     #[test]

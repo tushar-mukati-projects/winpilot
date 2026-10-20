@@ -1,17 +1,16 @@
 use windows::Win32::Foundation::{HWND, RECT};
-use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
-use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, IsIconic, IsWindow};
-use winpilot_core::{Context, Error, ErrorCode, Rect, Result, WindowRef};
+use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+use winpilot_core::{Context, Error, Rect, Result, WindowRef};
+use winpilot_win32::{frame_bounds, is_minimized, live_hwnd, rect_from_win32};
 
 use crate::capture_area::CaptureArea;
-use crate::convert::{hwnd_from_ref, rect_from_win32};
 use crate::frame::{Frame, FrameSource};
 use crate::window_print::printed_window;
 use crate::window_visibility::shows_on_screen;
 
 pub(crate) fn capture_window(window: WindowRef, screen: impl FnOnce(CaptureArea) -> Result<Frame>) -> Result<Frame> {
-    let hwnd = live_window(window)?;
-    if unsafe { IsIconic(hwnd) }.as_bool() {
+    let hwnd = live_hwnd(window)?;
+    if is_minimized(hwnd) {
         return Err(Error::invalid("window is minimized"));
     }
     let outer = CaptureArea::new(window_rect(hwnd)?)?;
@@ -30,19 +29,8 @@ pub(crate) fn window_rect(hwnd: HWND) -> Result<Rect> {
     Ok(rect_from_win32(rect))
 }
 
-fn live_window(window: WindowRef) -> Result<HWND> {
-    let hwnd = hwnd_from_ref(window);
-    if hwnd.is_invalid() || !unsafe { IsWindow(Some(hwnd)) }.as_bool() {
-        return Err(Error::new(ErrorCode::NotFound, format!("window {window} does not exist")));
-    }
-    Ok(hwnd)
-}
-
 fn visible_bounds(hwnd: HWND, outer: CaptureArea) -> Result<CaptureArea> {
-    let mut rect = RECT::default();
-    let size = size_of::<RECT>() as u32;
-    let queried = unsafe { DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, (&raw mut rect).cast(), size) };
-    let bounds = if queried.is_ok() { rect_from_win32(rect) } else { outer.rect() };
+    let bounds = frame_bounds(hwnd).unwrap_or(outer.rect());
     outer.clip(bounds).ok_or_else(|| Error::invalid("window has no visible area"))
 }
 
@@ -63,25 +51,21 @@ fn fall_back_to_screen(
 
 #[cfg(test)]
 mod tests {
-    use windows::Win32::Foundation::LPARAM;
-    use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, IsWindowVisible};
-    use windows_core::BOOL;
+    use winpilot_core::ErrorCode;
+    use winpilot_win32::{is_visible, top_level_windows};
 
     use super::*;
 
-    unsafe extern "system" fn collect_hidden(hwnd: HWND, found: LPARAM) -> BOOL {
-        let found = unsafe { &mut *(found.0 as *mut Vec<HWND>) };
+    const HIDDEN_WINDOWS_TO_TRY: usize = 6;
+
+    fn is_hidden_and_sized(hwnd: HWND) -> bool {
         let sized = window_rect(hwnd).is_ok_and(|rect| rect.width >= 16 && rect.height >= 16);
-        if sized && !unsafe { IsWindowVisible(hwnd) }.as_bool() && !unsafe { IsIconic(hwnd) }.as_bool() {
-            found.push(hwnd);
-        }
-        BOOL::from(found.len() < 6)
+        sized && !is_visible(hwnd) && !is_minimized(hwnd)
     }
 
     fn hidden_windows() -> Vec<HWND> {
-        let mut found: Vec<HWND> = Vec::new();
-        let _ = unsafe { EnumWindows(Some(collect_hidden), LPARAM(&raw mut found as isize)) };
-        found
+        let windows = top_level_windows().unwrap();
+        windows.into_iter().filter(|hwnd| is_hidden_and_sized(*hwnd)).take(HIDDEN_WINDOWS_TO_TRY).collect()
     }
 
     #[test]

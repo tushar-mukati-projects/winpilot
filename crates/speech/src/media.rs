@@ -1,19 +1,26 @@
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use windows::Win32::Media::MediaFoundation::{
-    IMFAttributes, IMFMediaBuffer, IMFSample, IMFSourceReader, MF_E_INVALIDSTREAMNUMBER,
+    IMFAttributes, IMFMediaType, IMFSample, IMFSourceReader, MF_E_INVALIDSTREAMNUMBER,
     MF_E_UNSUPPORTED_BYTESTREAM_TYPE, MF_MT_AUDIO_NUM_CHANNELS, MF_MT_AUDIO_SAMPLES_PER_SECOND, MF_MT_MAJOR_TYPE,
     MF_MT_SUBTYPE, MF_SOURCE_READER_ALL_STREAMS, MF_SOURCE_READER_FIRST_AUDIO_STREAM, MF_SOURCE_READER_FLAG,
     MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED, MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR,
-    MFAudioFormat_Float, MFCreateMediaType, MFCreateSourceReaderFromURL, MFMediaType_Audio,
+    MFAudioFormat_Float, MFCreateSourceReaderFromURL, MFMediaType_Audio,
 };
 use windows::core::HSTRING;
 use winpilot_core::{Context, Error, Result};
+use winpilot_win32::{
+    ComApartment, LockedMediaBuffer, MediaFoundation, attribute_u32, new_media_type, set_attribute_guid,
+    set_attribute_u32,
+};
 
 use crate::audio::{MAX_SAMPLE_RATE, MIN_SAMPLE_RATE, WHISPER_SAMPLE_RATE};
-use crate::com::{ComApartment, MediaFoundation};
 
-pub const MAX_DECODED_SAMPLES: usize = 16_000 * 60 * 60 * 2;
+const MAX_DECODED_LENGTH: Duration = Duration::from_secs(2 * 60 * 60);
+const MAX_DECODED_SAMPLES: usize = WHISPER_SAMPLE_RATE as usize * MAX_DECODED_LENGTH.as_secs() as usize;
+const MAX_CHANNELS: u16 = 32;
+const F32_BYTES: usize = size_of::<f32>();
 const AUDIO_STREAM: u32 = MF_SOURCE_READER_FIRST_AUDIO_STREAM.0 as u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,7 +31,7 @@ struct AudioFormat {
 
 pub fn decode_media(path: &Path) -> Result<(Vec<f32>, u32, u16)> {
     let path = existing_file(path)?;
-    let _com = ComApartment::enter_mta()?;
+    let _com = ComApartment::enter_any()?;
     let _media = MediaFoundation::start()?;
     let reader = open_reader(&path)?;
     select_audio_only(&reader, &path)?;
@@ -73,31 +80,37 @@ fn request_float_output(reader: &IMFSourceReader) -> Result<AudioFormat> {
 }
 
 fn set_float_output(reader: &IMFSourceReader, format: Option<AudioFormat>) -> Result<()> {
-    let media_type = unsafe { MFCreateMediaType() }.context("creating an audio media type")?;
-    unsafe { media_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Audio) }.context("setting the major type")?;
-    unsafe { media_type.SetGUID(&MF_MT_SUBTYPE, &MFAudioFormat_Float) }.context("setting the float subtype")?;
-    if let Some(format) = format {
-        unsafe { media_type.SetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND, format.sample_rate) }
-            .context("setting the sample rate")?;
-        unsafe { media_type.SetUINT32(&MF_MT_AUDIO_NUM_CHANNELS, u32::from(format.channels)) }
-            .context("setting the channel count")?;
-    }
+    let media_type = float_type(format)?;
     unsafe { reader.SetCurrentMediaType(AUDIO_STREAM, None, &media_type) }
         .map_err(|error| Error::unsupported(format!("Windows cannot decode this audio track to float: {error}")))
 }
 
+fn float_type(format: Option<AudioFormat>) -> Result<IMFMediaType> {
+    let media_type = new_media_type()?;
+    set_attribute_guid(&media_type, &MF_MT_MAJOR_TYPE, &MFMediaType_Audio)?;
+    set_attribute_guid(&media_type, &MF_MT_SUBTYPE, &MFAudioFormat_Float)?;
+    if let Some(format) = format {
+        set_attribute_u32(&media_type, &MF_MT_AUDIO_SAMPLES_PER_SECOND, format.sample_rate)?;
+        set_attribute_u32(&media_type, &MF_MT_AUDIO_NUM_CHANNELS, u32::from(format.channels))?;
+    }
+    Ok(media_type)
+}
+
 fn current_format(reader: &IMFSourceReader) -> Result<AudioFormat> {
-    let media_type = unsafe { reader.GetCurrentMediaType(AUDIO_STREAM) }.context("reading the audio format")?;
-    let sample_rate =
-        unsafe { media_type.GetUINT32(&MF_MT_AUDIO_SAMPLES_PER_SECOND) }.context("reading the sample rate")?;
-    let channels = unsafe { media_type.GetUINT32(&MF_MT_AUDIO_NUM_CHANNELS) }.context("reading the channel count")?;
-    let channels = u16::try_from(channels).ok().filter(|count| (1..=32).contains(count));
+    let media_type = current_type(reader)?;
+    let sample_rate = attribute_u32(&media_type, &MF_MT_AUDIO_SAMPLES_PER_SECOND)?;
+    let channels = attribute_u32(&media_type, &MF_MT_AUDIO_NUM_CHANNELS)?;
+    let channels = u16::try_from(channels).ok().filter(|count| (1..=MAX_CHANNELS).contains(count));
     match channels {
         Some(channels) if (MIN_SAMPLE_RATE..=MAX_SAMPLE_RATE).contains(&sample_rate) => {
             Ok(AudioFormat { sample_rate, channels })
         }
         _ => Err(Error::unsupported(format!("the audio track has an unusable format ({sample_rate} Hz)"))),
     }
+}
+
+fn current_type(reader: &IMFSourceReader) -> Result<IMFMediaType> {
+    unsafe { reader.GetCurrentMediaType(AUDIO_STREAM) }.context("reading the audio format")
 }
 
 fn read_all_samples(reader: &IMFSourceReader, format: AudioFormat, path: &Path) -> Result<Vec<f32>> {
@@ -136,37 +149,9 @@ fn has_flag(flags: u32, flag: MF_SOURCE_READER_FLAG) -> bool {
 
 fn append_floats(sample: &IMFSample, samples: &mut Vec<f32>) -> Result<()> {
     let buffer = unsafe { sample.ConvertToContiguousBuffer() }.context("reading an audio buffer")?;
-    let locked = LockedBuffer::lock(&buffer)?;
-    samples.extend(locked.bytes().as_chunks::<4>().0.iter().map(|chunk| f32::from_le_bytes(*chunk)));
+    let locked = LockedMediaBuffer::lock(&buffer)?;
+    samples.extend(locked.bytes().as_chunks::<F32_BYTES>().0.iter().map(|chunk| f32::from_le_bytes(*chunk)));
     Ok(())
-}
-
-struct LockedBuffer<'a> {
-    buffer: &'a IMFMediaBuffer,
-    data: *mut u8,
-    length: usize,
-}
-
-impl<'a> LockedBuffer<'a> {
-    fn lock(buffer: &'a IMFMediaBuffer) -> Result<Self> {
-        let mut data = std::ptr::null_mut();
-        let mut length = 0_u32;
-        unsafe { buffer.Lock(&raw mut data, None, Some(&raw mut length)) }.context("locking an audio buffer")?;
-        Ok(Self { buffer, data, length: length as usize })
-    }
-
-    fn bytes(&self) -> &[u8] {
-        if self.data.is_null() || self.length == 0 {
-            return &[];
-        }
-        unsafe { std::slice::from_raw_parts(self.data, self.length) }
-    }
-}
-
-impl Drop for LockedBuffer<'_> {
-    fn drop(&mut self) {
-        let _ = unsafe { self.buffer.Unlock() };
-    }
 }
 
 #[cfg(test)]

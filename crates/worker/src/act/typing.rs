@@ -7,12 +7,13 @@ use super::{
     chords::named,
     clip::{NOTE_LIMIT, quoted},
     done::{Done, via_focus_click},
-    field::{is_readable, is_writable, read_value},
+    field::is_writable,
     focus::{Focused, keyboard_target},
     landing::ensure_keys_land,
     lift::with_held_modifiers_lifted,
     message_keys,
     mode::Mode,
+    pacing::{focused_field, wait_for_edit},
     paste::{Readback, paste, readback},
     settle,
     target::Prepared,
@@ -155,9 +156,15 @@ fn enter_text(
     match typing {
         Typing::Paste(readback) => paste(engine, &focused.window, &readback, text, call).map(|note| ("paste", note)),
         Typing::Keys | Typing::KeysToKeepClipboard | Typing::KeysToConfirm => {
-            winpilot_input::type_text(text).map(|()| ("keys", None))
+            type_keys(engine, focused, text, call).map(|()| ("keys", None))
         }
     }
+}
+
+fn type_keys(engine: &Engine, focused: &Focused, text: &str, call: &CallScope) -> Result<()> {
+    let field = focused_field(engine, focused);
+    winpilot_input::type_text(text)?;
+    wait_for_edit(engine, &focused.window, call, field.as_ref(), Some(text))
 }
 
 fn press_enter(engine: &Engine, focused: &Focused, call: &CallScope) -> Result<()> {
@@ -167,9 +174,7 @@ fn press_enter(engine: &Engine, focused: &Focused, call: &CallScope) -> Result<(
 }
 
 pub(crate) fn value_note(engine: &Engine, element: Option<&Element>) -> Option<String> {
-    let element = element.filter(|element| is_readable(element))?;
-    let value = read_value(engine, element.id).ok().flatten()?;
-    Some(format!("value now {}", quoted(&value, NOTE_LIMIT)))
+    readback(engine, element).map(|field| format!("value now {}", quoted(&field.before, NOTE_LIMIT)))
 }
 
 #[cfg(test)]

@@ -20,6 +20,9 @@ const LOW_ALPHA: f32 = 0.75;
 const HIGH_ALPHA: f32 = 1.0;
 pub(crate) const STILL_ALPHA: f32 = 0.85;
 const SHINE_STEPS: usize = 256;
+const CORNER_INSET: f32 = 0.3;
+const INNER_SLACK: f32 = 2.0;
+const GLOW_REACH: f32 = 2.2;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct FocusMetrics {
@@ -47,8 +50,8 @@ impl FocusMetrics {
             stroke,
             radius,
             glow,
-            inner: (stroke + radius * 0.3 + 2.0).ceil() as i32,
-            outer: (glow * 2.2).ceil() as i32,
+            inner: (stroke + radius * CORNER_INSET + INNER_SLACK).ceil() as i32,
+            outer: (glow * GLOW_REACH).ceil() as i32,
         }
     }
 

@@ -2,14 +2,14 @@ use std::f64::consts::PI;
 
 use winpilot_core::{Error, Result};
 
-pub const WHISPER_SAMPLE_RATE: u32 = 16_000;
+pub(crate) const WHISPER_SAMPLE_RATE: u32 = 16_000;
 pub(crate) const MIN_SAMPLE_RATE: u32 = 1_000;
 pub(crate) const MAX_SAMPLE_RATE: u32 = 768_000;
 const ZERO_CROSSINGS: f64 = 16.0;
 const ROLLOFF: f64 = 0.94;
 const TABLE_STEPS_PER_SAMPLE: f64 = 256.0;
 
-pub fn to_whisper_input(samples: &[f32], sample_rate: u32, channels: u16) -> Result<Vec<f32>> {
+pub(crate) fn to_whisper_input(samples: &[f32], sample_rate: u32, channels: u16) -> Result<Vec<f32>> {
     check_format(samples.len(), sample_rate, channels)?;
     let mono = downmix(samples, channels);
     Ok(resample(&mono, sample_rate, WHISPER_SAMPLE_RATE))
@@ -32,7 +32,7 @@ pub(crate) fn check_format(sample_count: usize, sample_rate: u32, channels: u16)
     Ok(())
 }
 
-pub fn downmix(samples: &[f32], channels: u16) -> Vec<f32> {
+fn downmix(samples: &[f32], channels: u16) -> Vec<f32> {
     let width = usize::from(channels.max(1));
     if width == 1 {
         return samples.to_vec();
@@ -41,7 +41,7 @@ pub fn downmix(samples: &[f32], channels: u16) -> Vec<f32> {
     samples.chunks_exact(width).map(|frame| frame.iter().sum::<f32>() * scale).collect()
 }
 
-pub fn resample(mono: &[f32], from: u32, to: u32) -> Vec<f32> {
+fn resample(mono: &[f32], from: u32, to: u32) -> Vec<f32> {
     if from == to || mono.is_empty() || from == 0 || to == 0 {
         return mono.to_vec();
     }

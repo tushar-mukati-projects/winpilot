@@ -4,11 +4,11 @@ use winpilot_core::{
     Error, ErrorCode, Rect, Result, WindowInfo, WindowRef, WindowState, format::window_line, protocol::WindowAction,
 };
 use winpilot_desktop::Activation;
+use winpilot_win32::owner_chain;
 
 use super::{
     by_pattern::KeptForeground,
     done::Done,
-    foreground::owner_chain,
     settle,
     stacking::keep_behind_front,
     window::{WindowRequest, state_word},
@@ -86,7 +86,7 @@ const fn restacks(action: WindowAction, before: WindowState) -> bool {
 
 fn require_user_elsewhere(window: &WindowInfo) -> Result<()> {
     let front = winpilot_desktop::foreground_window();
-    if in_use(window.hwnd, front, &owner_chain(front)) {
+    if in_use(window.hwnd, front, &front.map(owner_chain).unwrap_or_default()) {
         return Err(in_use_error(window));
     }
     Ok(())
@@ -130,7 +130,7 @@ mod tests {
     #[test]
     #[ignore = "opens the fixture app and changes its window behind the foreground window"]
     fn window_actions_keep_the_users_window_in_front() {
-        let Some(app) = FixtureApp::launch_on_screen() else { return };
+        let app = FixtureApp::launch_on_screen();
         let front = winpilot_desktop::foreground_window();
         let target = app.hwnd().to_string();
         let rect = json!({ "x": 160, "y": 140, "width": 720, "height": 520 });
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     #[ignore = "opens the fixture app behind the foreground window"]
     fn launch_opens_behind_the_users_window() {
-        let Some(exe) = fixture_exe() else { return };
+        let exe = fixture_exe();
         let title = unique_title("Behind");
         let _closes = ClosesTitled(title.clone());
         let front = winpilot_desktop::foreground_window();

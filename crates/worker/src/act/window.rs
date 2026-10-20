@@ -118,7 +118,7 @@ fn close(engine: &Engine, window: &WindowInfo, call: &CallScope) -> Result<Done>
     winpilot_desktop::close_window(window.hwnd)?;
     let hwnd = window.hwnd;
     let closed = until(engine, call, CLOSE_WAIT, &Watch::window(window), || {
-        Ok((!winpilot_desktop::is_window(hwnd)).then_some(()))
+        Ok((!winpilot_win32::window_exists(hwnd)).then_some(()))
     })?;
     if closed.is_some() {
         return Ok(Done::noting(format!("closed {}", window_line(window))));

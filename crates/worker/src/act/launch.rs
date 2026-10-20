@@ -5,8 +5,9 @@ use std::{
 
 use winpilot_core::{Error, ErrorCode, Result, WindowInfo, WindowRef, config::GuardConfig, format::window_line};
 use winpilot_desktop::{
-    Activation,
+    Activation, ProcessTable,
     apps::{self, AppEntry, AppLaunch},
+    system_time_now,
 };
 
 use super::{
@@ -25,7 +26,6 @@ use crate::{
     call_scope::CallScope,
     engine::Engine,
     overlay,
-    process_tree::{ProcessTable, system_time_now},
     until::until,
     watch::Watch,
     window_classes::is_frame_host,

@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-const NANOS_PER_SECOND: u128 = 1_000_000_000;
+use crate::time_units::frames_in;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Lead {
@@ -10,13 +10,13 @@ pub(crate) enum Lead {
 
 pub(crate) fn lead_for(audio_origin: Instant, video_start: Instant, rate: u32) -> Lead {
     match audio_origin.checked_duration_since(video_start) {
-        Some(late) => Lead::Pad(frames_in(late, rate)),
-        None => Lead::Skip(frames_in(video_start.duration_since(audio_origin), rate)),
+        Some(late) => Lead::Pad(whole_frames(late, rate)),
+        None => Lead::Skip(whole_frames(video_start.duration_since(audio_origin), rate)),
     }
 }
 
-fn frames_in(span: Duration, rate: u32) -> u64 {
-    u64::try_from(span.as_nanos() * u128::from(rate) / NANOS_PER_SECOND).unwrap_or(u64::MAX)
+fn whole_frames(span: Duration, rate: u32) -> u64 {
+    u64::try_from(frames_in(span, rate)).unwrap_or(u64::MAX)
 }
 
 impl Lead {

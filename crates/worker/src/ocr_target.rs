@@ -1,13 +1,9 @@
-use winpilot_core::{
-    Error, ErrorCode, Result, WindowInfo,
-    format::window_line,
-    ocr::{find_matches, pick_match},
-};
+use winpilot_core::{Error, ErrorCode, Result, WindowInfo, format::window_line, ocr::pick_match};
 
 use crate::{
     call_scope::CallScope,
     engine::Engine,
-    ocr_read::{Freshness, magnified_window_lines, window_lines},
+    ocr_read::{Freshness, window_matches},
     resolve::{Reach, Resolved},
 };
 
@@ -25,11 +21,7 @@ pub(crate) fn resolve(
     using: OcrUse<'_>,
 ) -> Result<Resolved> {
     engine.guard.check_window(&window)?;
-    let lines = window_lines(engine, &window, Some(using.call), using.freshness)?;
-    let mut matches = find_matches(&lines, text);
-    if matches.is_empty() {
-        matches = find_matches(&magnified_window_lines(engine, &window)?, text);
-    }
+    let matches = window_matches(engine, &window, text, Some(using.call), using.freshness)?;
     let found = pick_match(matches, text, nth).map_err(|error| in_window(error, &window))?;
     let point = found.rect.center();
     let under = engine.uia.run(move |uia| uia.element_at(point))?;

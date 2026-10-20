@@ -5,6 +5,7 @@ use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer
 use winpilot_core::{Context, Result};
 
 use crate::frame::Frame;
+use crate::pixels::BYTES_PER_PIXEL;
 
 const EDGE_TOLERANCE_PX: f64 = 0.5;
 const SEARCH_FRACTION: u32 = 10;
@@ -80,11 +81,24 @@ pub(crate) fn fitted_pixels(frame: &Frame, fit: Fit) -> Result<Cow<'_, [u8]>> {
 }
 
 pub(crate) fn resize_bgra(source: &[u8], from: (u32, u32), to: (u32, u32)) -> Result<Vec<u8>> {
+    let mut target = vec![0; to.0 as usize * to.1 as usize * BYTES_PER_PIXEL];
+    resize_into(&mut Resizer::new(), FilterType::Lanczos3, source, from, &mut target, to)?;
+    Ok(target)
+}
+
+pub(crate) fn resize_into(
+    resizer: &mut Resizer,
+    filter: FilterType,
+    source: &[u8],
+    from: (u32, u32),
+    target: &mut [u8],
+    to: (u32, u32),
+) -> Result<()> {
     let source = ImageRef::new(from.0, from.1, source, PixelType::U8x4).context("preparing the resize source")?;
-    let mut target = Image::new(to.0, to.1, PixelType::U8x4);
-    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Lanczos3)).use_alpha(false);
-    Resizer::new().resize(&source, &mut target, &options).context("resizing the image")?;
-    Ok(target.into_vec())
+    let mut target =
+        Image::from_slice_u8(to.0, to.1, target, PixelType::U8x4).context("preparing the resize target")?;
+    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(filter)).use_alpha(false);
+    resizer.resize(&source, &mut target, &options).context("resizing the image")
 }
 
 #[cfg(test)]

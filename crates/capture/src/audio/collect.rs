@@ -6,6 +6,7 @@ use winpilot_core::Result;
 use super::capture::{AudioCapture, AudioChunk};
 use super::pcm::{AudioFormat, Pcm};
 use super::source::AudioSource;
+use crate::time_units::frames_in;
 
 const POLL: Duration = Duration::from_millis(50);
 
@@ -43,8 +44,7 @@ fn exactly(mut samples: Vec<f32>, rest: &[AudioChunk], format: AudioFormat, dura
 }
 
 fn sample_count(format: AudioFormat, duration: Duration) -> usize {
-    let frames = duration.as_nanos() * u128::from(format.sample_rate) / 1_000_000_000;
-    usize::try_from(frames).unwrap_or(usize::MAX / 2) * format.channel_count()
+    usize::try_from(frames_in(duration, format.sample_rate)).unwrap_or(usize::MAX / 2) * format.channel_count()
 }
 
 #[cfg(test)]

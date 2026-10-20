@@ -2,13 +2,13 @@ use std::{mem, time::Instant};
 
 use windows::Win32::{Foundation::POINT, UI::Accessibility::IUIAutomationElement};
 use winpilot_core::{Element, ElementRef, Point, Result, WindowRef};
+use winpilot_win32::{foreground_root, window_at};
 
 use crate::{
     automation::Uia,
     failure::{UiaResult, is_gone, is_null_out_pointer, uia_error},
     properties::NodeProps,
     registry::Sighting,
-    win,
     window_identity::WindowIdentity,
 };
 
@@ -18,21 +18,33 @@ impl Uia {
             self.automation.ElementFromPointBuildCache(POINT { x: point.x, y: point.y }, &self.requests.element_props)
         }
         .uia(&format!("finding the element at {},{}", point.x, point.y))?;
-        Ok(self.adopt(found, || win::window_at(point)))
+        Ok(self.adopt(found, || window_at(point)))
     }
 
     pub fn focused(&mut self) -> Result<Option<Element>> {
         match unsafe { self.automation.GetFocusedElementBuildCache(&self.requests.element_props) } {
-            Ok(found) => Ok(Some(self.adopt(found, win::foreground_window))),
+            Ok(found) => Ok(Some(self.adopt(found, foreground_root))),
             Err(error) if is_null_out_pointer(&error) || is_gone(&error) => Ok(None),
             Err(error) => Err(uia_error("reading the focused element", &error)),
         }
     }
 
     fn adopt(&mut self, found: IUIAutomationElement, fallback: impl FnOnce() -> Option<WindowRef>) -> Element {
+        self.register(found, |uia, found, own| uia.owning_window(found, own).or_else(fallback))
+    }
+
+    pub(crate) fn adopt_in(&mut self, found: IUIAutomationElement, window: WindowRef) -> Element {
+        self.register(found, |_, _, _| Some(window))
+    }
+
+    fn register(
+        &mut self,
+        found: IUIAutomationElement,
+        window_of: impl FnOnce(&Self, &IUIAutomationElement, WindowRef) -> Option<WindowRef>,
+    ) -> Element {
         let mut props = NodeProps::read(&found);
         let runtime_id = mem::take(&mut props.runtime_id);
-        let id = self.lookup_ref(found, runtime_id, &props, fallback);
+        let id = self.lookup_ref(found, runtime_id, &props, window_of);
         let depth = self.registry.depth(id);
         self.registry.enforce_cap();
         props.into_element(id, depth)
@@ -43,13 +55,13 @@ impl Uia {
         found: IUIAutomationElement,
         runtime_id: Vec<i32>,
         props: &NodeProps,
-        fallback: impl FnOnce() -> Option<WindowRef>,
+        window_of: impl FnOnce(&Self, &IUIAutomationElement, WindowRef) -> Option<WindowRef>,
     ) -> ElementRef {
         let now = Instant::now();
         if let Some(id) = self.registry.revisit(&runtime_id, &found, now) {
             return id;
         }
-        let window = self.owning_window(&found, props.native_window).or_else(fallback);
+        let window = window_of(self, &found, props.native_window);
         let identity = window.and_then(WindowIdentity::read).unwrap_or_else(WindowIdentity::unknown);
         let sighting = Sighting { live: found, runtime_id, fingerprint: props.fingerprint(identity, None) };
         self.registry.insert_lookup(sighting, now)
@@ -59,6 +71,7 @@ impl Uia {
 #[cfg(test)]
 mod tests {
     use winpilot_core::ErrorCode;
+    use winpilot_win32::window_exists;
 
     use super::*;
     use crate::{
@@ -75,7 +88,7 @@ mod tests {
                 let snapshot = uia.snapshot(&window, &SnapshotOptions::default())?;
                 let root = first_element(&snapshot)?;
                 let centre = root.rect.center();
-                let under_point = win::window_at(centre);
+                let under_point = window_at(centre);
                 let started = Instant::now();
                 let hit = uia.element_at(centre)?;
                 eprintln!("element_at: {:?}", started.elapsed());
@@ -106,7 +119,7 @@ mod tests {
                     let hit = uia.element_at(probe)?;
                     timings.push((started.elapsed(), uia.window_of(hit.id)?, hit.depth));
                 }
-                Ok((timings, win::window_at(probe)))
+                Ok((timings, window_at(probe)))
             })
             .unwrap();
         for (elapsed, owner, depth) in timings {
@@ -131,7 +144,7 @@ mod tests {
             })
             .unwrap();
         if let Some(window) = owner {
-            assert!(win::window_exists(window));
+            assert!(window_exists(window));
         }
     }
 

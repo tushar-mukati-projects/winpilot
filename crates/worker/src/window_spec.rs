@@ -1,11 +1,10 @@
 use winpilot_core::{
     ElementRef, Error, Result, WindowInfo, WindowRef,
     refs::{looks_like_element_ref, looks_like_window_ref},
-    selector::Selector,
+    selector::{Selector, is_selector_key},
 };
 
-const SELECTOR_KEYS: [&str; 11] =
-    ["role", "name", "name~", "id", "class", "text", "window", "process", "nth", "ocr", "focused"];
+const FOCUSED_KEY: &str = "focused";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum WindowSpec {
@@ -34,7 +33,7 @@ pub(crate) fn parse(text: &str) -> Result<WindowSpec> {
 }
 
 pub(crate) fn looks_like_title(text: &str) -> bool {
-    !text.contains(':') || text.split_whitespace().filter_map(key_of).any(|key| !is_selector_key(key))
+    !text.contains(':') || text.split_whitespace().filter_map(key_of).any(|key| !is_window_spec_key(key))
 }
 
 pub(crate) fn matches(spec: &WindowSpec, window: &WindowInfo) -> bool {
@@ -59,8 +58,8 @@ fn key_of(word: &str) -> Option<&str> {
     word.split_once(':').map(|(key, _)| key)
 }
 
-fn is_selector_key(key: &str) -> bool {
-    SELECTOR_KEYS.iter().any(|known| known.eq_ignore_ascii_case(key))
+fn is_window_spec_key(key: &str) -> bool {
+    is_selector_key(key) || key.eq_ignore_ascii_case(FOCUSED_KEY)
 }
 
 #[cfg(test)]
@@ -86,6 +85,7 @@ mod tests {
         assert_eq!(parse("C:\\a.txt - Notepad").unwrap(), title("C:\\a.txt - Notepad"));
         assert_eq!(parse("Re: lunch on Friday").unwrap(), title("Re: lunch on Friday"));
         assert_eq!(parse("Untitled: draft").unwrap(), title("Untitled: draft"));
+        assert!(!looks_like_title("Focused:yes process:notepad"));
     }
 
     #[test]

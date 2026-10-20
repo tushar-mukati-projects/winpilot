@@ -15,11 +15,9 @@ use windows::{
     core::{HSTRING, PCWSTR},
 };
 use winpilot_core::{Context, Error, ErrorCode, Result};
+use winpilot_win32::{adopt, raw};
 
-use crate::{
-    activation::Activation,
-    handle::{adopt, raw},
-};
+use crate::activation::Activation;
 
 pub(crate) struct ShellRequest<'a> {
     pub(crate) file: &'a str,
@@ -60,7 +58,7 @@ fn optional_text(text: Option<&HSTRING>) -> PCWSTR {
 }
 
 fn launched_pid(request: &SHELLEXECUTEINFOW) -> Option<u32> {
-    let process = adopt(request.hProcess)?;
+    let process = unsafe { adopt(request.hProcess) }?;
     let pid = unsafe { GetProcessId(raw(&process)) };
     (pid != 0).then_some(pid)
 }

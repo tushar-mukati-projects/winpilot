@@ -1,13 +1,11 @@
 use windows::Win32::{
     Foundation::HWND,
-    UI::{
-        Input::KeyboardAndMouse::{
-            GetKeyboardLayout, HKL, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC_EX, MapVirtualKeyExW, VIRTUAL_KEY, VkKeyScanExW,
-        },
-        WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
+    UI::Input::KeyboardAndMouse::{
+        GetKeyboardLayout, HKL, MAPVK_VK_TO_CHAR, MAPVK_VK_TO_VSC_EX, MapVirtualKeyExW, VIRTUAL_KEY, VkKeyScanExW,
     },
 };
 use winpilot_core::keys::Modifiers;
+use winpilot_win32::{foreground_hwnd, owning_thread};
 
 const SHIFT_STATE_SHIFT: u8 = 1;
 const SHIFT_STATE_CTRL: u8 = 2;
@@ -19,8 +17,8 @@ const DEAD_KEY_BIT: u32 = 0x8000_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LayoutKey {
-    pub vk: VIRTUAL_KEY,
-    pub modifiers: Modifiers,
+    pub(crate) vk: VIRTUAL_KEY,
+    pub(crate) modifiers: Modifiers,
 }
 
 pub(crate) trait KeyboardLayout {
@@ -41,7 +39,7 @@ impl SystemLayout {
     }
 
     pub(crate) fn of_window(window: HWND) -> Self {
-        let thread = unsafe { GetWindowThreadProcessId(window, None) };
+        let thread = owning_thread(window);
         let handle = thread_layout(thread);
         if thread == CURRENT_THREAD || handle.is_invalid() { Self::of_foreground_window() } else { Self { handle } }
     }
@@ -64,11 +62,7 @@ impl KeyboardLayout for SystemLayout {
 }
 
 fn foreground_thread_id() -> u32 {
-    let window = unsafe { GetForegroundWindow() };
-    if window.is_invalid() {
-        return CURRENT_THREAD;
-    }
-    unsafe { GetWindowThreadProcessId(window, None) }
+    foreground_hwnd().map_or(CURRENT_THREAD, owning_thread)
 }
 
 fn thread_layout(thread_id: u32) -> HKL {

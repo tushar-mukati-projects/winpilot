@@ -8,8 +8,8 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Batch {
-    pub events: Vec<InputEvent>,
-    pub release_on_failure: Vec<InputEvent>,
+    pub(crate) events: Vec<InputEvent>,
+    pub(crate) release_on_failure: Vec<InputEvent>,
 }
 
 impl Batch {

@@ -1,7 +1,10 @@
 use std::time::{Duration, Instant};
 
-use winpilot_capture::{ocr, ocr_magnified};
-use winpilot_core::{Rect, Result, WindowInfo, WindowRef, ocr::OcrLine};
+use winpilot_capture::{OcrPass, ocr};
+use winpilot_core::{
+    Rect, Result, WindowInfo, WindowRef,
+    ocr::{OcrLine, OcrMatch, find_matches},
+};
 
 use crate::{call_scope::CallScope, engine::Engine, frames, watch::Watch};
 
@@ -31,15 +34,30 @@ pub(crate) fn window_lines(
         return Ok(reading.lines);
     }
     let at = Instant::now();
-    let lines = ocr(&frames::window(engine, window)?.frame)?;
+    let lines = ocr(&frames::window_with_popups(engine, window)?.frame, OcrPass::Plain)?;
     if let Some(call) = call {
         call.remember_ocr(OcrReading { window: window.hwnd, rect: window.rect, at, lines: lines.clone() });
     }
     Ok(lines)
 }
 
-pub(crate) fn magnified_window_lines(engine: &Engine, window: &WindowInfo) -> Result<Vec<OcrLine>> {
-    ocr_magnified(&frames::window(engine, window)?.frame)
+pub(crate) fn window_matches(
+    engine: &Engine,
+    window: &WindowInfo,
+    text: &str,
+    call: Option<&CallScope>,
+    freshness: Freshness,
+) -> Result<Vec<OcrMatch>> {
+    let matches = find_matches(&window_lines(engine, window, call, freshness)?, text);
+    if !matches.is_empty() {
+        return Ok(matches);
+    }
+    let frame = frames::window_with_popups(engine, window)?.frame;
+    let matches = find_matches(&ocr(&frame, OcrPass::Magnified)?, text);
+    if !matches.is_empty() {
+        return Ok(matches);
+    }
+    Ok(find_matches(&ocr(&frame, OcrPass::Contrasted)?, text))
 }
 
 fn reusable(

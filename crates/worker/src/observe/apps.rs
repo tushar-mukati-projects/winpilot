@@ -147,6 +147,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "lists the installed apps"]
     fn live_apps_list_and_filter() {
         let all = list(engine(), &request(None, 500)).unwrap();
         assert!(!all.apps.is_empty() && all.apps.len() <= 500);

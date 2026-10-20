@@ -1,8 +1,10 @@
+mod inherit_list;
+
 use std::{
     io::{PipeReader, PipeWriter},
     os::windows::{
         ffi::OsStrExt,
-        io::{AsHandle, AsRawHandle, FromRawHandle, OwnedHandle},
+        io::{AsHandle, AsRawHandle, OwnedHandle},
     },
     path::Path,
     time::Duration,
@@ -12,24 +14,24 @@ use windows::{
     Win32::{
         Foundation::{HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation, WAIT_OBJECT_0},
         System::Threading::{
-            CREATE_NO_WINDOW, CREATE_SUSPENDED, CreateProcessW, DeleteProcThreadAttributeList,
-            EXTENDED_STARTUPINFO_PRESENT, InitializeProcThreadAttributeList, LPPROC_THREAD_ATTRIBUTE_LIST,
-            PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROCESS_INFORMATION, ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOEXW,
-            STARTUPINFOW, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
+            CREATE_NO_WINDOW, CREATE_SUSPENDED, CreateProcessW, EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
+            ResumeThread, STARTF_USESTDHANDLES, STARTUPINFOEXW, STARTUPINFOW, TerminateProcess, WaitForSingleObject,
         },
     },
     core::{PCWSTR, PWSTR},
 };
-use winpilot_core::{Context, Error, Result};
+use winpilot_core::{Context, Result};
+use winpilot_win32::{adopt, finite_millis, raw};
+
+use inherit_list::InheritList;
 
 use crate::{
-    job::Job,
+    job::{Job, KILLED_EXIT_CODE},
     lifecycle::Spawn,
     link::{WorkerPipes, WorkerProcess},
 };
 
 const WORKER_ARGUMENT: &str = "worker";
-const KILLED_EXIT_CODE: u32 = 1;
 
 pub struct ProcessSpawner;
 
@@ -58,11 +60,6 @@ struct ChildStdio {
 struct Suspended {
     process: OwnedHandle,
     thread: OwnedHandle,
-}
-
-struct InheritList {
-    buffer: Vec<usize>,
-    handles: Vec<HANDLE>,
 }
 
 struct WorkerChild {
@@ -107,7 +104,7 @@ fn create_suspended(exe: &Path, argument: &str, stdio: &ChildStdio) -> Result<Su
         )
     }
     .context("starting the desktop worker")?;
-    Ok(Suspended::adopt(&info))
+    Suspended::adopt(&info)
 }
 
 impl ChildStdio {
@@ -130,10 +127,10 @@ impl ChildStdio {
 }
 
 impl Suspended {
-    fn adopt(info: &PROCESS_INFORMATION) -> Self {
-        let process = unsafe { OwnedHandle::from_raw_handle(info.hProcess.0) };
-        let thread = unsafe { OwnedHandle::from_raw_handle(info.hThread.0) };
-        Self { process, thread }
+    fn adopt(info: &PROCESS_INFORMATION) -> Result<Self> {
+        let process = unsafe { adopt(info.hProcess) }.context("the worker process handle")?;
+        let thread = unsafe { adopt(info.hThread) }.context("the worker thread handle")?;
+        Ok(Self { process, thread })
     }
 
     fn release_into(self, job: &Job) -> Result<OwnedHandle> {
@@ -142,37 +139,6 @@ impl Suspended {
             return Err(error);
         }
         Ok(self.process)
-    }
-}
-
-impl InheritList {
-    fn new(handles: Vec<HANDLE>) -> Result<Self> {
-        let mut size = attribute_list_size()?;
-        let mut buffer = vec![0usize; size.div_ceil(size_of::<usize>())];
-        let list_ptr = LPPROC_THREAD_ATTRIBUTE_LIST(buffer.as_mut_ptr().cast());
-        unsafe { InitializeProcThreadAttributeList(Some(list_ptr), 1, None, &raw mut size) }
-            .context("preparing the worker handle list")?;
-        let mut list = Self { buffer, handles };
-        list.limit_to_handles()?;
-        Ok(list)
-    }
-
-    fn limit_to_handles(&mut self) -> Result<()> {
-        let value = self.handles.as_ptr().cast();
-        let size = size_of_val(self.handles.as_slice());
-        let attribute = PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize;
-        unsafe { UpdateProcThreadAttribute(self.raw(), 0, attribute, Some(value), size, None, None) }
-            .context("limiting the handles the worker inherits")
-    }
-
-    fn raw(&mut self) -> LPPROC_THREAD_ATTRIBUTE_LIST {
-        LPPROC_THREAD_ATTRIBUTE_LIST(self.buffer.as_mut_ptr().cast())
-    }
-}
-
-impl Drop for InheritList {
-    fn drop(&mut self) {
-        unsafe { DeleteProcThreadAttributeList(self.raw()) };
     }
 }
 
@@ -189,19 +155,8 @@ impl WorkerProcess for WorkerChild {
 }
 
 fn exits_within(process: &OwnedHandle, patience: Duration) -> bool {
-    let millis = u32::try_from(patience.as_millis()).unwrap_or(u32::MAX - 1);
-    let waited = unsafe { WaitForSingleObject(raw(process), millis) };
+    let waited = unsafe { WaitForSingleObject(raw(process), finite_millis(patience)) };
     waited == WAIT_OBJECT_0
-}
-
-fn attribute_list_size() -> Result<usize> {
-    let mut size = 0;
-    let probe = unsafe { InitializeProcThreadAttributeList(None, 1, None, &raw mut size) };
-    if size > 0 {
-        return Ok(size);
-    }
-    probe.context("sizing the worker handle list")?;
-    Err(Error::internal("sizing the worker handle list returned no size"))
 }
 
 fn inheritable(handle: OwnedHandle) -> Result<OwnedHandle> {
@@ -232,10 +187,6 @@ fn kill(process: &OwnedHandle) {
     if let Err(error) = unsafe { TerminateProcess(raw(process), KILLED_EXIT_CODE) } {
         eprintln!("winpilot: could not stop the desktop worker: {error}");
     }
-}
-
-fn raw(handle: &OwnedHandle) -> HANDLE {
-    HANDLE(handle.as_raw_handle())
 }
 
 fn wide_path(path: &Path) -> Vec<u16> {

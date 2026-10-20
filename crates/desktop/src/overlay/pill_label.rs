@@ -1,10 +1,9 @@
 use winpilot_core::Result;
 
 use super::{
-    driving::Driving,
     pill_layout::PillMetrics,
     pill_words::{PillWords, Wording, pill_words},
-    presence::Tone,
+    presence::{Driving, Tone},
     text_mask::TextMask,
     text_render::{PillFonts, render_text},
 };

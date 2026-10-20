@@ -104,11 +104,7 @@ mod tests {
     use winpilot_core::Rect;
 
     use super::*;
-    use crate::test_fixture::window;
-
-    fn step(json: &str) -> Step {
-        serde_json::from_str(json).unwrap()
-    }
+    use crate::test_fixture::{step, window};
 
     fn refusal(json: &str) -> Option<String> {
         background_refusal(&step(json)).map(|refusal| refusal.in_background().message)

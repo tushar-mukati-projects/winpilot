@@ -8,7 +8,7 @@ use super::{AudioCapture, AudioSource, capture_audio};
 #[ignore = "records audio"]
 fn system_audio_is_captured_for_exactly_the_asked_duration_even_when_silent() {
     let pcm = capture_audio(AudioSource::System, Duration::from_secs(2), || Ok(())).unwrap();
-    eprintln!("audio: {} Hz, {} channels, {:.2} s", pcm.sample_rate, pcm.channels, pcm.seconds());
+    eprintln!("audio: {} Hz, {} channels, {} frames", pcm.sample_rate, pcm.channels, pcm.frames());
     assert!(pcm.sample_rate >= 8_000 && pcm.channels >= 1);
     assert_eq!(pcm.frames(), pcm.sample_rate as usize * 2);
     assert!(pcm.samples.iter().all(|sample| sample.is_finite() && sample.abs() <= 1.0));

@@ -8,12 +8,11 @@ use windows::Win32::UI::{
     WindowsAndMessaging::{MSG, WM_HOTKEY, WM_TIMER},
 };
 use winpilot_core::{Result, keys::Chord};
+use winpilot_win32::{MessageThread, ThreadMessages, Timer};
 
 use crate::{
     hotkey_binding::{HotkeyBinding, hotkey_binding},
     layout::SystemLayout,
-    message_thread::{MessageThread, ThreadMessages},
-    thread_timer::ThreadTimer,
 };
 
 const HOTKEY_ID: i32 = 0x4448;
@@ -44,7 +43,7 @@ impl HotkeyListener {
 struct HotkeyLoop<F> {
     binding: HotkeyBinding,
     registration: Option<Registration>,
-    retry_timer: Option<ThreadTimer>,
+    retry_timer: Option<Timer>,
     registered: Arc<AtomicBool>,
     on_press: F,
 }
@@ -54,7 +53,7 @@ impl<F: Fn()> HotkeyLoop<F> {
         let mut state = Self { binding, registration: None, retry_timer: None, registered, on_press };
         state.try_register();
         if state.registration.is_none() {
-            state.retry_timer = Some(ThreadTimer::start(RETRY_INTERVAL_MS)?);
+            state.retry_timer = Some(Timer::on_thread(RETRY_INTERVAL_MS)?);
         }
         Ok(state)
     }
@@ -71,8 +70,8 @@ impl<F: Fn()> HotkeyLoop<F> {
         }
     }
 
-    fn is_retry_timer(&self, timer_id: usize) -> bool {
-        self.retry_timer.as_ref().is_some_and(|timer| timer.id() == timer_id)
+    fn is_retry_timer(&self, message: &MSG) -> bool {
+        self.retry_timer.as_ref().is_some_and(|timer| timer.fired(message.hwnd, message.wParam.0))
     }
 }
 
@@ -80,7 +79,7 @@ impl<F: Fn()> ThreadMessages for HotkeyLoop<F> {
     fn on_message(&mut self, message: &MSG) -> bool {
         match message.message {
             WM_HOTKEY if message.wParam.0 == HOTKEY_ID as usize => (self.on_press)(),
-            WM_TIMER if self.is_retry_timer(message.wParam.0) => self.retry(),
+            WM_TIMER if self.is_retry_timer(message) => self.retry(),
             _ => return false,
         }
         true

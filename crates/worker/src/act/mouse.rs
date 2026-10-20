@@ -87,10 +87,7 @@ fn drag(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn step(json: &str) -> Step {
-        serde_json::from_str(json).unwrap()
-    }
+    use crate::test_fixture::step;
 
     #[test]
     fn only_mouse_steps_become_mouse_requests() {

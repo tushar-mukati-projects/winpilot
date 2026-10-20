@@ -8,8 +8,9 @@ use std::{
 
 use windows::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext};
 use winpilot_core::{Context, Error, Result};
+use winpilot_win32::ComApartment;
 
-use crate::{automation::Uia, com::ComApartment, options::UiaOptions};
+use crate::{automation::Uia, options::UiaOptions};
 
 type Task = Box<dyn FnOnce(&mut Uia) + Send>;
 

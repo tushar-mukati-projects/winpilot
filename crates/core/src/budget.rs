@@ -21,6 +21,14 @@ const WAIT_SLACK: Duration = Duration::from_secs(1);
 const CHARS_PER_EXTRA_SECOND: u64 = 2000;
 const KEY_PRESS_BUDGET: Duration = Duration::from_millis(100);
 const LISTEN_OVERHEAD: Duration = Duration::from_secs(60);
+const ELEMENTS_BUDGET: Duration = Duration::from_secs(10);
+const TEXT_BUDGET: Duration = Duration::from_secs(20);
+const SCREENSHOT_BUDGET: Duration = Duration::from_secs(8);
+const LISTING_BUDGET: Duration = Duration::from_secs(5);
+const STATUS_BUDGET: Duration = Duration::from_secs(3);
+const RECORD_START_BUDGET: Duration = Duration::from_secs(15);
+const RECORD_STOP_BUDGET: Duration = Duration::from_secs(60);
+const DRAG_GLIDES: u32 = 2;
 
 impl Call {
     pub fn deadline_with_glide(&self, default_glide_ms: u64) -> Duration {
@@ -37,13 +45,13 @@ impl Call {
 
 fn observe_budget(args: &ObserveArgs) -> Duration {
     match args.mode {
-        ObserveMode::Elements | ObserveMode::Apps => Duration::from_secs(10),
-        ObserveMode::Text => Duration::from_secs(20),
-        ObserveMode::Screenshot => Duration::from_secs(8),
+        ObserveMode::Elements | ObserveMode::Apps => ELEMENTS_BUDGET,
+        ObserveMode::Text => TEXT_BUDGET,
+        ObserveMode::Screenshot => SCREENSHOT_BUDGET,
         ObserveMode::Record => record_budget(args.action),
         ObserveMode::Listen => listen_budget(args),
-        ObserveMode::Windows | ObserveMode::Monitors | ObserveMode::Clipboard => Duration::from_secs(5),
-        ObserveMode::Status => Duration::from_secs(3),
+        ObserveMode::Windows | ObserveMode::Monitors | ObserveMode::Clipboard => LISTING_BUDGET,
+        ObserveMode::Status => STATUS_BUDGET,
     }
 }
 
@@ -57,9 +65,9 @@ fn listen_budget(args: &ObserveArgs) -> Duration {
 
 const fn record_budget(action: Option<RecordAction>) -> Duration {
     match action {
-        Some(RecordAction::Start) => Duration::from_secs(15),
-        Some(RecordAction::Stop) => Duration::from_secs(60),
-        Some(RecordAction::Status) | None => Duration::from_secs(3),
+        Some(RecordAction::Start) => RECORD_START_BUDGET,
+        Some(RecordAction::Stop) => RECORD_STOP_BUDGET,
+        Some(RecordAction::Status) | None => STATUS_BUDGET,
     }
 }
 
@@ -69,7 +77,7 @@ fn step_budget(step: &Step, default_glide_ms: u64) -> Duration {
         Step::Type { text, .. } | Step::Set { value: Some(text), .. } => STEP_BUDGET.saturating_add(typing_time(text)),
         Step::Key { keys, repeat, .. } => STEP_BUDGET.saturating_add(key_time(keys, *repeat)),
         Step::Mouse { action: MouseAction::Drag, glide_ms, .. } => {
-            STEP_BUDGET.saturating_add(glide_time(glide_ms.unwrap_or(default_glide_ms), 2))
+            STEP_BUDGET.saturating_add(glide_time(glide_ms.unwrap_or(default_glide_ms), DRAG_GLIDES))
         }
         Step::Click { glide_ms, .. } | Step::Mouse { glide_ms, .. } => {
             STEP_BUDGET.saturating_add(glide_time(glide_ms.unwrap_or(default_glide_ms), 1))

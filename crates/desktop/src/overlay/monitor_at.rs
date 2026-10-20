@@ -5,12 +5,10 @@ use windows::Win32::{
     },
 };
 use winpilot_core::{Point, Rect};
+use winpilot_win32::foreground_hwnd;
 
 use super::scale::scale_from_dpi;
-use crate::{
-    monitors::{Monitor, describe_monitor, effective_dpi, monitors},
-    window_foreground::current_foreground,
-};
+use crate::monitors::{Monitor, describe_monitor, effective_dpi, monitors};
 
 pub(crate) fn scale_at(point: Point) -> f32 {
     let monitor = unsafe { MonitorFromPoint(POINT { x: point.x, y: point.y }, MONITOR_DEFAULTTONEAREST) };
@@ -27,7 +25,7 @@ pub(crate) fn work_area_around(rect: Rect) -> Option<Rect> {
 }
 
 pub(crate) fn foreground_work_area() -> Option<Rect> {
-    let window = current_foreground()?;
+    let window = foreground_hwnd()?;
     describe_monitor(unsafe { MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY) }).map(|monitor| monitor.work_area)
 }
 

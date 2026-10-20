@@ -1,6 +1,12 @@
+mod names;
+mod tokens;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
+
+use names::{char_alias, function_number, modifier_named, named_key, single_char};
+use tokens::{group_chords, tokenize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct Modifiers {
@@ -67,14 +73,6 @@ pub struct Chord {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Token<'a> {
-    Word(&'a str),
-    Plus,
-    Comma,
-    Space,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Modifier {
     Ctrl,
     Alt,
@@ -88,7 +86,6 @@ enum Part {
     Key(Key),
 }
 
-const LITERAL_PLUS: &str = "+";
 const FUNCTION_KEYS: std::ops::RangeInclusive<u8> = 1..=24;
 
 pub fn parse_keys(spec: &str) -> Result<Vec<Chord>> {
@@ -112,83 +109,6 @@ fn empty_spec(spec: &str) -> Error {
         Error::invalid("empty key spec")
     } else {
         Error::invalid(format!("no keys in '{spec}'"))
-    }
-}
-
-fn tokenize(spec: &str) -> Vec<Token<'_>> {
-    let mut tokens = Vec::new();
-    let mut word_start: Option<usize> = None;
-    for (index, ch) in spec.char_indices() {
-        let Some(token) = punctuation(ch) else {
-            word_start.get_or_insert(index);
-            continue;
-        };
-        if let Some(start) = word_start.take() {
-            tokens.push(Token::Word(&spec[start..index]));
-        }
-        tokens.push(token);
-    }
-    if let Some(start) = word_start {
-        tokens.push(Token::Word(&spec[start..]));
-    }
-    tokens
-}
-
-fn punctuation(ch: char) -> Option<Token<'static>> {
-    match ch {
-        '+' => Some(Token::Plus),
-        ',' => Some(Token::Comma),
-        _ if ch.is_whitespace() => Some(Token::Space),
-        _ => None,
-    }
-}
-
-fn group_chords<'a>(tokens: &[Token<'a>], spec: &str) -> Result<Vec<Vec<&'a str>>> {
-    let mut chords = Vec::new();
-    let mut position = skip_separators(tokens, 0);
-    while position < tokens.len() {
-        let (parts, next) = read_chord(tokens, position, spec)?;
-        chords.push(parts);
-        position = skip_separators(tokens, next);
-    }
-    Ok(chords)
-}
-
-fn skip_while(tokens: &[Token<'_>], from: usize, skip: impl Fn(Token<'_>) -> bool) -> usize {
-    tokens.iter().skip(from).position(|token| !skip(*token)).map_or(tokens.len(), |offset| from + offset)
-}
-
-fn skip_separators(tokens: &[Token<'_>], from: usize) -> usize {
-    skip_while(tokens, from, |token| matches!(token, Token::Space | Token::Comma))
-}
-
-fn skip_spaces(tokens: &[Token<'_>], from: usize) -> usize {
-    skip_while(tokens, from, |token| token == Token::Space)
-}
-
-fn read_chord<'a>(tokens: &[Token<'a>], start: usize, spec: &str) -> Result<(Vec<&'a str>, usize)> {
-    let mut parts = Vec::new();
-    let mut position = start;
-    loop {
-        let (part, next) = read_part(tokens, position, spec)?;
-        parts.push(part);
-        let joiner = skip_spaces(tokens, next);
-        if tokens.get(joiner) != Some(&Token::Plus) {
-            return Ok((parts, next));
-        }
-        position = skip_spaces(tokens, joiner + 1);
-    }
-}
-
-fn read_part<'a>(tokens: &[Token<'a>], position: usize, spec: &str) -> Result<(&'a str, usize)> {
-    match (tokens.get(position), tokens.get(position + 1)) {
-        (Some(&Token::Word(word)), _) => Ok((word, position + 1)),
-        (Some(Token::Plus), Some(Token::Word(_))) => Err(Error::invalid(format!("empty key before '+' in '{spec}'"))),
-        (Some(Token::Plus), _) => Ok((LITERAL_PLUS, position + 1)),
-        (Some(Token::Comma), _) => {
-            Err(Error::invalid(format!("empty key after '+' in '{spec}'; write a comma key as 'comma'")))
-        }
-        _ => Err(Error::invalid(format!("empty key after '+' in '{spec}'"))),
     }
 }
 
@@ -241,88 +161,12 @@ fn classify(part: &str, spec: &str) -> Result<Part> {
         .ok_or_else(|| Error::invalid(format!("unknown key '{part}' in '{spec}'")))
 }
 
-fn modifier_named(name: &str) -> Option<Modifier> {
-    match name {
-        "ctrl" | "control" | "ctl" => Some(Modifier::Ctrl),
-        "alt" | "option" => Some(Modifier::Alt),
-        "shift" => Some(Modifier::Shift),
-        "win" | "windows" | "meta" | "super" => Some(Modifier::Win),
-        _ => None,
-    }
-}
-
-fn named_key(name: &str) -> Option<NamedKey> {
-    Some(match name {
-        "enter" | "return" => NamedKey::Enter,
-        "esc" | "escape" => NamedKey::Escape,
-        "tab" => NamedKey::Tab,
-        "space" => NamedKey::Space,
-        "backspace" | "bksp" | "back" => NamedKey::Backspace,
-        "delete" | "del" => NamedKey::Delete,
-        "insert" | "ins" => NamedKey::Insert,
-        "home" => NamedKey::Home,
-        "end" => NamedKey::End,
-        "pageup" | "pgup" => NamedKey::PageUp,
-        "pagedown" | "pgdn" => NamedKey::PageDown,
-        "up" | "arrowup" => NamedKey::Up,
-        "down" | "arrowdown" => NamedKey::Down,
-        "left" | "arrowleft" => NamedKey::Left,
-        "right" | "arrowright" => NamedKey::Right,
-        "printscreen" | "prtsc" | "prtscr" => NamedKey::PrintScreen,
-        "pause" | "break" => NamedKey::Pause,
-        "capslock" => NamedKey::CapsLock,
-        "numlock" => NamedKey::NumLock,
-        "scrolllock" => NamedKey::ScrollLock,
-        "contextmenu" | "menu" | "apps" | "application" => NamedKey::ContextMenu,
-        "volumeup" => NamedKey::VolumeUp,
-        "volumedown" => NamedKey::VolumeDown,
-        "volumemute" | "mute" => NamedKey::VolumeMute,
-        "playpause" | "mediaplaypause" => NamedKey::MediaPlayPause,
-        "nexttrack" | "medianext" => NamedKey::MediaNext,
-        "prevtrack" | "mediaprevious" => NamedKey::MediaPrevious,
-        "browserback" => NamedKey::BrowserBack,
-        "browserforward" => NamedKey::BrowserForward,
-        _ => return None,
-    })
-}
-
-fn function_number(name: &str) -> Option<u32> {
-    let digits = name.strip_prefix('f')?;
-    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    Some(digits.parse().unwrap_or(u32::MAX))
-}
-
 fn function_key(number: u32, part: &str, spec: &str) -> Result<Key> {
     u8::try_from(number)
         .ok()
         .filter(|number| FUNCTION_KEYS.contains(number))
         .map(Key::Function)
         .ok_or_else(|| Error::invalid(format!("function key '{part}' is out of range in '{spec}'; use f1 to f24")))
-}
-
-fn char_alias(name: &str) -> Option<char> {
-    match name {
-        "plus" => Some('+'),
-        "minus" => Some('-'),
-        "comma" => Some(','),
-        _ => None,
-    }
-}
-
-fn single_char(part: &str) -> Option<char> {
-    let mut chars = part.chars();
-    let ch = chars.next()?;
-    chars.next().is_none().then(|| lowercase_char(ch))
-}
-
-fn lowercase_char(ch: char) -> char {
-    let mut lower = ch.to_lowercase();
-    match (lower.next(), lower.next()) {
-        (Some(single), None) => single,
-        _ => ch,
-    }
 }
 
 #[cfg(test)]

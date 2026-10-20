@@ -1,4 +1,4 @@
-use super::{driving::Driving, presence::Tone};
+use super::presence::{Driving, Tone};
 
 const STOPPED: &str = "Stopped";
 pub(crate) const SEPARATOR: &str = " \u{00B7} ";

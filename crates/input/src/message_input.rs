@@ -6,12 +6,13 @@ use winpilot_core::{
     keys::Chord,
     protocol::{Direction, MouseButton},
 };
+use winpilot_win32::{class_name, live_hwnd};
 
 use crate::{
     layout::SystemLayout,
     message_delivery::{deliver, deliver_releasing},
-    message_plan::{click_plan, drag_plan, key_code, keys_plan, release_plan, scroll_plan, text_plan},
-    message_spot::{MessageSpot, client_point, live_hwnd},
+    message_plan::{Toolkit, click_plan, drag_plan, key_code, keys_plan, release_plan, scroll_plan, text_plan},
+    message_spot::{MessageSpot, client_point},
     mouse::validate_click_count,
 };
 
@@ -51,7 +52,7 @@ pub fn message_scroll(
 pub fn message_text(window: WindowRef, text: &str, check: impl FnMut() -> Result<()>) -> Result<()> {
     let hwnd = live_hwnd(window)?;
     let enter = key_code(VK_RETURN, &SystemLayout::of_window(hwnd));
-    deliver(hwnd, &text_plan(text, enter), check)
+    deliver(hwnd, &text_plan(text, enter, Toolkit::of_class(&class_name(hwnd))), check)
 }
 
 pub fn message_keys(
@@ -61,7 +62,7 @@ pub fn message_keys(
     mut check: impl FnMut() -> Result<()>,
 ) -> Result<()> {
     let hwnd = live_hwnd(window)?;
-    let plan = keys_plan(chords, &SystemLayout::of_window(hwnd))?;
+    let plan = keys_plan(chords, &SystemLayout::of_window(hwnd), Toolkit::of_class(&class_name(hwnd)))?;
     for _ in 0..repeat {
         deliver(hwnd, &plan, &mut check)?;
     }

@@ -1,4 +1,4 @@
-use winpilot_core::WindowInfo;
+use winpilot_core::{WindowInfo, text_limit::capped};
 
 use crate::window_classes::FRAME_HOST_PROCESS;
 
@@ -11,7 +11,7 @@ pub(crate) fn app_label(window: &WindowInfo) -> String {
         .or_else(|| hosted_title(window))
         .or_else(|| process_label(&window.process))
         .unwrap_or_else(|| UNNAMED.to_string());
-    shortened(&named)
+    capped(&named, LONGEST)
 }
 
 fn title_app(title: &str) -> Option<String> {
@@ -43,14 +43,6 @@ fn process_label(process: &str) -> Option<String> {
     }
     let mut letters = stem.chars();
     letters.next().map(|first| first.to_uppercase().chain(letters).collect())
-}
-
-fn shortened(name: &str) -> String {
-    if name.chars().count() <= LONGEST {
-        return name.to_string();
-    }
-    let kept: String = name.chars().take(LONGEST - 1).collect();
-    format!("{}\u{2026}", kept.trim_end())
 }
 
 const fn is_invisible(letter: char) -> bool {

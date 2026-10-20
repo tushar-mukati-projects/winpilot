@@ -8,8 +8,7 @@ use windows::Win32::{
     },
     System::Threading::{GetCurrentProcess, OpenProcessToken},
 };
-
-use crate::handle::{adopt, raw};
+use winpilot_win32::{adopt, raw};
 
 const LABEL_BUFFER_WORDS: usize = 32;
 
@@ -41,7 +40,7 @@ pub(crate) fn process_integrity_level(process: HANDLE) -> Option<u32> {
 fn open_token(process: HANDLE) -> Option<OwnedHandle> {
     let mut token = HANDLE::default();
     unsafe { OpenProcessToken(process, TOKEN_QUERY, &raw mut token) }.ok()?;
-    adopt(token)
+    unsafe { adopt(token) }
 }
 
 fn integrity_of_token(token: &OwnedHandle) -> Option<u32> {

@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use winpilot_core::WindowRef;
-
-use crate::win;
+use winpilot_win32::{class_name, hwnd_exists, hwnd_of, owning_pid};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WindowIdentity {
@@ -17,10 +16,12 @@ impl WindowIdentity {
     }
 
     pub(crate) fn read(window: WindowRef) -> Option<Self> {
-        if !win::window_exists(window) {
+        let hwnd = hwnd_of(window);
+        if !hwnd_exists(hwnd) {
             return None;
         }
-        Some(Self { hwnd: window, pid: win::process_id(window)?, class: Arc::from(win::class_name(window)?) })
+        let (pid, class) = (owning_pid(hwnd), class_name(hwnd));
+        (pid != 0 && !class.is_empty()).then(|| Self { hwnd: window, pid, class: Arc::from(class) })
     }
 
     pub(crate) fn is_known(&self) -> bool {

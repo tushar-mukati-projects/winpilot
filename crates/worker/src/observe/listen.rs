@@ -4,6 +4,7 @@ use parking_lot::Mutex;
 use winpilot_capture::{AudioSource, Pcm, capture_audio};
 use winpilot_core::{
     Result,
+    format::MS_PER_SECOND,
     protocol::{HeardSegment, Hearing, ListenReport, ListenRequest, ListenSource},
 };
 use winpilot_speech::{Segment, TranscribeOptions, Transcriber, clock, decode_media, installed_model_path};
@@ -94,16 +95,15 @@ fn first_minutes(mut audio: Pcm, total_ms: u64) -> (Pcm, Vec<String>) {
     audio.samples.truncate(kept);
     let note = format!(
         "transcribed the first {} of {}; listen handles {} of a file per call",
-        clock(MAX_FILE_SECONDS * 1000),
+        clock(MAX_FILE_SECONDS * MS_PER_SECOND),
         clock(total_ms),
-        clock(MAX_FILE_SECONDS * 1000)
+        clock(MAX_FILE_SECONDS * MS_PER_SECOND)
     );
     (audio, vec![note])
 }
 
 fn duration_ms(audio: &Pcm) -> u64 {
-    let frames = audio.samples.len() as u64 / u64::from(audio.channels.max(1));
-    frames.saturating_mul(1000) / u64::from(audio.sample_rate.max(1))
+    (audio.frames() as u64).saturating_mul(MS_PER_SECOND) / u64::from(audio.sample_rate.max(1))
 }
 
 fn within_chars(segments: &[Segment], max_chars: usize) -> (Vec<HeardSegment>, bool) {

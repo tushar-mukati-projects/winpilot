@@ -1,27 +1,28 @@
+mod point;
+mod selector;
+
 use std::time::{Duration, Instant};
 
 use winpilot_core::{
-    Element, ElementRef, Error, ErrorCode, ImageRef, Point, Result, Target, WindowInfo, format::window_line,
+    Element, ElementRef, Error, ErrorCode, Point, Result, Snapshot, Target, WindowInfo, format::window_line,
     selector::Selector,
 };
 
+pub(crate) use self::selector::selector_snapshots;
+use self::{point::resolve_point, selector::wait_for_selector};
 use crate::{
-    app_windows::{app_windows, app_windows_matching},
+    app_windows::app_windows,
     call_scope::CallScope,
-    cover,
     default_window::default_window,
     engine::Engine,
-    images::ImageRecord,
-    ocr_read::Freshness,
-    ocr_target::{self, OcrUse},
-    until::until,
-    watch::Watch,
+    wait::is_gone,
     window_spec::{self, WindowSpec},
 };
 
 const LISTED_MATCHES: usize = 8;
-const NARROW_THE_SELECTOR: &str =
-    "add window: or process: terms to say which, or observe that window and use its element ref";
+const FOUND_DEPTH: u16 = 1;
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(2);
+const SEARCH_FLOOR: Duration = Duration::from_millis(250);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Cover {
@@ -40,22 +41,6 @@ pub(crate) enum Reach {
 pub(crate) struct Resolved {
     pub(crate) window: WindowInfo,
     pub(crate) reach: Reach,
-}
-
-trait InWindow {
-    fn window(&self) -> &WindowInfo;
-}
-
-impl InWindow for WindowInfo {
-    fn window(&self) -> &WindowInfo {
-        self
-    }
-}
-
-impl InWindow for Resolved {
-    fn window(&self) -> &WindowInfo {
-        &self.window
-    }
 }
 
 impl Resolved {
@@ -133,34 +118,30 @@ pub(crate) fn target_with(engine: &Engine, target: &Target, call: &CallScope, co
     }
 }
 
-fn wait_for_selector(engine: &Engine, selector: &Selector, call: &CallScope) -> Result<Resolved> {
-    let patience = Duration::from_millis(engine.config.act.auto_wait_ms);
-    let mut missing = None;
-    let mut freshness = Freshness::CachedIsFine;
-    let found = until(engine, call, patience, &selector_watch(engine, selector), || {
-        let using =
-            OcrUse { call, freshness: std::mem::replace(&mut freshness, Freshness::TakenAfter(Instant::now())) };
-        match resolve_selector(engine, selector, using) {
-            Ok(resolved) => Ok(Some(resolved)),
-            Err(error) if error.code == ErrorCode::NotFound => {
-                missing = Some(error);
-                Ok(None)
-            }
-            Err(error) => Err(error),
-        }
-    })?;
-    found.ok_or_else(|| missing.unwrap_or_else(|| no_window(selector)))
-}
-
-fn selector_watch(engine: &Engine, selector: &Selector) -> Watch {
-    candidate_windows(engine, selector).map(|windows| Watch::windows(&windows)).unwrap_or_default()
-}
-
-fn candidate_windows(engine: &Engine, selector: &Selector) -> Result<Vec<WindowInfo>> {
-    if selector.has_window_terms() {
-        return app_windows_matching(engine, selector);
+pub(crate) fn searched(engine: &Engine, snapshot: Snapshot, selector: &Selector, ends: Instant) -> Result<Snapshot> {
+    let Some(limit) = search_time(&snapshot, selector, ends) else { return Ok(snapshot) };
+    let Some(hint) = selector.search_hint() else { return Ok(snapshot) };
+    let window = snapshot.window.hwnd;
+    match engine.uia.run(move |uia| uia.search(window, &hint, limit)) {
+        Ok(found) => Ok(with_found(snapshot, found)),
+        Err(error) if keeps_the_snapshot(&error) => Ok(snapshot),
+        Err(error) => Err(error),
     }
-    default_window(engine).map(|window| vec![window])
+}
+
+fn search_time(snapshot: &Snapshot, selector: &Selector, ends: Instant) -> Option<Duration> {
+    let limit = SEARCH_TIMEOUT.min(ends.saturating_duration_since(Instant::now()));
+    (snapshot.truncated && limit >= SEARCH_FLOOR && selector.find(snapshot).is_empty()).then_some(limit)
+}
+
+fn keeps_the_snapshot(error: &Error) -> bool {
+    is_gone(error) || matches!(error.code, ErrorCode::TargetNotResponding | ErrorCode::Internal)
+}
+
+fn with_found(mut snapshot: Snapshot, found: Vec<Element>) -> Snapshot {
+    let unseen: Vec<Element> = found.into_iter().filter(|element| snapshot.get(element.id).is_none()).collect();
+    snapshot.elements.extend(unseen.into_iter().map(|element| Element { depth: FOUND_DEPTH, ..element }));
+    snapshot
 }
 
 fn resolve_element(engine: &Engine, id: ElementRef) -> Result<Resolved> {
@@ -175,110 +156,15 @@ fn resolve_window(engine: &Engine, window: WindowInfo) -> Result<Resolved> {
     Ok(Resolved { window, reach: Reach::Window })
 }
 
-fn resolve_selector(engine: &Engine, selector: &Selector, using: OcrUse<'_>) -> Result<Resolved> {
-    let candidates = candidate_windows(engine, selector)?;
-    if let Some(text) = selector.ocr_text() {
-        let window = one_preferred(candidates, selector)?;
-        return ocr_target::resolve(engine, window, text, selector.nth(), using);
-    }
-    if !selector.has_element_terms() {
-        let window = one_preferred(candidates, selector)?;
-        return resolve_window(engine, window);
-    }
-    one_preferred(element_matches(engine, selector, candidates)?, selector)
-}
-
-fn element_matches(engine: &Engine, selector: &Selector, candidates: Vec<WindowInfo>) -> Result<Vec<Resolved>> {
-    let mut found = Vec::new();
-    let mut last_error = no_window(selector);
-    for window in candidates {
-        let snapshot = engine.snapshot(&window)?;
-        match selector.resolve(&snapshot) {
-            Ok(element) => found.push(Resolved { reach: Reach::Element(element.clone()), window }),
-            Err(error) if error.code == ErrorCode::NotFound => last_error = error,
-            Err(error) => return Err(error),
-        }
-    }
-    if found.is_empty() {
-        return Err(last_error);
-    }
-    Ok(found)
-}
-
-fn one_preferred<T: InWindow>(matches: Vec<T>, selector: &Selector) -> Result<T> {
-    let mut tied = preferred(matches);
-    match tied.len() {
-        0 => Err(no_window(selector)),
-        1 => Ok(tied.remove(0)),
-        _ => Err(ambiguous(&selector.to_string(), tied.iter().map(InWindow::window), NARROW_THE_SELECTOR)),
-    }
-}
-
-fn preferred<T: InWindow>(matches: Vec<T>) -> Vec<T> {
-    let here = kept_if_any(matches, |found| found.window().on_current_desktop);
-    kept_if_any(here, |found| found.window().foreground)
-}
-
-fn kept_if_any<T>(items: Vec<T>, wanted: impl Fn(&T) -> bool) -> Vec<T> {
-    if !items.iter().any(&wanted) {
-        return items;
-    }
-    items.into_iter().filter(|item| wanted(item)).collect()
-}
-
-fn no_window(selector: &Selector) -> Error {
-    Error::not_found(format!("no open window matches {selector}"))
-}
-
-fn resolve_point(engine: &Engine, point: Point, image: Option<ImageRef>, covering: Cover) -> Result<Resolved> {
-    let record = image.map(|image| engine.images.lock().record(image).map(|record| (image, record))).transpose()?;
-    let screen = match &record {
-        Some((image, record)) => record.screen_point(*image, point)?,
-        None => point,
-    };
-    let under = engine.uia.run(move |uia| uia.element_at(screen))?;
-    let hit = element_window(engine, under.id)?;
-    let window = match &record {
-        Some((_, record)) => shot_window(engine, record, &hit, covering)?,
-        None => hit.clone(),
-    };
-    engine.guard.check_window(&hit)?;
-    engine.guard.check_window(&window)?;
-    Ok(Resolved { window, reach: Reach::Point { point: screen, under } })
-}
-
-fn shot_window(engine: &Engine, record: &ImageRecord, hit: &WindowInfo, covering: Cover) -> Result<WindowInfo> {
-    if covering == Cover::Refused {
-        record.check_hit_window(hit.hwnd, |source| cover::window_covers(engine, source, hit.hwnd))?;
-    }
-    match record.window.filter(|source| *source != hit.hwnd) {
-        Some(source) => winpilot_desktop::window(source),
-        None => Ok(hit.clone()),
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use winpilot_core::{Rect, Role};
+    use winpilot_core::{Rect, Role, WindowRef};
 
     use super::*;
-    use crate::test_fixture::{element, window};
+    use crate::test_fixture::{element, engine, snapshot, window};
 
     fn resolved(reach: Reach) -> Resolved {
         Resolved { window: window(5, "app.exe", "App", Rect::new(0, 0, 100, 100)), reach }
-    }
-
-    fn placed(hwnd: i64, here: bool, foreground: bool) -> WindowInfo {
-        let base = window(hwnd, "app.exe", "App", Rect::new(0, 0, 10, 10));
-        WindowInfo { on_current_desktop: here, desktop: (!here).then_some(2), foreground, ..base }
-    }
-
-    fn selector(text: &str) -> Selector {
-        text.parse().unwrap()
-    }
-
-    fn chosen(windows: Vec<WindowInfo>) -> Result<i64> {
-        one_preferred(windows, &selector("process:app")).map(|window| window.hwnd.0)
     }
 
     #[test]
@@ -296,27 +182,69 @@ mod tests {
         assert_eq!(error.message, "toggle needs an element, not the window w5");
     }
 
-    #[test]
-    fn a_single_match_wins_wherever_it_is() {
-        assert_eq!(chosen(vec![placed(1, false, false)]).unwrap(), 1);
-        assert_eq!(chosen(Vec::new()).unwrap_err().code, ErrorCode::NotFound);
+    fn truncated_page() -> Snapshot {
+        let page = snapshot("Page", vec![element(1, 0, Role::Window, "Page"), element(2, 1, Role::Link, "Jobs")]);
+        Snapshot { truncated: true, ..page }
+    }
+
+    fn ends_in(left: Duration) -> Instant {
+        Instant::now() + left
     }
 
     #[test]
-    fn the_current_desktop_then_the_foreground_break_ties() {
-        assert_eq!(chosen(vec![placed(1, false, false), placed(2, true, false)]).unwrap(), 2);
-        assert_eq!(chosen(vec![placed(1, true, false), placed(2, true, true)]).unwrap(), 2);
-        assert_eq!(chosen(vec![placed(1, true, true), placed(2, false, true)]).unwrap(), 1);
+    fn only_a_truncated_snapshot_without_a_match_asks_for_a_native_search() {
+        let save: Selector = "role:button name:\"Save\"".parse().unwrap();
+        let ends = ends_in(Duration::from_secs(600));
+        let mut page = truncated_page();
+        assert_eq!(search_time(&page, &save, ends), Some(SEARCH_TIMEOUT));
+        page.truncated = false;
+        assert_eq!(search_time(&page, &save, ends), None);
+        page.truncated = true;
+        page.elements.push(element(3, 1, Role::Button, "Save"));
+        assert_eq!(search_time(&page, &save, ends), None);
     }
 
     #[test]
-    fn matches_that_nothing_tells_apart_are_ambiguous_and_listed_topmost_first() {
-        let error = chosen(vec![placed(1, false, false), placed(3, true, false), placed(2, true, false)]).unwrap_err();
-        assert_eq!(error.code, ErrorCode::Ambiguous);
-        assert!(error.message.starts_with("2 windows match process:app: w3 app.exe"), "{}", error.message);
-        assert!(error.message.contains("; w2 app.exe"), "{}", error.message);
-        assert!(!error.message.contains("w1 "), "{}", error.message);
-        assert!(error.message.ends_with(NARROW_THE_SELECTOR), "{}", error.message);
+    fn the_native_search_gets_only_the_time_the_caller_has_left() {
+        let save: Selector = "role:button name:Save".parse().unwrap();
+        let page = truncated_page();
+        let limit = search_time(&page, &save, ends_in(Duration::from_millis(500))).unwrap();
+        assert!(limit > SEARCH_FLOOR && limit <= Duration::from_millis(500), "{limit:?}");
+        assert_eq!(search_time(&page, &save, ends_in(SEARCH_FLOOR / 2)), None);
+        assert_eq!(search_time(&page, &save, Instant::now()), None);
+    }
+
+    #[test]
+    fn a_failed_native_search_keeps_the_snapshot() {
+        let save: Selector = "role:button name:Save".parse().unwrap();
+        let mut page = truncated_page();
+        page.window.hwnd = WindowRef(0);
+        assert_eq!(searched(engine(), page.clone(), &save, ends_in(Duration::from_secs(600))).unwrap(), page);
+    }
+
+    #[test]
+    fn a_search_stopped_by_the_user_or_the_caller_is_not_swallowed() {
+        for code in [ErrorCode::TargetNotResponding, ErrorCode::Internal, ErrorCode::NotFound, ErrorCode::StaleRef] {
+            assert!(keeps_the_snapshot(&Error::new(code, "x")), "{code}");
+        }
+        for code in [ErrorCode::Cancelled, ErrorCode::StoppedByUser, ErrorCode::Timeout, ErrorCode::Denied] {
+            assert!(!keeps_the_snapshot(&Error::new(code, "x")), "{code}");
+        }
+    }
+
+    #[test]
+    fn found_elements_hang_under_the_root_after_the_walk_and_resolve_by_selector() {
+        let save: Selector = "role:button name:Save".parse().unwrap();
+        let walked = vec![
+            element(1, 0, Role::Window, "Page"),
+            element(2, 1, Role::Group, "Feed"),
+            element(3, 5, Role::Link, "Jobs"),
+        ];
+        let found = vec![element(3, 0, Role::Link, "Jobs"), element(9, 0, Role::Button, "Save")];
+        let merged = with_found(snapshot("Page", walked), found);
+        let shape: Vec<(u32, u16)> = merged.elements.iter().map(|element| (element.id.0, element.depth)).collect();
+        assert_eq!(shape, [(1, 0), (2, 1), (3, 5), (9, 1)]);
+        assert_eq!(save.resolve(&merged).unwrap().id, ElementRef(9));
     }
 
     #[test]

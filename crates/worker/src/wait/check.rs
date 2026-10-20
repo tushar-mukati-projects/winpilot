@@ -1,9 +1,8 @@
 use std::time::Instant;
 
-use winpilot_core::{Error, ErrorCode, Rect, Result, Target, WindowInfo, format::window_line, ocr::coords};
+use winpilot_core::{Error, ErrorCode, Rect, Result, Target, WindowInfo, format::window_line, millis, ocr::coords};
 
 use super::WaitReport;
-use crate::engine::duration_ms;
 
 const INCOMPLETE: &str = "the window has more elements than one snapshot reads, so its absence is not proven";
 
@@ -42,7 +41,7 @@ impl Check {
     }
 
     pub(crate) fn report(self, started: Instant) -> WaitReport {
-        WaitReport { satisfied: self.met, elapsed_ms: duration_ms(started.elapsed()), detail: self.detail }
+        WaitReport { satisfied: self.met, elapsed_ms: millis(started.elapsed()), detail: self.detail }
     }
 }
 

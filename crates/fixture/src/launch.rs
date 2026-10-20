@@ -24,6 +24,7 @@ const PATIENCE: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(25);
 const EXIT_WAIT_MS: u32 = 5000;
 const ON_SCREEN: (i32, i32) = (120, 120);
+const OFF_SCREEN_GAP: i32 = 200;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Placement {
@@ -91,7 +92,7 @@ fn beyond_the_virtual_screen() -> (i32, i32) {
     let right = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN) };
     let top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
     let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
-    (right.max(1).saturating_add(200), top.saturating_add(height / 8))
+    (right.max(1).saturating_add(OFF_SCREEN_GAP), top.saturating_add(height / 8))
 }
 
 fn wait_for_window(title: &str) -> Option<HWND> {

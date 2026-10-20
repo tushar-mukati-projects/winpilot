@@ -1,6 +1,6 @@
 use std::{
     sync::{Mutex, PoisonError},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use windows::Win32::{
@@ -10,10 +10,11 @@ use windows::Win32::{
         IUIAutomation2, IUIAutomation6, IUIAutomationElement, IUIAutomationTreeWalker,
     },
 };
-use windows_core::Interface;
+use windows::core::Interface;
 use winpilot_core::{Context, Result};
+use winpilot_win32::{finite_millis, window_exists};
 
-use crate::{options::UiaOptions, registry::Registry, requests::CacheRequests, warmed::Warmed};
+use crate::{failure::UiaResult, options::UiaOptions, registry::Registry, requests::CacheRequests, warmed::Warmed};
 
 static CREATION: Mutex<()> = Mutex::new(());
 
@@ -39,13 +40,33 @@ impl Uia {
         let registry = Registry::new(options.first_ref);
         Ok(Self { automation, requests, walker, registry, warmed: Warmed::default() })
     }
+
+    pub(crate) fn evict_stale_refs(&mut self) {
+        self.registry.evict(Instant::now(), window_exists);
+        self.warmed.prune(window_exists);
+    }
+
+    pub(crate) fn within<T>(
+        &self,
+        limit: Duration,
+        doing: &str,
+        call: impl FnOnce() -> windows::core::Result<T>,
+    ) -> Result<T> {
+        let tuned: IUIAutomation2 = self.automation.cast().context("reaching IUIAutomation2")?;
+        let usual = unsafe { tuned.TransactionTimeout() }.context("reading the UI Automation transaction timeout")?;
+        unsafe { tuned.SetTransactionTimeout(finite_millis(limit)) }
+            .context("setting the UI Automation transaction timeout")?;
+        let result = call();
+        unsafe { tuned.SetTransactionTimeout(usual) }.context("restoring the UI Automation transaction timeout")?;
+        result.uia(doing)
+    }
 }
 
 fn configure_timeouts(automation: &IUIAutomation, options: UiaOptions) -> Result<()> {
     let tuned: IUIAutomation2 = automation.cast().context("reaching IUIAutomation2")?;
-    unsafe { tuned.SetConnectionTimeout(millis(options.connection_timeout)) }
+    unsafe { tuned.SetConnectionTimeout(finite_millis(options.connection_timeout)) }
         .context("setting the UI Automation connection timeout")?;
-    unsafe { tuned.SetTransactionTimeout(millis(options.transaction_timeout)) }
+    unsafe { tuned.SetTransactionTimeout(finite_millis(options.transaction_timeout)) }
         .context("setting the UI Automation transaction timeout")?;
     unsafe { tuned.SetAutoSetFocus(false) }.context("turning off UI Automation auto-focus")
 }
@@ -55,8 +76,4 @@ fn configure_connection(automation: &IUIAutomation) -> Result<()> {
     unsafe { tuned.SetCoalesceEvents(CoalesceEventsOptions_Enabled) }.context("turning on event coalescing")?;
     unsafe { tuned.SetConnectionRecoveryBehavior(ConnectionRecoveryBehaviorOptions_Enabled) }
         .context("turning on connection recovery")
-}
-
-fn millis(duration: Duration) -> u32 {
-    u32::try_from(duration.as_millis()).unwrap_or(u32::MAX)
 }

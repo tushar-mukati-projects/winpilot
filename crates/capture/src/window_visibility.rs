@@ -1,75 +1,99 @@
-use windows::Win32::Foundation::{HWND, POINT};
-use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
-use windows::Win32::UI::WindowsAndMessaging::{IsChild, IsIconic, IsWindowVisible, WindowFromPoint};
+use windows::Win32::Foundation::HWND;
 use winpilot_core::{Point, Rect};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Presence {
-    visible: bool,
-    cloaked: bool,
-    minimized: bool,
-    topmost_at_centre: bool,
-}
-
-impl Presence {
-    const fn is_uncovered(self) -> bool {
-        self.visible && !self.cloaked && !self.minimized && self.topmost_at_centre
-    }
-}
+use winpilot_win32::{hwnd_of, is_cloaked, is_minimized, is_visible, owner_chain, ref_of, window_at};
 
 pub(crate) fn shows_on_screen(hwnd: HWND, visible: Rect) -> bool {
-    presence(hwnd, visible).is_uncovered()
-}
-
-fn presence(hwnd: HWND, visible: Rect) -> Presence {
-    Presence {
-        visible: unsafe { IsWindowVisible(hwnd) }.as_bool(),
-        cloaked: is_cloaked(hwnd),
-        minimized: unsafe { IsIconic(hwnd) }.as_bool(),
-        topmost_at_centre: is_topmost_at(hwnd, visible.center()),
-    }
-}
-
-fn is_cloaked(hwnd: HWND) -> bool {
-    let mut cloaked = 0u32;
-    let size = size_of::<u32>() as u32;
-    let queried = unsafe { DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, (&raw mut cloaked).cast(), size) };
-    queried.is_ok() && cloaked != 0
+    is_visible(hwnd) && !is_cloaked(hwnd) && !is_minimized(hwnd) && is_topmost_at(hwnd, visible.center())
 }
 
 fn is_topmost_at(hwnd: HWND, point: Point) -> bool {
-    let hit = unsafe { WindowFromPoint(POINT { x: point.x, y: point.y }) };
-    !hit.is_invalid() && (hit == hwnd || unsafe { IsChild(hwnd, hit) }.as_bool())
+    window_at(point).map(hwnd_of).is_some_and(|hit| hit == hwnd || belongs_to(hwnd, hit))
+}
+
+fn belongs_to(hwnd: HWND, hit: HWND) -> bool {
+    owner_chain(ref_of(hit)).contains(&ref_of(hwnd))
 }
 
 #[cfg(test)]
 mod tests {
-    use windows::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor};
+    use windows::{
+        Win32::UI::WindowsAndMessaging::{CreateWindowExW, DestroyWindow, WINDOW_EX_STYLE, WS_POPUP},
+        core::{PCWSTR, w},
+    };
+    use winpilot_win32::{owner_of, owning_pid, top_level_windows};
 
     use super::*;
 
-    const UNCOVERED: Presence = Presence { visible: true, cloaked: false, minimized: false, topmost_at_centre: true };
+    struct HiddenPopup(HWND);
 
-    #[test]
-    fn only_visible_uncloaked_restored_topmost_windows_count_as_uncovered() {
-        assert!(UNCOVERED.is_uncovered());
-        assert!(!Presence { visible: false, ..UNCOVERED }.is_uncovered());
-        assert!(!Presence { cloaked: true, ..UNCOVERED }.is_uncovered());
-        assert!(!Presence { minimized: true, ..UNCOVERED }.is_uncovered());
-        assert!(!Presence { topmost_at_centre: false, ..UNCOVERED }.is_uncovered());
+    impl HiddenPopup {
+        fn owned_by(owner: Option<&Self>) -> Self {
+            let owner = owner.map(|owner| owner.0);
+            let created = unsafe {
+                CreateWindowExW(
+                    WINDOW_EX_STYLE(0),
+                    w!("STATIC"),
+                    PCWSTR::null(),
+                    WS_POPUP,
+                    0,
+                    0,
+                    1,
+                    1,
+                    owner,
+                    None,
+                    None,
+                    None,
+                )
+            };
+            Self(created.unwrap())
+        }
+    }
+
+    impl Drop for HiddenPopup {
+        fn drop(&mut self) {
+            let _ = unsafe { DestroyWindow(self.0) };
+        }
     }
 
     #[test]
+    #[ignore = "creates hidden windows"]
+    fn a_window_owns_everything_down_its_owner_chain() {
+        let dialog_owner = HiddenPopup::owned_by(None);
+        let dialog = HiddenPopup::owned_by(Some(&dialog_owner));
+        let dropdown = HiddenPopup::owned_by(Some(&dialog));
+        assert!(belongs_to(dialog.0, dropdown.0));
+        assert!(belongs_to(dialog_owner.0, dropdown.0));
+        assert!(!belongs_to(dropdown.0, dialog.0));
+        assert!(!belongs_to(HWND::default(), dropdown.0));
+    }
+
+    #[test]
+    #[ignore = "reads the user's windows"]
     fn the_window_under_a_point_is_topmost_there() {
         crate::dpi::make_thread_per_monitor_aware().unwrap();
         let point = Point::new(10, 10);
-        let hit = unsafe { WindowFromPoint(POINT { x: point.x, y: point.y }) };
-        if hit.is_invalid() {
-            return;
-        }
-        let root = unsafe { GetAncestor(hit, GA_ROOT) };
+        let Some(hit) = window_at(point).map(hwnd_of) else { return };
         assert!(is_topmost_at(hit, point));
-        assert!(is_topmost_at(root, point));
         assert!(!is_topmost_at(HWND(std::ptr::null_mut()), point));
+    }
+
+    #[test]
+    #[ignore = "reads the user's windows"]
+    fn owned_windows_belong_to_their_owner_and_process_siblings_do_not() {
+        let windows: Vec<HWND> = top_level_windows().unwrap();
+        let window = windows.iter().find(|hwnd| owner_of(ref_of(**hwnd)).is_some()).expect("no owned window is open");
+        let owner = owner_of(ref_of(*window)).map(hwnd_of).unwrap();
+        assert!(belongs_to(owner, *window));
+        let unowned = |hwnd: &&HWND| owner_of(ref_of(**hwnd)).is_none();
+        let sibling_of = |hwnd: HWND| {
+            windows.iter().filter(unowned).find(|other| **other != hwnd && owning_pid(**other) == owning_pid(hwnd))
+        };
+        let Some((target, sibling)) =
+            windows.iter().filter(unowned).find_map(|hwnd| sibling_of(*hwnd).map(|found| (*hwnd, *found)))
+        else {
+            return;
+        };
+        assert!(!belongs_to(target, sibling));
+        assert!(!belongs_to(HWND::default(), target));
     }
 }

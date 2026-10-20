@@ -13,7 +13,7 @@ use windows::Win32::{
     UI::WindowsAndMessaging::{GetDlgItem, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_GETTEXT},
 };
 use winpilot_core::{
-    Config, Element, ElementRef, ElementState, Rect, Role, Snapshot, WindowInfo, WindowRef, WindowState,
+    Config, Element, ElementRef, ElementState, Rect, Role, Snapshot, WindowInfo, WindowRef, WindowState, protocol::Step,
 };
 use winpilot_fixture::{FixtureProcess, Placement};
 
@@ -34,6 +34,10 @@ pub(crate) fn engine() -> &'static Engine {
         config.guard.yield_ms = 0;
         Engine::start(config, 0, "winpilot-test").unwrap()
     })
+}
+
+pub(crate) fn step(json: &str) -> Step {
+    serde_json::from_str(json).unwrap()
 }
 
 pub(crate) fn window(hwnd: i64, process: &str, title: &str, rect: Rect) -> WindowInfo {
@@ -76,12 +80,8 @@ pub(crate) fn snapshot(title: &str, elements: Vec<Element>) -> Snapshot {
     Snapshot { window, elements, focused: None, truncated: false }
 }
 
-pub(crate) fn fixture_exe() -> Option<PathBuf> {
-    let found = winpilot_fixture::fixture_exe();
-    if found.is_none() {
-        eprintln!("skipping: winpilot-fixture.exe is not built (cargo build -p winpilot-fixture)");
-    }
-    found
+pub(crate) fn fixture_exe() -> PathBuf {
+    winpilot_fixture::fixture_exe().expect("winpilot-fixture.exe is not built: cargo build -p winpilot-fixture")
 }
 
 pub(crate) fn unique_title(kind: &str) -> String {
@@ -127,25 +127,24 @@ pub(crate) struct FixtureApp {
 }
 
 impl FixtureApp {
-    pub(crate) fn launch() -> Option<Self> {
+    pub(crate) fn launch() -> Self {
         Self::launch_at(unique_title("Worker"), Placement::OffScreen)
     }
 
-    pub(crate) fn launch_titled(title: String) -> Option<Self> {
+    pub(crate) fn launch_titled(title: String) -> Self {
         Self::launch_at(title, Placement::OffScreen)
     }
 
-    pub(crate) fn launch_on_screen() -> Option<Self> {
+    pub(crate) fn launch_on_screen() -> Self {
         Self::launch_at(unique_title("Worker"), Placement::OnScreen)
     }
 
-    fn launch_at(title: String, placement: Placement) -> Option<Self> {
-        let exe = fixture_exe()?;
-        let process = FixtureProcess::launch(&exe, &title, placement)?;
+    fn launch_at(title: String, placement: Placement) -> Self {
+        let process = FixtureProcess::launch(&fixture_exe(), &title, placement).expect("the fixture app did not start");
         let closes = ClosesTitled(title);
-        let window = wait_for_window(process.pid(), &closes.0)?;
+        let window = wait_for_window(process.pid(), &closes.0).expect("the fixture window never appeared");
         engine().changes.wait_quiet(process.pid(), QUIET, PATIENCE);
-        Some(Self { window, _closes: closes, process })
+        Self { window, _closes: closes, process }
     }
 
     pub(crate) fn title(&self) -> &str {
@@ -208,6 +207,5 @@ fn wait_for_window(pid: u32, title: &str) -> Option<WindowInfo> {
         }
         thread::sleep(POLL);
     }
-    eprintln!("skipping: the fixture window never appeared");
     None
 }

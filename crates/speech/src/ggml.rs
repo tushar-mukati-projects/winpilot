@@ -16,6 +16,9 @@ const MAX_TOKEN_BYTES: usize = 1_024;
 const MAX_NAME_BYTES: usize = 256;
 const MAX_DIMS: usize = 4;
 const MAX_ELEMENTS: usize = 1 << 30;
+const MAX_HPARAM: usize = 1 << 20;
+const F32_BYTES: usize = size_of::<f32>();
+const READ_BUFFER_BYTES: usize = 1 << 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Hparams {
@@ -40,7 +43,7 @@ pub(crate) struct GgmlModel {
 
 pub(crate) fn read_model(path: &Path) -> Result<GgmlModel> {
     let file = File::open(path).context(&format!("opening the speech model {}", path.display()))?;
-    let mut reader = ModelReader { inner: BufReader::with_capacity(1 << 20, file) };
+    let mut reader = ModelReader { inner: BufReader::with_capacity(READ_BUFFER_BYTES, file) };
     if reader.u32()? != MAGIC {
         return Err(Error::unsupported(format!("{} is not a whisper.cpp ggml model", path.display())));
     }
@@ -77,7 +80,7 @@ impl<R: Read> ModelReader<R> {
     }
 
     fn hparams(&mut self) -> Result<Hparams> {
-        let mut next = |what| self.count(1 << 20, what);
+        let mut next = |what| self.count(MAX_HPARAM, what);
         let hparams = Hparams {
             vocab: next("vocabulary size")?,
             audio_ctx: next("audio context")?,
@@ -100,8 +103,8 @@ impl<R: Read> ModelReader<R> {
         if rows != mels {
             return Err(Error::unsupported("the speech model's mel filters do not match its mel bands"));
         }
-        let raw = self.bytes(rows * columns * 4)?;
-        Ok(raw.as_chunks::<4>().0.iter().map(|chunk| f32::from_le_bytes(*chunk)).collect())
+        let raw = self.bytes(rows * columns * F32_BYTES)?;
+        Ok(raw.as_chunks::<F32_BYTES>().0.iter().map(|chunk| f32::from_le_bytes(*chunk)).collect())
     }
 
     fn tokens(&mut self) -> Result<Vec<Vec<u8>>> {

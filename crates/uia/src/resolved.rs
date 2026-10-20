@@ -1,8 +1,8 @@
 use windows::Win32::UI::Accessibility::{IUIAutomationElement, UIA_PATTERN_ID};
-use windows_core::Interface;
-use winpilot_core::{Element, Error, Result};
+use windows::core::Interface;
+use winpilot_core::{Element, Error, Result, text_limit::ellipsized};
 
-use crate::{pattern::current_pattern, text::truncate_chars};
+use crate::pattern::current_pattern;
 
 const LABEL_NAME_CHARS: usize = 60;
 
@@ -30,10 +30,7 @@ pub(crate) fn describe(info: &Element) -> String {
     if info.name.is_empty() {
         return format!("{} ({})", info.id, info.role);
     }
-    let mut name = truncate_chars(info.name.clone(), LABEL_NAME_CHARS);
-    if name.len() < info.name.len() {
-        name.push('…');
-    }
+    let name = ellipsized(&info.name, LABEL_NAME_CHARS);
     format!("{} ({} \"{name}\")", info.id, info.role)
 }
 

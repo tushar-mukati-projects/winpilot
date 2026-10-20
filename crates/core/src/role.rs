@@ -210,23 +210,39 @@ impl FromStr for Role {
             "hyperlink" | "a" => Some(Self::Link),
             "radiobutton" => Some(Self::Radio),
             "check" => Some(Self::Checkbox),
-            "textbox" | "input" | "field" => Some(Self::Edit),
+            "textbox" | "input" | "field" | "textarea" | "searchbox" => Some(Self::Edit),
             "combo" | "dropdown" | "select" => Some(Self::Combobox),
-            "row" => Some(Self::DataItem),
-            "label" | "statictext" => Some(Self::Text),
-            "tabs" => Some(Self::Tab),
+            "row" | "cell" | "gridcell" => Some(Self::DataItem),
+            "label" | "statictext" | "heading" => Some(Self::Text),
+            "tabs" | "tablist" => Some(Self::Tab),
             "dialog" => Some(Self::Window),
+            "option" => Some(Self::ListItem),
+            "listbox" => Some(Self::List),
+            "menuitemcheckbox" | "menuitemradio" => Some(Self::MenuItem),
+            "img" => Some(Self::Image),
+            "switch" => Some(Self::Button),
+            "grid" | "treegrid" => Some(Self::DataGrid),
+            "columnheader" | "rowheader" => Some(Self::HeaderItem),
+            "spinbutton" => Some(Self::Spinner),
             _ => None,
         };
-        alias
-            .or_else(|| CONTROL_TYPES.iter().copied().chain([Self::Unknown]).find(|role| role.as_str() == wanted))
-            .ok_or_else(|| Error::invalid(format!("unknown role '{text}'")))
+        alias.or_else(|| named().find(|role| role.as_str() == wanted)).ok_or_else(|| unknown_role(text))
     }
+}
+
+fn named() -> impl Iterator<Item = Role> {
+    CONTROL_TYPES.into_iter().chain([Role::Unknown])
+}
+
+fn unknown_role(text: &str) -> Error {
+    let names: Vec<&str> = named().map(Role::as_str).collect();
+    Error::invalid(format!("unknown role '{text}'; roles are {}", names.join(", ")))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorCode;
 
     #[test]
     fn maps_uia_control_type_ids() {
@@ -250,8 +266,27 @@ mod tests {
     }
 
     #[test]
+    fn parses_web_role_names() {
+        assert_eq!("option".parse::<Role>().unwrap(), Role::ListItem);
+        assert_eq!("listbox".parse::<Role>().unwrap(), Role::List);
+        assert_eq!("menuitemcheckbox".parse::<Role>().unwrap(), Role::MenuItem);
+        assert_eq!("gridcell".parse::<Role>().unwrap(), Role::DataItem);
+        assert_eq!("column-header".parse::<Role>().unwrap(), Role::HeaderItem);
+        assert_eq!("SpinButton".parse::<Role>().unwrap(), Role::Spinner);
+    }
+
+    #[test]
+    fn unknown_roles_list_the_known_names() {
+        let error = "gizmo".parse::<Role>().unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidArgument);
+        assert!(error.message.starts_with("unknown role 'gizmo'; roles are button, calendar, "), "{}", error.message);
+        assert!(error.message.contains(", listitem, list, "), "{}", error.message);
+        assert!(error.message.ends_with(", appbar, unknown"), "{}", error.message);
+    }
+
+    #[test]
     fn every_role_round_trips_through_its_name() {
-        for role in CONTROL_TYPES.into_iter().chain([Role::Unknown]) {
+        for role in named() {
             assert_eq!(role.as_str().parse::<Role>().unwrap(), role);
             assert_eq!(role.to_string().parse::<Role>().unwrap(), role);
         }

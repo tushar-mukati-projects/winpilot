@@ -6,17 +6,13 @@ use windows::{
         Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO},
         UI::{
             HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI},
-            WindowsAndMessaging::{
-                GetSystemMetrics, MONITORINFOF_PRIMARY, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-                SM_YVIRTUALSCREEN, SYSTEM_METRICS_INDEX,
-            },
+            WindowsAndMessaging::MONITORINFOF_PRIMARY,
         },
     },
     core::BOOL,
 };
 use winpilot_core::{Error, Rect, Result};
-
-use crate::frame::rect_from_win32;
+use winpilot_win32::rect_from_win32;
 
 const BASE_DPI: u32 = 96;
 
@@ -36,19 +32,6 @@ pub fn monitors() -> Result<Vec<Monitor>> {
     }
     sort_and_index(&mut found);
     Ok(found)
-}
-
-pub(crate) fn virtual_screen() -> Rect {
-    Rect::new(
-        metric(SM_XVIRTUALSCREEN),
-        metric(SM_YVIRTUALSCREEN),
-        metric(SM_CXVIRTUALSCREEN),
-        metric(SM_CYVIRTUALSCREEN),
-    )
-}
-
-fn metric(index: SYSTEM_METRICS_INDEX) -> i32 {
-    unsafe { GetSystemMetrics(index) }
 }
 
 fn display_monitors() -> Result<Vec<HMONITOR>> {
@@ -99,6 +82,7 @@ fn sort_and_index(monitors: &mut [Monitor]) {
 #[cfg(test)]
 mod tests {
     use winpilot_core::Point;
+    use winpilot_win32::virtual_screen;
 
     use super::*;
 

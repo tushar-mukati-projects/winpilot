@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 
-use winpilot_core::{Error, ErrorCode, ImageMapping, ImageRef, Point, Result, WindowRef};
+use winpilot_core::{
+    Error, ErrorCode, ImageMapping, ImageRef, Point, Result, TargetSpec, WindowRef, target::PointSpec,
+};
 
 const CAPACITY: usize = 32;
 const COVERED: &str = "that point is covered by another window now; take a new screenshot";
@@ -53,6 +55,16 @@ impl ImageStore {
             .map(|(_, record)| *record)
             .ok_or_else(|| Error::not_found(format!("{image} is unknown or too old; take a new screenshot")))
     }
+
+    pub(crate) fn latest(&self) -> Option<(ImageRef, ImageRecord)> {
+        self.entries.back().copied()
+    }
+
+    pub(crate) fn bare_point_note(&self, target: &TargetSpec) -> Option<String> {
+        let TargetSpec::Point(PointSpec { x, y, img: None }) = target else { return None };
+        let (image, record) = self.latest()?;
+        record.bare_point_note(image, Point::new(*x, *y))
+    }
 }
 
 impl ImageRecord {
@@ -71,6 +83,16 @@ impl ImageRecord {
             Some(source) if source != hit && covers(source) => Err(Error::new(ErrorCode::Obscured, COVERED)),
             _ => Ok(()),
         }
+    }
+
+    pub(crate) fn bare_point_note(&self, image: ImageRef, point: Point) -> Option<String> {
+        let scale = self.mapping.scale;
+        (scale > 1.0 && self.holds(point)).then(|| {
+            format!(
+                "{},{} were used as screen pixels; screenshot {image} has scale {scale:.2}, so add \"img\":\"{image}\" if you measured them there",
+                point.x, point.y
+            )
+        })
     }
 
     fn holds(&self, point: Point) -> bool {
@@ -99,6 +121,21 @@ mod tests {
         let second = store.insert(record(2.0));
         assert_eq!(store.record(first).unwrap(), record(1.0));
         assert_eq!(store.record(second).unwrap(), record(2.0));
+        assert_eq!(store.latest(), Some((second, record(2.0))));
+        assert_eq!(ImageStore::default().latest(), None);
+    }
+
+    #[test]
+    fn bare_points_inside_a_scaled_shot_get_a_note() {
+        let sized = |scale| ImageRecord { width: 640, height: 360, ..record(scale) };
+        assert_eq!(
+            sized(2.0).bare_point_note(ImageRef(7), Point::new(300, 200)).as_deref(),
+            Some(
+                "300,200 were used as screen pixels; screenshot i7 has scale 2.00, so add \"img\":\"i7\" if you measured them there"
+            )
+        );
+        assert_eq!(sized(2.0).bare_point_note(ImageRef(7), Point::new(900, 200)), None);
+        assert_eq!(sized(1.0).bare_point_note(ImageRef(7), Point::new(300, 200)), None);
     }
 
     #[test]

@@ -1,6 +1,4 @@
-use winpilot_core::{Element, Error, Role};
-
-use super::clip::clipped;
+use winpilot_core::{Element, Error, Role, text_limit::ellipsized};
 
 const LABEL_NAME_CHARS: usize = 60;
 const WAY_OUT: &str = "click the field first or give type a target";
@@ -69,7 +67,7 @@ fn label(element: &Element) -> String {
     if name.is_empty() {
         return element.role.to_string();
     }
-    format!("{} \"{}\"", element.role, clipped(name, LABEL_NAME_CHARS))
+    format!("{} \"{}\"", element.role, ellipsized(name, LABEL_NAME_CHARS))
 }
 
 #[cfg(test)]

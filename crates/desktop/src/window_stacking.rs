@@ -2,8 +2,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SET_WINDOW_POS_FLAGS, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
 };
 use winpilot_core::{Context, Result, WindowRef};
+use winpilot_win32::live_hwnd;
 
-use crate::{window_identity::live_hwnd, window_restore::ensure_responsive};
+use crate::window_restore::ensure_responsive;
 
 const BELOW_FLAGS: SET_WINDOW_POS_FLAGS =
     SET_WINDOW_POS_FLAGS(SWP_NOACTIVATE.0 | SWP_NOMOVE.0 | SWP_NOSIZE.0 | SWP_ASYNCWINDOWPOS.0);

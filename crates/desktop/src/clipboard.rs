@@ -11,11 +11,11 @@ use windows::Win32::{
     },
 };
 use winpilot_core::{Context, Error, ErrorCode, Result};
+use winpilot_win32::{owning_pid, title};
 
 use crate::{
     clipboard_history::{PrivacyFormats, history_exclusion_markers},
     global_memory::{LockedGlobal, OwnedGlobal},
-    window_identity::{owning_pid, title},
     window_label::process_name,
 };
 

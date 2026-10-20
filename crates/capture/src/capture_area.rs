@@ -1,7 +1,5 @@
 use winpilot_core::{Error, Rect, Result};
 
-use crate::frame::overlap;
-
 const MAX_SIDE: i32 = 32_768;
 const MAX_PIXELS: i64 = 64 * 1024 * 1024;
 
@@ -26,7 +24,7 @@ impl CaptureArea {
     }
 
     pub(crate) fn clip(self, rect: Rect) -> Option<Self> {
-        overlap(self.0, rect).map(Self)
+        self.0.intersection(rect).map(Self)
     }
 
     pub(crate) const fn rect(self) -> Rect {

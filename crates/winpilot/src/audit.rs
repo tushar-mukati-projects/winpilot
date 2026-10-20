@@ -7,9 +7,13 @@ use std::{
 
 use chrono::{DateTime, Days, Local, NaiveDate, SecondsFormat};
 use serde::Serialize;
-use winpilot_core::ErrorCode;
+use winpilot_core::{ErrorCode, millis};
 
 use crate::app_data;
+
+const DATE_FORMAT: &str = "%Y-%m-%d";
+const DATE_SHAPE: &str = "0000-00-00";
+const LOG_EXTENSION: &str = ".jsonl";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Entry<'a> {
@@ -95,7 +99,7 @@ impl Audit {
             summary: entry.summary,
             ok: entry.failure.is_none(),
             code: entry.failure,
-            ms: u64::try_from(entry.elapsed.as_millis()).unwrap_or(u64::MAX),
+            ms: millis(entry.elapsed),
         };
         let mut bytes = serde_json::to_vec(&line).map_err(io::Error::other)?;
         bytes.push(b'\n');
@@ -108,20 +112,20 @@ fn default_dir() -> Option<PathBuf> {
 }
 
 fn file_name(date: NaiveDate) -> String {
-    format!("{}.jsonl", date.format("%Y-%m-%d"))
+    format!("{}{LOG_EXTENSION}", date.format(DATE_FORMAT))
 }
 
 fn log_date(name: &str) -> Option<NaiveDate> {
-    let stem = name.strip_suffix(".jsonl")?;
-    let shaped = stem.len() == 10
-        && stem.bytes().enumerate().all(|(index, byte)| match index {
-            4 | 7 => byte == b'-',
+    let stem = name.strip_suffix(LOG_EXTENSION)?;
+    let shaped = stem.len() == DATE_SHAPE.len()
+        && stem.bytes().zip(DATE_SHAPE.bytes()).all(|(byte, shape)| match shape {
+            b'-' => byte == b'-',
             _ => byte.is_ascii_digit(),
         });
     if !shaped {
         return None;
     }
-    NaiveDate::parse_from_str(stem, "%Y-%m-%d").ok()
+    NaiveDate::parse_from_str(stem, DATE_FORMAT).ok()
 }
 
 fn report_pruning(dir: &Path, outcome: io::Result<Pruned>) {
@@ -166,7 +170,7 @@ mod tests {
     use crate::testing::TempDir;
 
     fn date(text: &str) -> NaiveDate {
-        NaiveDate::parse_from_str(text, "%Y-%m-%d").unwrap()
+        NaiveDate::parse_from_str(text, DATE_FORMAT).unwrap()
     }
 
     #[test]

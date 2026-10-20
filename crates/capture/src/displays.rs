@@ -1,7 +1,7 @@
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory1, IDXGIOutput};
 use winpilot_core::{Rect, Result};
+use winpilot_win32::rect_from_win32;
 
-use crate::convert::rect_from_win32;
 use crate::monitor_list::{Monitor, enumerate_monitors, order_key};
 use crate::output::{DxgiSource, Output};
 
